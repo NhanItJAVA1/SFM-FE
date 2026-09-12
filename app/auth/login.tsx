@@ -1,3 +1,5 @@
+import * as AuthSession from 'expo-auth-session';
+import { ResponseType } from 'expo-auth-session';
 import * as Google from 'expo-auth-session/providers/google';
 import * as WebBrowser from 'expo-web-browser';
 import { Link, router } from 'expo-router';
@@ -8,29 +10,35 @@ import { authApi } from '@/api/authApi';
 
 WebBrowser.maybeCompleteAuthSession();
 
-const googleClientId = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID;
-const fallbackGoogleClientId = googleClientId ?? 'missing-google-client-id';
-const googleAndroidClientId = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID ?? fallbackGoogleClientId;
-const googleIosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID ?? fallbackGoogleClientId;
-const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? fallbackGoogleClientId;
+const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID;
+const fallbackGoogleClientId = googleWebClientId ?? 'missing-google-web-client-id';
+const googleRedirectUri = AuthSession.makeRedirectUri({
+  scheme: 'sfmfe',
+  path: 'auth/google',
+});
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false);
-  const [googleRequest, googleResponse, promptGoogleSignIn] = Google.useIdTokenAuthRequest({
+  const [googleRequest, googleResponse, promptGoogleSignIn] = Google.useAuthRequest({
     clientId: fallbackGoogleClientId,
-    androidClientId: googleAndroidClientId,
-    iosClientId: googleIosClientId,
-    webClientId: googleWebClientId,
+    webClientId: fallbackGoogleClientId,
+    redirectUri: googleRedirectUri,
+    responseType: ResponseType.Code,
+    shouldAutoExchangeCode: false,
     selectAccount: true,
   });
 
   useEffect(() => {
-    async function loginWithGoogleToken(idToken: string) {
+    async function loginWithGoogleCode(code: string) {
       try {
-        await authApi.loginWithGoogle({ idToken });
+        await authApi.loginWithGoogle({
+          code,
+          redirectUri: googleRedirectUri,
+          codeVerifier: googleRequest?.codeVerifier,
+        });
         router.replace('/(tabs)/home');
       } catch (error) {
         Alert.alert('Google sign in failed', error instanceof Error ? error.message : 'Unable to sign in with Google.');
@@ -43,16 +51,16 @@ export default function LoginScreen() {
       return;
     }
 
-    const idToken = googleResponse.params.id_token;
+    const code = googleResponse.params.code;
 
-    if (!idToken) {
-      Alert.alert('Google sign in failed', 'Google did not return an ID token.');
+    if (!code) {
+      Alert.alert('Google sign in failed', 'Google did not return an authorization code.');
       setIsGoogleSubmitting(false);
       return;
     }
 
-    loginWithGoogleToken(idToken);
-  }, [googleResponse]);
+    loginWithGoogleCode(code);
+  }, [googleRequest?.codeVerifier, googleResponse]);
 
   async function handleLogin() {
     try {
@@ -67,8 +75,11 @@ export default function LoginScreen() {
   }
 
   async function handleGoogleLogin() {
-    if (!googleClientId) {
-      Alert.alert('Google sign in failed', 'Missing EXPO_PUBLIC_GOOGLE_CLIENT_ID in your .env file.');
+    if (!googleWebClientId) {
+      Alert.alert(
+        'Google sign in failed',
+        'Missing EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID or EXPO_PUBLIC_GOOGLE_CLIENT_ID in your .env file.'
+      );
       return;
     }
 

@@ -1,0 +1,6 @@
+minimumReleaseAgeExclude:
+  - expo-dev-client@57.0.19
+  - expo-dev-launcher@57.0.20
+  - expo-json-utils@57.0.2
+  - expo-manifests@57.0.2
+  - expo-updates-interface@57.0.2
