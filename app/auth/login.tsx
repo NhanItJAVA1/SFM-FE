@@ -1,44 +1,58 @@
-import * as AuthSession from 'expo-auth-session';
 import { ResponseType } from 'expo-auth-session';
 import * as Google from 'expo-auth-session/providers/google';
 import * as WebBrowser from 'expo-web-browser';
 import { Link, router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { authApi } from '@/api/authApi';
+import { setApiAccessToken } from '@/api/axiosClient';
+import { setAuthUser } from '@/stores/authSession';
 
 WebBrowser.maybeCompleteAuthSession();
 
 const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID;
-const fallbackGoogleClientId = googleWebClientId ?? 'missing-google-web-client-id';
-const googleRedirectUri = AuthSession.makeRedirectUri({
-  scheme: 'sfmfe',
-  path: 'auth/google',
+const googleIosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID;
+const googleAndroidClientId = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID;
+const googleClientIdForPlatform = Platform.select({
+  ios: googleIosClientId,
+  android: googleAndroidClientId,
+  default: googleWebClientId,
 });
 
 export default function LoginScreen() {
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false);
   const [googleRequest, googleResponse, promptGoogleSignIn] = Google.useAuthRequest({
-    clientId: fallbackGoogleClientId,
-    webClientId: fallbackGoogleClientId,
-    redirectUri: googleRedirectUri,
+    webClientId: googleWebClientId,
+    iosClientId: googleIosClientId,
+    androidClientId: googleAndroidClientId,
     responseType: ResponseType.Code,
     shouldAutoExchangeCode: false,
     selectAccount: true,
   });
 
   useEffect(() => {
+    const googleRedirectUri = googleRequest?.redirectUri;
+    const googleCodeVerifier = googleRequest?.codeVerifier;
+
     async function loginWithGoogleCode(code: string) {
+      if (!googleRedirectUri) {
+        Alert.alert('Google sign in failed', 'Google sign in is not ready yet. Please try again.');
+        setIsGoogleSubmitting(false);
+        return;
+      }
+
       try {
-        await authApi.loginWithGoogle({
+        const response = await authApi.loginWithGoogle({
           code,
           redirectUri: googleRedirectUri,
-          codeVerifier: googleRequest?.codeVerifier,
+          codeVerifier: googleCodeVerifier,
         });
+        setApiAccessToken(response.data.accessToken);
+        setAuthUser(response.data.user);
         router.replace('/(tabs)/home');
       } catch (error) {
         Alert.alert('Google sign in failed', error instanceof Error ? error.message : 'Unable to sign in with Google.');
@@ -55,17 +69,19 @@ export default function LoginScreen() {
 
     if (!code) {
       Alert.alert('Google sign in failed', 'Google did not return an authorization code.');
-      setIsGoogleSubmitting(false);
+      setTimeout(() => setIsGoogleSubmitting(false), 0);
       return;
     }
 
     loginWithGoogleCode(code);
-  }, [googleRequest?.codeVerifier, googleResponse]);
+  }, [googleRequest?.codeVerifier, googleRequest?.redirectUri, googleResponse]);
 
   async function handleLogin() {
     try {
       setIsSubmitting(true);
-      await authApi.login({ email: email.trim(), password });
+      const response = await authApi.login({ username: username.trim(), password });
+      setApiAccessToken(response.data.accessToken);
+      setAuthUser(response.data.user);
       router.replace('/(tabs)/home');
     } catch (error) {
       Alert.alert('Sign in failed', error instanceof Error ? error.message : 'Unable to connect to the server.');
@@ -75,10 +91,10 @@ export default function LoginScreen() {
   }
 
   async function handleGoogleLogin() {
-    if (!googleWebClientId) {
+    if (!googleClientIdForPlatform) {
       Alert.alert(
         'Google sign in failed',
-        'Missing EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID or EXPO_PUBLIC_GOOGLE_CLIENT_ID in your .env file.'
+        `Missing Google client id for ${Platform.OS}. Check your .env file.`
       );
       return;
     }
@@ -102,12 +118,11 @@ export default function LoginScreen() {
       <Text style={styles.title}>Welcome back</Text>
       <Text style={styles.subtitle}>Sign in to continue to SFM.</Text>
       <TextInput
-        placeholder="Email"
-        keyboardType="email-address"
+        placeholder="Username"
         autoCapitalize="none"
         style={styles.input}
-        value={email}
-        onChangeText={setEmail}
+        value={username}
+        onChangeText={setUsername}
       />
       <TextInput
         placeholder="Password"

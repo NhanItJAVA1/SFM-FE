@@ -10,6 +10,11 @@ export type ApiResponse<T = unknown> = {
 };
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL;
+let accessToken: string | null = null;
+
+export function setApiAccessToken(token: string | null) {
+  accessToken = token;
+}
 
 function buildUrl(path: string) {
   if (!API_URL) {
@@ -28,6 +33,7 @@ async function request<T = unknown>(path: string, options: RequestOptions = {}):
     headers: {
       Accept: 'application/json',
       'Content-Type': 'application/json',
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
       ...options.headers,
     },
     body: options.body === undefined ? undefined : JSON.stringify(options.body),
@@ -52,6 +58,7 @@ async function request<T = unknown>(path: string, options: RequestOptions = {}):
 }
 
 export const axiosClient = {
+  get: <T = unknown>(path: string) => request<T>(path),
   post: <T = unknown>(path: string, body?: unknown) =>
     request<T>(path, {
       method: 'POST',
