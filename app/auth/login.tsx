@@ -1,4 +1,3 @@
-import { ResponseType } from 'expo-auth-session';
 import * as Google from 'expo-auth-session/providers/google';
 import * as WebBrowser from 'expo-web-browser';
 import { Link, router } from 'expo-router';
@@ -25,31 +24,19 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false);
-  const [googleRequest, googleResponse, promptGoogleSignIn] = Google.useAuthRequest({
+  const [googleRequest, googleResponse, promptGoogleSignIn] = Google.useIdTokenAuthRequest({
     webClientId: googleWebClientId,
     iosClientId: googleIosClientId,
     androidClientId: googleAndroidClientId,
-    responseType: ResponseType.Code,
-    shouldAutoExchangeCode: false,
     selectAccount: true,
   });
 
   useEffect(() => {
-    const googleRedirectUri = googleRequest?.redirectUri;
-    const googleCodeVerifier = googleRequest?.codeVerifier;
-
-    async function loginWithGoogleCode(code: string) {
-      if (!googleRedirectUri) {
-        Alert.alert('Google sign in failed', 'Google sign in is not ready yet. Please try again.');
-        setIsGoogleSubmitting(false);
-        return;
-      }
-
+    async function loginWithGoogleToken(token: string) {
       try {
-        const response = await authApi.loginWithGoogle({
-          code,
-          redirectUri: googleRedirectUri,
-          codeVerifier: googleCodeVerifier,
+        const response = await authApi.externalLogin({
+          provider: 'Google',
+          token,
         });
         setApiAccessToken(response.data.accessToken);
         setAuthUser(response.data.user);
@@ -65,16 +52,16 @@ export default function LoginScreen() {
       return;
     }
 
-    const code = googleResponse.params.code;
+    const token = googleResponse.params.id_token ?? googleResponse.params.access_token;
 
-    if (!code) {
-      Alert.alert('Google sign in failed', 'Google did not return an authorization code.');
+    if (!token) {
+      Alert.alert('Google sign in failed', 'Google did not return a token.');
       setTimeout(() => setIsGoogleSubmitting(false), 0);
       return;
     }
 
-    loginWithGoogleCode(code);
-  }, [googleRequest?.codeVerifier, googleRequest?.redirectUri, googleResponse]);
+    loginWithGoogleToken(token);
+  }, [googleResponse]);
 
   async function handleLogin() {
     try {

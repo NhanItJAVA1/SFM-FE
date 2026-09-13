@@ -2,10 +2,9 @@ import { axiosClient } from './axiosClient';
 
 export type LoginPayload = { username: string; password: string };
 export type RegisterPayload = LoginPayload & { email: string };
-export type GoogleLoginPayload = {
-    code: string;
-    redirectUri: string;
-    codeVerifier?: string;
+export type ExternalLoginPayload = {
+    provider: 'Google' | 'Facebook' | 'Github' | 'TikTok';
+    token: string;
 };
 export type AuthUser = {
     id: number;
@@ -26,5 +25,5 @@ export type LoginResponse = {
 export const authApi = {
     login: (payload: LoginPayload) => axiosClient.post<LoginResponse>('/auth/login', payload),
     register: (payload: RegisterPayload) => axiosClient.post('/auth/register', payload),
-    loginWithGoogle: (payload: GoogleLoginPayload) => axiosClient.post<LoginResponse>('/auth/google', payload),
+    externalLogin: (payload: ExternalLoginPayload) => axiosClient.post<LoginResponse>('/auth/external-login', payload),
 };
