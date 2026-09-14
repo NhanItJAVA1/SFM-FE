@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { router } from 'expo-router';
 import {
   ActivityIndicator,
   Alert,
@@ -14,7 +15,9 @@ import {
 } from 'react-native';
 
 import { AccountType, FinancialAccount, financialAccountApi } from '@/api/financialAccountApi';
-import { getAuthUser } from '@/stores/authSession';
+import { authApi } from '@/api/authApi';
+import { setApiAccessToken } from '@/api/axiosClient';
+import { getAuthRefreshToken, getAuthUser, setAuthRefreshToken, setAuthUser } from '@/stores/authSession';
 
 const accountTypes: { label: string; value: AccountType }[] = [
   { label: 'Cash', value: 'Cash' },
@@ -24,7 +27,7 @@ const accountTypes: { label: string; value: AccountType }[] = [
   { label: 'Savings', value: 'Savings' },
 ];
 
-type AccountView = 'menu' | 'wallets' | 'create';
+type AccountView = 'menu' | 'manage' | 'wallets' | 'create';
 
 function formatMoney(value: number, currency: string) {
   return new Intl.NumberFormat('vi-VN', {
@@ -46,6 +49,7 @@ export default function AccountsScreen() {
   const [currency, setCurrency] = useState('VND');
   const [initialBalance, setInitialBalance] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const totalBalance = useMemo(
     () => accounts.reduce((total, account) => total + account.initialBalance, 0),
@@ -122,6 +126,57 @@ export default function AccountsScreen() {
     } finally {
       setIsSubmitting(false);
     }
+  }
+
+  async function handleLogout() {
+    try {
+      setIsLoggingOut(true);
+      const refreshToken = getAuthRefreshToken();
+
+      await authApi.logout(refreshToken ? { refreshToken } : undefined);
+    } catch {
+      // Local logout should still proceed if the server cannot clear the refresh token.
+    } finally {
+      setApiAccessToken(null);
+      setAuthUser(null);
+      setAuthRefreshToken(null);
+      setIsLoggingOut(false);
+      router.replace('/auth/login');
+    }
+  }
+
+  if (view === 'manage') {
+    return (
+      <View style={styles.screen}>
+        <View style={styles.walletHeader}>
+          <Pressable onPress={() => setView('menu')} hitSlop={12}>
+            <Text style={styles.backText}>‹ Tài khoản</Text>
+          </Pressable>
+          <Text style={styles.topTitle}>Quản lý tài khoản</Text>
+          <View style={styles.topSpacer} />
+        </View>
+
+        <View style={styles.manageContent}>
+          <View style={styles.profileMiniCard}>
+            <View style={styles.smallAvatar}>
+              <Text style={styles.smallAvatarText}>{initial}</Text>
+            </View>
+            <View style={styles.manageTextGroup}>
+              <Text style={styles.manageTitle}>{user?.username ?? 'Người dùng'}</Text>
+              <Text style={styles.manageSubtitle}>{user?.email ?? 'Chưa có email'}</Text>
+            </View>
+          </View>
+
+          <Pressable
+            style={[styles.logoutButton, isLoggingOut && styles.buttonDisabled]}
+            onPress={handleLogout}
+            disabled={isLoggingOut}
+          >
+            {isLoggingOut ? <ActivityIndicator color="#fff" /> : <Text style={styles.logoutButtonText}>Đăng xuất</Text>}
+          </Pressable>
+        </View>
+      </View>
+    );
   }
 
   if (view === 'create') {
@@ -271,14 +326,14 @@ export default function AccountsScreen() {
 
         <View style={styles.divider} />
 
-        <View style={styles.manageRow}>
+        <Pressable style={styles.manageRow} onPress={() => setView('manage')}>
           <Text style={styles.manageIcon}>♙</Text>
           <View style={styles.manageTextGroup}>
             <Text style={styles.manageTitle}>Quản lý tài khoản</Text>
             <Text style={styles.manageSubtitle}>Tài khoản miễn phí</Text>
           </View>
           <Text style={styles.chevron}>›</Text>
-        </View>
+        </Pressable>
       </View>
 
       <View style={styles.menuCard}>
@@ -319,6 +374,12 @@ const styles = StyleSheet.create({
   manageTextGroup: { flex: 1 },
   manageTitle: { color: '#fff', fontSize: 18, fontWeight: '700' },
   manageSubtitle: { color: '#9698a1', fontSize: 16, marginTop: 3 },
+  manageContent: { gap: 18, padding: 20 },
+  profileMiniCard: { alignItems: 'center', backgroundColor: '#1e1e1f', borderRadius: 8, flexDirection: 'row', minHeight: 84, padding: 18 },
+  smallAvatar: { alignItems: 'center', backgroundColor: '#2fa9df', borderRadius: 24, height: 48, justifyContent: 'center', marginRight: 14, width: 48 },
+  smallAvatarText: { color: '#fff', fontSize: 24, fontWeight: '700' },
+  logoutButton: { alignItems: 'center', backgroundColor: '#d83b3b', borderRadius: 8, justifyContent: 'center', minHeight: 52 },
+  logoutButtonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   chevron: { color: '#6f727b', fontSize: 40, lineHeight: 42 },
   menuCard: { backgroundColor: '#1e1e1f', borderRadius: 8, marginTop: 34, overflow: 'hidden' },
   menuRow: { alignItems: 'center', flexDirection: 'row', minHeight: 76, paddingHorizontal: 22 },

@@ -6,7 +6,7 @@ import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, Text, TextIn
 
 import { authApi } from '@/api/authApi';
 import { setApiAccessToken } from '@/api/axiosClient';
-import { setAuthUser } from '@/stores/authSession';
+import { setAuthRefreshToken, setAuthUser } from '@/stores/authSession';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -40,6 +40,7 @@ export default function LoginScreen() {
         });
         setApiAccessToken(response.data.accessToken);
         setAuthUser(response.data.user);
+        setAuthRefreshToken(response.data.refreshToken ?? null);
         router.replace('/(tabs)/home');
       } catch (error) {
         Alert.alert('Google sign in failed', error instanceof Error ? error.message : 'Unable to sign in with Google.');
@@ -69,6 +70,7 @@ export default function LoginScreen() {
       const response = await authApi.login({ username: username.trim(), password });
       setApiAccessToken(response.data.accessToken);
       setAuthUser(response.data.user);
+      setAuthRefreshToken(response.data.refreshToken ?? null);
       router.replace('/(tabs)/home');
     } catch (error) {
       Alert.alert('Sign in failed', error instanceof Error ? error.message : 'Unable to connect to the server.');

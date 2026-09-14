@@ -4,7 +4,7 @@ import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, TextInput, View 
 
 import { authApi } from '@/api/authApi';
 import { setApiAccessToken } from '@/api/axiosClient';
-import { setAuthUser } from '@/stores/authSession';
+import { setAuthRefreshToken, setAuthUser } from '@/stores/authSession';
 
 export default function RegisterScreen() {
   const [username, setUsername] = useState('');
@@ -22,6 +22,7 @@ export default function RegisterScreen() {
       const response = await authApi.login({ username: trimmedUsername, password });
       setApiAccessToken(response.data.accessToken);
       setAuthUser(response.data.user);
+      setAuthRefreshToken(response.data.refreshToken ?? null);
       router.replace('/(tabs)/home');
     } catch (error) {
       Alert.alert('Register failed', error instanceof Error ? error.message : 'Unable to connect to the server.');
