@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
 import { router } from 'expo-router';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -14,16 +14,16 @@ import {
   View,
 } from 'react-native';
 
-import { AccountType, FinancialAccount, financialAccountApi } from '@/api/financialAccountApi';
 import { authApi } from '@/api/authApi';
 import { setApiAccessToken } from '@/api/axiosClient';
+import { AccountType, FinancialAccount, financialAccountApi } from '@/api/financialAccountApi';
 import { getAuthRefreshToken, getAuthUser, setAuthRefreshToken, setAuthUser } from '@/stores/authSession';
 
 const accountTypes: { label: string; value: AccountType }[] = [
   { label: 'Cash', value: 'Cash' },
   { label: 'Bank', value: 'Bank' },
-  { label: 'E-Wallet', value: 'EWallet' },
-  { label: 'Credit Card', value: 'CreditCard' },
+  // { label: 'E-Wallet', value: 'EWallet' },
+  // { label: 'Credit Card', value: 'CreditCard' },
   { label: 'Savings', value: 'Savings' },
 ];
 
