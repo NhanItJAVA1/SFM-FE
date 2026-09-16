@@ -57,6 +57,34 @@ async function request<T = unknown>(path: string, options: RequestOptions = {}):
   };
 }
 
+async function uploadFormData<T = unknown>(path: string, formData: FormData): Promise<ApiResponse<T>> {
+  const response = await fetch(buildUrl(path), {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+    },
+    body: formData,
+  });
+
+  const text = await response.text();
+  const data = text ? JSON.parse(text) : null;
+
+  if (!response.ok) {
+    const message =
+      typeof data === 'object' && data !== null && 'message' in data
+        ? String(data.message)
+        : `Request failed with status ${response.status}`;
+
+    throw new Error(message);
+  }
+
+  return {
+    data: data as T,
+    status: response.status,
+  };
+}
+
 export const axiosClient = {
   get: <T = unknown>(path: string) => request<T>(path),
   post: <T = unknown>(path: string, body?: unknown) =>
@@ -64,4 +92,5 @@ export const axiosClient = {
       method: 'POST',
       body,
     }),
+  uploadFormData,
 };
