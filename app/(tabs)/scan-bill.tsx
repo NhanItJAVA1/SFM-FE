@@ -3,12 +3,14 @@ import { router } from 'expo-router';
 import { useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { transactionsApi } from '@/api/transactionsApi';
+import { TransactionDraft, transactionsApi } from '@/api/transactionsApi';
+import { TransactionDraftReview } from '@/components/transaction-draft-review';
 
 export default function ScanBillScreen() {
   const cameraRef = useRef<CameraView>(null);
   const [permission, requestPermission] = useCameraPermissions();
   const [photo, setPhoto] = useState<CameraCapturedPicture | null>(null);
+  const [draft, setDraft] = useState<TransactionDraft | null>(null);
   const [isTakingPicture, setIsTakingPicture] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
 
@@ -20,7 +22,7 @@ export default function ScanBillScreen() {
     try {
       setIsTakingPicture(true);
       const nextPhoto = await cameraRef.current.takePictureAsync({
-        quality: 0.78,
+        quality: 0.55,
         imageType: 'jpg',
       });
 
@@ -39,13 +41,8 @@ export default function ScanBillScreen() {
 
     try {
       setIsUploading(true);
-      await transactionsApi.scanBill(photo.uri);
-      Alert.alert('Đã gửi hóa đơn', 'Ảnh hóa đơn đã được gửi về hệ thống.', [
-        {
-          text: 'OK',
-          onPress: () => router.back(),
-        },
-      ]);
+      const response = await transactionsApi.scanBill(photo.uri);
+      setDraft(response.data);
     } catch (error) {
       Alert.alert('Gửi hóa đơn thất bại', error instanceof Error ? error.message : 'Vui lòng thử lại.');
     } finally {
@@ -69,6 +66,19 @@ export default function ScanBillScreen() {
           <Text style={styles.secondaryButtonText}>Quay lại</Text>
         </Pressable>
       </View>
+    );
+  }
+
+  if (draft) {
+    return (
+      <TransactionDraftReview
+        draft={draft}
+        imageUri={photo?.uri}
+        onRetake={() => {
+          setDraft(null);
+          setPhoto(null);
+        }}
+      />
     );
   }
 
