@@ -6,8 +6,8 @@ export default function CreateScreen() {
     <View style={styles.container}>
       <Text style={styles.title}>Tạo mới</Text>
       <Text style={styles.subtitle}>Chọn nghiệp vụ bạn muốn tạo.</Text>
-      <Link href="/(tabs)/accounts" style={styles.link}>
-        Tạo tài khoản
+      <Link href="/account" style={styles.link}>
+        Tạo Account
       </Link>
     </View>
   );
