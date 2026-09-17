@@ -15,9 +15,16 @@ import {
 } from 'react-native';
 
 import { authApi } from '@/api/authApi';
-import { setApiAccessToken } from '@/api/axiosClient';
-import { AccountType, FinancialAccount, financialAccountApi } from '@/api/financialAccountApi';
-import { getAuthRefreshToken, getAuthUser, setAuthRefreshToken, setAuthUser } from '@/stores/authSession';
+import {
+  AccountType,
+  FinancialAccount,
+  financialAccountApi,
+  getFinancialAccountBalance,
+} from '@/api/financialAccountApi';
+import { CategorySpendingItem, CategorySpendingResponse, transactionsApi } from '@/api/transactionsApi';
+import { SpendingDonutChart, SpendingDonutSegment } from '@/components/spending-donut-chart';
+import { getAuthRefreshToken, getAuthUser } from '@/stores/authSession';
+import { clearAuthSession } from '@/stores/persistedAuthSession';
 
 const accountTypes: { label: string; value: AccountType }[] = [
   { label: 'Cash', value: 'Cash' },
@@ -27,7 +34,9 @@ const accountTypes: { label: string; value: AccountType }[] = [
   { label: 'Savings', value: 'Savings' },
 ];
 
-type AccountView = 'menu' | 'manage' | 'wallets' | 'create';
+type AccountView = 'menu' | 'manage' | 'wallets' | 'create' | 'spendingStats';
+
+const chartColors = ['#8e7cf4', '#ffb14a', '#31c48d', '#f06292', '#60a5fa', '#facc15', '#9ca3af'];
 
 function formatMoney(value: number, currency: string) {
   return new Intl.NumberFormat('vi-VN', {
@@ -35,6 +44,51 @@ function formatMoney(value: number, currency: string) {
     maximumFractionDigits: 0,
     style: 'currency',
   }).format(value);
+}
+
+function getPreviousMonth(month: number, year: number) {
+  if (month === 1) {
+    return { month: 12, year: year - 1 };
+  }
+
+  return { month: month - 1, year };
+}
+
+function formatChange(value: number | null) {
+  if (value === null) {
+    return 'Mới';
+  }
+
+  const prefix = value > 0 ? '↑' : value < 0 ? '↓' : '';
+
+  return `${prefix} ${Math.abs(value).toFixed(1)}%`.trim();
+}
+
+function getCategoryKey(category: CategorySpendingItem) {
+  return category.categoryId === null ? `uncategorized-${category.categoryName}` : String(category.categoryId);
+}
+
+function getPeriodLabel(month: number, year: number, currentMonth: number, currentYear: number) {
+  if (month === currentMonth && year === currentYear) {
+    return 'Tháng này';
+  }
+
+  return `Tháng ${month}/${year}`;
+}
+
+function getNextMonth(month: number, year: number) {
+  if (month === 12) {
+    return { month: 1, year: year + 1 };
+  }
+
+  return { month: month + 1, year };
+}
+
+function formatSignedMoney(current: number, compare: number) {
+  const difference = current - compare;
+  const sign = difference > 0 ? '+' : difference < 0 ? '-' : '';
+
+  return `${sign}${formatMoney(Math.abs(difference), 'VND')}`;
 }
 
 export default function AccountsScreen() {
@@ -50,11 +104,38 @@ export default function AccountsScreen() {
   const [initialBalance, setInitialBalance] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const today = new Date();
+  const defaultMonth = today.getMonth() + 1;
+  const defaultYear = today.getFullYear();
+  const [statsMonth, setStatsMonth] = useState(defaultMonth);
+  const [statsYear, setStatsYear] = useState(defaultYear);
+  const [spendingStats, setSpendingStats] = useState<CategorySpendingResponse | null>(null);
+  const [isLoadingStats, setIsLoadingStats] = useState(false);
+  const [selectedCategoryKey, setSelectedCategoryKey] = useState<string | null>(null);
 
   const totalBalance = useMemo(
-    () => accounts.reduce((total, account) => total + account.initialBalance, 0),
+    () => accounts.reduce((total, account) => total + getFinancialAccountBalance(account), 0),
     [accounts]
   );
+
+  const isCurrentStatsPeriod = statsMonth === defaultMonth && statsYear === defaultYear;
+  const canGoNextStatsPeriod = !isCurrentStatsPeriod;
+  const statsPeriodLabel = getPeriodLabel(statsMonth, statsYear, defaultMonth, defaultYear);
+  const chartData = useMemo<SpendingDonutSegment[]>(() => {
+    if (!spendingStats) {
+      return [];
+    }
+
+    return spendingStats.categories
+      .filter((category) => category.amount > 0)
+      .map((category, index) => ({
+        amount: category.amount,
+        color: chartColors[index % chartColors.length],
+        key: getCategoryKey(category),
+        label: category.categoryName,
+        percentage: category.percentage,
+      }));
+  }, [spendingStats]);
 
   const loadAccounts = useCallback(async (mode: 'loading' | 'refreshing' = 'loading') => {
     try {
@@ -74,6 +155,21 @@ export default function AccountsScreen() {
     }
   }, []);
 
+  const loadSpendingStats = useCallback(async () => {
+    try {
+      setIsLoadingStats(true);
+      const response = await transactionsApi.categorySpending(
+        statsMonth === defaultMonth && statsYear === defaultYear ? {} : { month: statsMonth, year: statsYear }
+      );
+      setSpendingStats(response.data);
+      setSelectedCategoryKey(null);
+    } catch (error) {
+      Alert.alert('Không tải được thống kê', error instanceof Error ? error.message : 'Vui lòng thử lại sau.');
+    } finally {
+      setIsLoadingStats(false);
+    }
+  }, [defaultMonth, defaultYear, statsMonth, statsYear]);
+
   useEffect(() => {
     if (view === 'wallets') {
       const timeoutId = setTimeout(() => {
@@ -85,6 +181,38 @@ export default function AccountsScreen() {
 
     return undefined;
   }, [loadAccounts, view]);
+
+  useEffect(() => {
+    if (view === 'spendingStats') {
+      const timeoutId = setTimeout(() => {
+        loadSpendingStats();
+      }, 0);
+
+      return () => clearTimeout(timeoutId);
+    }
+
+    return undefined;
+  }, [loadSpendingStats, view]);
+
+  function goPreviousStatsPeriod() {
+    const previous = getPreviousMonth(statsMonth, statsYear);
+    setStatsMonth(previous.month);
+    setStatsYear(previous.year);
+  }
+
+  function goNextStatsPeriod() {
+    if (!canGoNextStatsPeriod) {
+      return;
+    }
+
+    const next = getNextMonth(statsMonth, statsYear);
+    setStatsMonth(next.month);
+    setStatsYear(next.year);
+  }
+
+  function handleSelectCategory(key: string) {
+    setSelectedCategoryKey(key);
+  }
 
   async function handleCreateAccount() {
     const trimmedName = name.trim();
@@ -137,9 +265,7 @@ export default function AccountsScreen() {
     } catch {
       // Local logout should still proceed if the server cannot clear the refresh token.
     } finally {
-      setApiAccessToken(null);
-      setAuthUser(null);
-      setAuthRefreshToken(null);
+      await clearAuthSession();
       setIsLoggingOut(false);
       router.replace('/auth/login');
     }
@@ -264,6 +390,133 @@ export default function AccountsScreen() {
     );
   }
 
+  if (view === 'spendingStats') {
+    return (
+      <View style={styles.screen}>
+        <View style={styles.walletHeader}>
+          <Pressable onPress={() => setView('menu')} hitSlop={12}>
+            <Text style={styles.backText}>‹ Tài khoản</Text>
+          </Pressable>
+          <Text style={styles.topTitle}>Thống kê chi tiêu</Text>
+          <View style={styles.topSpacer} />
+        </View>
+
+        <ScrollView contentContainerStyle={styles.statsContent}>
+          <View style={styles.statsPanel}>
+            <View style={styles.monthSwitcher}>
+              <Pressable style={styles.monthButton} onPress={goPreviousStatsPeriod} hitSlop={10}>
+                <Text style={styles.monthButtonText}>‹</Text>
+              </Pressable>
+              <View style={styles.monthTitleWrap}>
+                <Text style={styles.monthTitle}>{statsPeriodLabel}</Text>
+                <Text style={styles.monthSubtitle}>
+                  {spendingStats
+                    ? `${spendingStats.currentPeriod.start} → ${spendingStats.currentPeriod.end}`
+                    : `Tháng ${statsMonth}/${statsYear}`}
+                </Text>
+              </View>
+              <Pressable
+                style={[styles.monthButton, !canGoNextStatsPeriod && styles.monthButtonDisabled]}
+                onPress={goNextStatsPeriod}
+                disabled={!canGoNextStatsPeriod}
+                hitSlop={10}
+              >
+                <Text style={styles.monthButtonText}>›</Text>
+              </Pressable>
+            </View>
+
+            {isLoadingStats ? (
+              <View style={styles.statsLoading}>
+                <ActivityIndicator color="#31c452" />
+              </View>
+            ) : spendingStats ? (
+              <>
+                <View style={styles.statsSummaryRow}>
+                  <View style={[styles.statsSummaryCard, styles.statsSummaryCardActive]}>
+                    <Text style={styles.statsSummaryLabel}>Chi tiêu</Text>
+                    <Text style={styles.statsSummaryValue}>{formatMoney(spendingStats.totalAmount, 'VND')}</Text>
+                  </View>
+                  <View style={styles.statsSummaryCard}>
+                    <Text style={styles.statsSummaryLabel}>Kỳ trước</Text>
+                    <Text style={styles.statsSummaryValue}>{formatMoney(spendingStats.compareTotalAmount, 'VND')}</Text>
+                  </View>
+                </View>
+
+                <View
+                  style={[
+                    styles.statsTrendCard,
+                    (spendingStats.totalChangePercentage ?? 0) <= 0
+                      ? styles.statsTrendCardGood
+                      : styles.statsTrendCardWarn,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.statsTrendText,
+                      (spendingStats.totalChangePercentage ?? 0) <= 0
+                        ? styles.statsTrendTextGood
+                        : styles.statsTrendTextWarn,
+                    ]}
+                  >
+                    {spendingStats.totalChangePercentage === null
+                      ? 'Mới có chi tiêu trong kỳ này'
+                      : `${spendingStats.totalChangePercentage <= 0 ? 'Giảm' : 'Tăng'} ${formatSignedMoney(
+                          spendingStats.totalAmount,
+                          spendingStats.compareTotalAmount
+                        )} so với kỳ trước`}
+                  </Text>
+                </View>
+
+                {chartData.length === 0 ? (
+                  <Text style={styles.statsEmptyText}>Không có chi tiêu trong kỳ này.</Text>
+                ) : (
+                  <View style={styles.chartSection}>
+                    <SpendingDonutChart data={chartData} selectedKey={selectedCategoryKey} onSelect={handleSelectCategory} />
+                  </View>
+                )}
+
+                <Text style={styles.detailTitle}>Chi tiết từng danh mục ({spendingStats.categories.length})</Text>
+                {spendingStats.categories.map((category) => {
+                  const categoryKey = getCategoryKey(category);
+                  const isSelected = selectedCategoryKey === categoryKey;
+                  const chartColor = chartData.find((item) => item.key === categoryKey)?.color ?? '#9ca3af';
+
+                  return (
+                    <Pressable
+                      key={categoryKey}
+                      onPress={() => handleSelectCategory(categoryKey)}
+                      style={[styles.statCard, isSelected && styles.statCardSelected]}
+                    >
+                      <View style={styles.statCategoryHeader}>
+                        <View style={[styles.statIcon, { backgroundColor: `${chartColor}24` }]}>
+                          <Text style={[styles.statIconText, { color: chartColor }]}>
+                            {category.icon?.charAt(0).toUpperCase() ?? '?'}
+                          </Text>
+                        </View>
+                        <View style={styles.walletInfo}>
+                          <Text style={styles.statCategoryName}>{category.categoryName}</Text>
+                          <Text style={styles.statCategoryMeta}>
+                            {category.transactionCount} giao dịch · {category.percentage.toFixed(1)}%
+                          </Text>
+                        </View>
+                        <Text style={styles.statCategoryAmount}>{formatMoney(category.amount, 'VND')}</Text>
+                      </View>
+                      <Text style={styles.statCompareText}>
+                        Kỳ trước: {formatMoney(category.compareAmount, 'VND')} · {formatChange(category.changePercentage)}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </>
+            ) : (
+              <Text style={styles.statsEmptyText}>Chưa tải được thống kê.</Text>
+            )}
+          </View>
+        </ScrollView>
+      </View>
+    );
+  }
+
   if (view === 'wallets') {
     return (
       <View style={styles.screen}>
@@ -300,7 +553,9 @@ export default function AccountsScreen() {
                   <Text style={styles.walletName}>{account.name}</Text>
                   <Text style={styles.walletType}>{account.type}</Text>
                 </View>
-                <Text style={styles.walletBalance}>{formatMoney(account.initialBalance, account.currency)}</Text>
+                <Text style={styles.walletBalance}>
+                  {formatMoney(getFinancialAccountBalance(account), account.currency)}
+                </Text>
               </View>
             ))
           )}
@@ -340,6 +595,12 @@ export default function AccountsScreen() {
         <Pressable style={styles.menuRow} onPress={() => setView('wallets')}>
           <Text style={styles.menuIcon}>▰</Text>
           <Text style={styles.menuText}>Ví của tôi</Text>
+          <Text style={styles.chevron}>›</Text>
+        </Pressable>
+        <View style={styles.menuDivider} />
+        <Pressable style={styles.menuRow} onPress={() => setView('spendingStats')}>
+          <Text style={styles.menuIcon}>◷</Text>
+          <Text style={styles.menuText}>Thống kê chi tiêu</Text>
           <Text style={styles.chevron}>›</Text>
         </Pressable>
       </View>
@@ -383,6 +644,7 @@ const styles = StyleSheet.create({
   chevron: { color: '#6f727b', fontSize: 40, lineHeight: 42 },
   menuCard: { backgroundColor: '#1e1e1f', borderRadius: 8, marginTop: 34, overflow: 'hidden' },
   menuRow: { alignItems: 'center', flexDirection: 'row', minHeight: 76, paddingHorizontal: 22 },
+  menuDivider: { backgroundColor: '#303039', height: 1, marginLeft: 68 },
   menuIcon: { color: '#fff', fontSize: 30, width: 46 },
   menuText: { color: '#fff', flex: 1, fontSize: 22, fontWeight: '500' },
   walletHeader: {
@@ -413,10 +675,70 @@ const styles = StyleSheet.create({
   },
   addWalletText: { color: '#fff', fontSize: 30, fontWeight: '500', lineHeight: 33 },
   walletList: { gap: 14, padding: 20, paddingBottom: 96 },
+  statsContent: { backgroundColor: '#020204', padding: 14, paddingBottom: 96 },
+  statsPanel: { backgroundColor: '#020204', borderRadius: 8, gap: 12, padding: 4 },
+  monthSwitcher: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', minHeight: 44 },
+  monthButton: { alignItems: 'center', height: 36, justifyContent: 'center', width: 36 },
+  monthButtonDisabled: { opacity: 0.28 },
+  monthButtonText: { color: '#6f727b', fontSize: 34, fontWeight: '500', lineHeight: 34 },
+  monthTitleWrap: { alignItems: 'center', flex: 1 },
+  monthTitle: { color: '#fff', fontSize: 15, fontWeight: '800' },
+  monthSubtitle: { color: '#9698a1', fontSize: 11, fontWeight: '700', marginTop: 2 },
+  statsLoading: { alignItems: 'center', minHeight: 260, justifyContent: 'center' },
+  statsSummaryRow: { flexDirection: 'row', gap: 8 },
+  statsSummaryCard: {
+    backgroundColor: '#1e1e1f',
+    borderColor: '#303039',
+    borderRadius: 8,
+    borderWidth: 1,
+    flex: 1,
+    minHeight: 72,
+    padding: 10,
+  },
+  statsSummaryCardActive: { borderColor: '#ff4fa3' },
+  statsSummaryLabel: { color: '#9698a1', fontSize: 12, fontWeight: '800', marginBottom: 7 },
+  statsSummaryValue: { color: '#fff', fontSize: 18, fontWeight: '900' },
+  statsTrendCard: { borderRadius: 8, minHeight: 42, justifyContent: 'center', paddingHorizontal: 12, paddingVertical: 8 },
+  statsTrendCardGood: { backgroundColor: '#11291a' },
+  statsTrendCardWarn: { backgroundColor: '#33200d' },
+  statsTrendText: { fontSize: 13, fontWeight: '800', lineHeight: 18 },
+  statsTrendTextGood: { color: '#22a84e' },
+  statsTrendTextWarn: { color: '#d97706' },
+  chartSection: {
+    alignItems: 'center',
+    elevation: 24,
+    paddingVertical: 8,
+    position: 'relative',
+    zIndex: 24,
+  },
+  detailTitle: { color: '#ff4fa3', fontSize: 13, fontWeight: '900', marginTop: 2, textAlign: 'center' },
+  statsEmptyText: { color: '#9698a1', fontSize: 15, lineHeight: 22, paddingVertical: 36, textAlign: 'center' },
   balanceSummary: { backgroundColor: '#1e1e1f', borderRadius: 8, padding: 18 },
   summaryLabel: { color: '#9698a1', fontSize: 14, marginBottom: 4 },
   summaryValue: { color: '#fff', fontSize: 26, fontWeight: '700' },
   walletCard: { alignItems: 'center', backgroundColor: '#1e1e1f', borderRadius: 8, flexDirection: 'row', minHeight: 78, padding: 16 },
+  statControlCard: { backgroundColor: '#1e1e1f', borderRadius: 8, gap: 14, padding: 16 },
+  statControlTitle: { color: '#9698a1', fontSize: 13, fontWeight: '800' },
+  periodRow: { alignItems: 'center', flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  periodValue: { color: '#fff', fontSize: 15, fontWeight: '800', minWidth: 64, textAlign: 'center' },
+  stepButton: { alignItems: 'center', backgroundColor: '#303039', borderRadius: 8, height: 34, justifyContent: 'center', width: 34 },
+  stepButtonText: { color: '#fff', fontSize: 22, fontWeight: '700', lineHeight: 24 },
+  statCard: {
+    backgroundColor: '#1e1e1f',
+    borderColor: '#303039',
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 10,
+    padding: 14,
+  },
+  statCardSelected: { borderColor: '#ff4fa3', shadowColor: '#ff4fa3', shadowOpacity: 0.2, shadowRadius: 10 },
+  statCategoryHeader: { alignItems: 'center', flexDirection: 'row' },
+  statIcon: { alignItems: 'center', backgroundColor: '#303039', borderRadius: 20, height: 40, justifyContent: 'center', marginRight: 14, width: 40 },
+  statIconText: { color: '#31c452', fontSize: 18, fontWeight: '800' },
+  statCategoryName: { color: '#fff', fontSize: 16, fontWeight: '900' },
+  statCategoryMeta: { color: '#9698a1', fontSize: 13, fontWeight: '700', marginTop: 3 },
+  statCategoryAmount: { color: '#fff', fontSize: 15, fontWeight: '900' },
+  statCompareText: { color: '#9698a1', fontSize: 13, lineHeight: 19 },
   walletIcon: { alignItems: 'center', backgroundColor: '#303039', borderRadius: 20, height: 40, justifyContent: 'center', marginRight: 14, width: 40 },
   walletIconText: { color: '#fff', fontSize: 20 },
   walletInfo: { flex: 1 },

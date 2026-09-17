@@ -5,8 +5,8 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { authApi } from '@/api/authApi';
-import { setApiAccessToken } from '@/api/axiosClient';
-import { setAuthRefreshToken, setAuthUser } from '@/stores/authSession';
+import { getAuthAccessToken } from '@/stores/authSession';
+import { saveAuthSession } from '@/stores/persistedAuthSession';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -32,15 +32,19 @@ export default function LoginScreen() {
   });
 
   useEffect(() => {
+    if (getAuthAccessToken()) {
+      router.replace('/(tabs)/home');
+    }
+  }, []);
+
+  useEffect(() => {
     async function loginWithGoogleToken(token: string) {
       try {
         const response = await authApi.externalLogin({
           provider: 'Google',
           token,
         });
-        setApiAccessToken(response.data.accessToken);
-        setAuthUser(response.data.user);
-        setAuthRefreshToken(response.data.refreshToken ?? null);
+        await saveAuthSession(response.data);
         router.replace('/(tabs)/home');
       } catch (error) {
         Alert.alert('Google sign in failed', error instanceof Error ? error.message : 'Unable to sign in with Google.');
@@ -68,9 +72,7 @@ export default function LoginScreen() {
     try {
       setIsSubmitting(true);
       const response = await authApi.login({ username: username.trim(), password });
-      setApiAccessToken(response.data.accessToken);
-      setAuthUser(response.data.user);
-      setAuthRefreshToken(response.data.refreshToken ?? null);
+      await saveAuthSession(response.data);
       router.replace('/(tabs)/home');
     } catch (error) {
       Alert.alert('Sign in failed', error instanceof Error ? error.message : 'Unable to connect to the server.');

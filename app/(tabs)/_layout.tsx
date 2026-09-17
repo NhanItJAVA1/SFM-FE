@@ -1,5 +1,7 @@
-import { Tabs } from 'expo-router';
+import { Redirect, Tabs } from 'expo-router';
 import { StyleSheet, Text, View } from 'react-native';
+
+import { getAuthAccessToken } from '@/stores/authSession';
 
 type TabIconName = 'home' | 'ledger' | 'plus' | 'budget' | 'account';
 
@@ -24,6 +26,10 @@ function TabIcon({ name, focused }: { name: TabIconName; focused: boolean }) {
 }
 
 export default function TabsLayout() {
+  if (!getAuthAccessToken()) {
+    return <Redirect href="/auth/login" />;
+  }
+
   return (
     <Tabs
       screenOptions={{
@@ -50,11 +56,12 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
-        name="create"
+        name="scan-bill"
         options={{
           title: '',
           tabBarIcon: ({ focused }) => <TabIcon name="plus" focused={focused} />,
           tabBarLabel: () => null,
+          tabBarStyle: { display: 'none' },
         }}
       />
       <Tabs.Screen
@@ -71,6 +78,7 @@ export default function TabsLayout() {
           tabBarIcon: ({ focused }) => <TabIcon name="account" focused={focused} />,
         }}
       />
+      <Tabs.Screen name="create" options={{ href: null }} />
       <Tabs.Screen name="profile" options={{ href: null }} />
       <Tabs.Screen name="settings" options={{ href: null }} />
     </Tabs>
