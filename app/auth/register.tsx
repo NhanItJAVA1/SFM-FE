@@ -3,8 +3,7 @@ import { useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { authApi } from '@/api/authApi';
-import { setApiAccessToken } from '@/api/axiosClient';
-import { setAuthRefreshToken, setAuthUser } from '@/stores/authSession';
+import { saveAuthSession } from '@/stores/persistedAuthSession';
 
 export default function RegisterScreen() {
   const [username, setUsername] = useState('');
@@ -20,9 +19,7 @@ export default function RegisterScreen() {
       setIsSubmitting(true);
       await authApi.register({ username: trimmedUsername, email: trimmedEmail, password });
       const response = await authApi.login({ username: trimmedUsername, password });
-      setApiAccessToken(response.data.accessToken);
-      setAuthUser(response.data.user);
-      setAuthRefreshToken(response.data.refreshToken ?? null);
+      await saveAuthSession(response.data);
       router.replace('/(tabs)/home');
     } catch (error) {
       Alert.alert('Register failed', error instanceof Error ? error.message : 'Unable to connect to the server.');

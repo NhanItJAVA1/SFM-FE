@@ -1,7 +1,9 @@
 import { router } from 'expo-router';
-import { Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, Alert, Image, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
-import { TransactionDraft } from '@/api/transactionsApi';
+import { FinancialAccount, financialAccountApi, getFinancialAccountBalance } from '@/api/financialAccountApi';
+import { buildCreateTransactionFromScanPayload, TransactionDraft, transactionsApi } from '@/api/transactionsApi';
 
 type TransactionDraftReviewProps = {
   draft: TransactionDraft;
@@ -61,9 +63,56 @@ function FieldRow({ label, value }: { label: string; value: unknown }) {
 
 export function TransactionDraftReview({ draft, imageUri, onRetake }: TransactionDraftReviewProps) {
   const items = Array.isArray(draft.items) ? draft.items : [];
+  const [accounts, setAccounts] = useState<FinancialAccount[]>([]);
+  const [selectedAccountId, setSelectedAccountId] = useState<number | null>(
+    typeof draft.accountId === 'number' ? draft.accountId : null
+  );
+  const [isLoadingAccounts, setIsLoadingAccounts] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
-  function handleSave() {
-    router.back();
+  useEffect(() => {
+    const timeoutId = setTimeout(async () => {
+      try {
+        setIsLoadingAccounts(true);
+        const response = await financialAccountApi.list();
+        setAccounts(response.data);
+
+        setSelectedAccountId((currentAccountId) => currentAccountId ?? response.data[0]?.id ?? null);
+      } catch (error) {
+        Alert.alert('Không tải được ví', error instanceof Error ? error.message : 'Vui lòng thử lại sau.');
+      } finally {
+        setIsLoadingAccounts(false);
+      }
+    }, 0);
+
+    return () => clearTimeout(timeoutId);
+  }, []);
+
+  async function handleSave() {
+    if (selectedAccountId === null) {
+      Alert.alert('Chưa chọn ví', 'Vui lòng chọn ví để lưu giao dịch.');
+      return;
+    }
+
+    if (typeof draft.amount !== 'number' || !Number.isFinite(draft.amount)) {
+      Alert.alert('Thiếu số tiền', 'Không thể lưu giao dịch khi chưa nhận diện được số tiền.');
+      return;
+    }
+
+    try {
+      setIsSaving(true);
+      await transactionsApi.createFromScan(buildCreateTransactionFromScanPayload(draft, selectedAccountId));
+      Alert.alert('Đã lưu giao dịch', 'Giao dịch từ hóa đơn đã được lưu.', [
+        {
+          text: 'OK',
+          onPress: () => router.back(),
+        },
+      ]);
+    } catch (error) {
+      Alert.alert('Lưu giao dịch thất bại', error instanceof Error ? error.message : 'Vui lòng thử lại.');
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   return (
@@ -82,6 +131,39 @@ export function TransactionDraftReview({ draft, imageUri, onRetake }: Transactio
         <View style={styles.amountCard}>
           <Text style={styles.amountLabel}>Số tiền</Text>
           <Text style={styles.amountValue}>{formatAmount(draft.amount)}</Text>
+        </View>
+
+        <View style={styles.card}>
+          <View style={styles.itemsHeader}>
+            <Text style={styles.itemsTitle}>Chọn ví</Text>
+            {isLoadingAccounts ? <ActivityIndicator color="#31c452" /> : null}
+          </View>
+
+          {accounts.length === 0 && !isLoadingAccounts ? (
+            <Text style={styles.emptyAccountText}>Bạn cần tạo ví trước khi lưu giao dịch.</Text>
+          ) : (
+            accounts.map((account) => {
+              const isSelected = account.id === selectedAccountId;
+
+              return (
+                <Pressable
+                  key={account.id}
+                  style={[styles.accountRow, isSelected && styles.accountRowSelected]}
+                  onPress={() => setSelectedAccountId(account.id)}
+                >
+                  <View style={styles.accountDot}>
+                    {isSelected ? <View style={styles.accountDotInner} /> : null}
+                  </View>
+                  <View style={styles.accountInfo}>
+                    <Text style={styles.accountName}>{account.name}</Text>
+                    <Text style={styles.accountMeta}>
+                      {account.type} · {formatAmount(getFinancialAccountBalance(account))}
+                    </Text>
+                  </View>
+                </Pressable>
+              );
+            })
+          )}
         </View>
 
         <View style={styles.card}>
@@ -129,16 +211,21 @@ export function TransactionDraftReview({ draft, imageUri, onRetake }: Transactio
             <Text style={styles.rawText}>{draft.rawText}</Text>
           </View>
         ) : null}
-
-        <Text style={styles.note}>Lưu hiện tại chỉ xác nhận tạm thời và quay lại. BE tạo giao dịch sẽ nối sau.</Text>
       </ScrollView>
 
       <View style={styles.footer}>
         <Pressable style={styles.secondaryButton} onPress={onRetake}>
           <Text style={styles.secondaryButtonText}>Chụp lại</Text>
         </Pressable>
-        <Pressable style={styles.primaryButton} onPress={handleSave}>
-          <Text style={styles.primaryButtonText}>Lưu</Text>
+        <Pressable
+          style={[
+            styles.primaryButton,
+            (isSaving || selectedAccountId === null || accounts.length === 0) && styles.buttonDisabled,
+          ]}
+          onPress={handleSave}
+          disabled={isSaving || selectedAccountId === null || accounts.length === 0}
+        >
+          {isSaving ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryButtonText}>Lưu</Text>}
         </Pressable>
       </View>
     </View>
@@ -169,6 +256,14 @@ const styles = StyleSheet.create({
   fieldValue: { color: '#fff', fontSize: 16, fontWeight: '700' },
   rawTitle: { color: '#fff', fontSize: 16, fontWeight: '800', paddingHorizontal: 16, paddingTop: 16 },
   rawText: { color: '#c8cbd2', fontSize: 14, lineHeight: 21, padding: 16 },
+  emptyAccountText: { color: '#9698a1', fontSize: 14, lineHeight: 20, padding: 16, textAlign: 'center' },
+  accountRow: { alignItems: 'center', borderBottomColor: '#303039', borderBottomWidth: 1, flexDirection: 'row', gap: 12, paddingHorizontal: 16, paddingVertical: 14 },
+  accountRowSelected: { backgroundColor: '#17351f' },
+  accountDot: { alignItems: 'center', borderColor: '#31c452', borderRadius: 11, borderWidth: 2, height: 22, justifyContent: 'center', width: 22 },
+  accountDotInner: { backgroundColor: '#31c452', borderRadius: 6, height: 12, width: 12 },
+  accountInfo: { flex: 1, gap: 4 },
+  accountName: { color: '#fff', fontSize: 15, fontWeight: '800' },
+  accountMeta: { color: '#9698a1', fontSize: 13 },
   itemsHeader: { alignItems: 'center', borderBottomColor: '#303039', borderBottomWidth: 1, flexDirection: 'row', justifyContent: 'space-between', padding: 16 },
   itemsTitle: { color: '#fff', fontSize: 16, fontWeight: '800' },
   itemsCount: { color: '#9698a1', fontSize: 13, fontWeight: '700' },
@@ -211,4 +306,5 @@ const styles = StyleSheet.create({
     minHeight: 52,
   },
   primaryButtonText: { color: '#fff', fontSize: 16, fontWeight: '800' },
+  buttonDisabled: { opacity: 0.65 },
 });
