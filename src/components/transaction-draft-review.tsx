@@ -573,31 +573,33 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
           behavior={Platform.select({ ios: 'padding', default: undefined })}
           style={styles.keyboardModalOverlay}
         >
-          <View style={styles.smallBottomSheet}>
-            <Text style={styles.sheetTitle}>Sửa tổng tiền</Text>
-            <TextInput
-              autoFocus
-              keyboardType="decimal-pad"
-              placeholder="Tổng tiền"
-              placeholderTextColor="#6f7682"
-              returnKeyType="done"
-              style={styles.categoryInput}
-              value={amountInput}
-              onChangeText={setAmountInput}
-              onSubmitEditing={Keyboard.dismiss}
-            />
-            <View style={styles.createCategoryActions}>
-              <Pressable style={styles.cancelCategoryButton} onPress={() => setIsAmountEditorVisible(false)}>
-                <Text style={styles.cancelCategoryButtonText}>Hủy</Text>
-              </Pressable>
-              <Pressable style={styles.cancelCategoryButton} onPress={Keyboard.dismiss}>
-                <Text style={styles.cancelCategoryButtonText}>Xong</Text>
-              </Pressable>
-              <Pressable style={styles.createCategoryButton} onPress={handleSaveAmount}>
-                <Text style={styles.createCategoryButtonText}>Lưu</Text>
-              </Pressable>
-            </View>
-          </View>
+          <Pressable style={styles.amountModalDismissArea} onPress={() => setIsAmountEditorVisible(false)}>
+            <Pressable style={styles.smallBottomSheet} onPress={(event) => event.stopPropagation()}>
+              <Text style={styles.sheetTitle}>Sửa tổng tiền</Text>
+              <TextInput
+                autoFocus
+                keyboardType="decimal-pad"
+                placeholder="Tổng tiền"
+                placeholderTextColor="#6f7682"
+                returnKeyType="done"
+                style={styles.categoryInput}
+                value={amountInput}
+                onChangeText={setAmountInput}
+                onSubmitEditing={Keyboard.dismiss}
+              />
+              <View style={styles.createCategoryActions}>
+                <Pressable style={styles.cancelCategoryButton} onPress={() => setIsAmountEditorVisible(false)}>
+                  <Text style={styles.cancelCategoryButtonText}>Hủy</Text>
+                </Pressable>
+                <Pressable style={styles.cancelCategoryButton} onPress={Keyboard.dismiss}>
+                  <Text style={styles.cancelCategoryButtonText}>Xong</Text>
+                </Pressable>
+                <Pressable style={styles.createCategoryButton} onPress={handleSaveAmount}>
+                  <Text style={styles.createCategoryButtonText}>Lưu</Text>
+                </Pressable>
+              </View>
+            </Pressable>
+          </Pressable>
         </KeyboardAvoidingView>
       </Modal>
 

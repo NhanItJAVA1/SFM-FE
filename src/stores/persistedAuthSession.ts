@@ -1,8 +1,8 @@
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 
-import { AuthUser, LoginResponse } from '@/api/authApi';
-import { setApiAccessToken } from '@/api/axiosClient';
+import type { AuthUser, LoginResponse } from '@/api/authApi';
+import { setApiAccessToken, setApiTokenRefreshHandler } from '@/api/axiosClient';
 import {
   setAuthAccessToken,
   setAuthRefreshToken,
@@ -51,6 +51,17 @@ function applyAuthSession(session: PersistedAuthSession | null) {
   setAuthRefreshToken(session?.refreshToken ?? null);
   setAuthUser(session?.user ?? null);
 }
+
+setApiTokenRefreshHandler(async (response) => {
+  const session: PersistedAuthSession = {
+    accessToken: response.accessToken,
+    refreshToken: response.refreshToken ?? null,
+    user: response.user,
+  };
+
+  applyAuthSession(session);
+  await setStorageItem(sessionStorageKey, JSON.stringify(session));
+});
 
 export async function saveAuthSession(response: LoginResponse) {
   const session: PersistedAuthSession = {

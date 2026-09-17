@@ -1,4 +1,4 @@
-import { AuthUser } from '@/api/authApi';
+import type { AuthUser } from '@/api/authApi';
 
 let currentUser: AuthUser | null = null;
 let currentRefreshToken: string | null = null;
