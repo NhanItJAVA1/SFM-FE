@@ -1,42 +1,78 @@
-// import * as Google from 'expo-auth-session/providers/google';
-// import * as WebBrowser from 'expo-web-browser';
+import * as Google from "expo-auth-session/providers/google";
 import { Link, router } from "expo-router";
-import { useState } from "react";
-import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import * as WebBrowser from "expo-web-browser";
+import { useEffect, useState } from "react";
+import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { authApi } from "@/api/authApi";
-import { setApiAccessToken } from "@/api/axiosClient";
-import { setAuthRefreshToken, setAuthUser } from "@/stores/authSession";
+import { getAuthAccessToken } from "@/stores/authSession";
+import { saveAuthSession } from "@/stores/persistedAuthSession";
 
-// WebBrowser.maybeCompleteAuthSession();
+WebBrowser.maybeCompleteAuthSession();
 
-// const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID;
-// const googleIosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID;
-// const googleAndroidClientId = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID;
+const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID;
+const googleIosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID;
+const googleAndroidClientId = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID;
+const googleClientIdForPlatform = Platform.select({
+  ios: googleIosClientId,
+  android: googleAndroidClientId,
+  default: googleWebClientId,
+});
 
 export default function LoginScreen() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  // const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false);
-  // const [googleRequest, googleResponse, promptGoogleSignIn] = Google.useIdTokenAuthRequest({
-  //   webClientId: googleWebClientId,
-  //   iosClientId: googleIosClientId,
-  //   androidClientId: googleAndroidClientId,
-  //   selectAccount: true,
-  // });
+  const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false);
+  const [googleRequest, googleResponse, promptGoogleSignIn] = Google.useIdTokenAuthRequest({
+    webClientId: googleWebClientId,
+    iosClientId: googleIosClientId,
+    androidClientId: googleAndroidClientId,
+    selectAccount: true,
+  });
 
-  // useEffect(() => {
-  //   Google token login is temporarily disabled while the UI is being built.
-  // }, [googleResponse]);
+  useEffect(() => {
+    if (getAuthAccessToken()) {
+      router.replace("/(tabs)/home");
+    }
+  }, []);
+
+  useEffect(() => {
+    async function loginWithGoogleToken(token: string) {
+      try {
+        const response = await authApi.externalLogin({
+          provider: "Google",
+          token,
+        });
+        await saveAuthSession(response.data);
+        router.replace("/(tabs)/home");
+      } catch (error) {
+        Alert.alert("Google sign in failed", error instanceof Error ? error.message : "Unable to sign in with Google.");
+      } finally {
+        setIsGoogleSubmitting(false);
+      }
+    }
+
+    if (googleResponse?.type !== "success") {
+      return;
+    }
+
+    const token = googleResponse.params.id_token ?? googleResponse.params.access_token;
+
+    if (!token) {
+      Alert.alert("Google sign in failed", "Google did not return a token.");
+      setTimeout(() => setIsGoogleSubmitting(false), 0);
+      return;
+    }
+
+    loginWithGoogleToken(token);
+  }, [googleResponse]);
 
   async function handleLogin() {
     try {
       setIsSubmitting(true);
       const response = await authApi.login({ username: username.trim(), password });
-      setApiAccessToken(response.data.accessToken);
-      setAuthUser(response.data.user);
-      setAuthRefreshToken(response.data.refreshToken ?? null);
+      await saveAuthSession(response.data);
       router.replace("/(tabs)/home");
     } catch (error) {
       Alert.alert("Sign in failed", error instanceof Error ? error.message : "Unable to connect to the server.");
@@ -45,9 +81,25 @@ export default function LoginScreen() {
     }
   }
 
-  // async function handleGoogleLogin() {
-  //   Google sign-in is temporarily disabled while the UI is being built.
-  // }
+  async function handleGoogleLogin() {
+    if (!googleClientIdForPlatform) {
+      Alert.alert("Google sign in failed", `Missing Google client id for ${Platform.OS}. Check your .env file.`);
+      return;
+    }
+
+    try {
+      setIsGoogleSubmitting(true);
+      const result = await promptGoogleSignIn();
+
+      if (result.type !== "success") {
+        setIsGoogleSubmitting(false);
+        return;
+      }
+    } catch (error) {
+      Alert.alert("Google sign in failed", error instanceof Error ? error.message : "Unable to sign in with Google.");
+      setIsGoogleSubmitting(false);
+    }
+  }
 
   return (
     <View style={styles.container}>
@@ -74,15 +126,17 @@ export default function LoginScreen() {
       >
         {isSubmitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Sign in</Text>}
       </Pressable>
-      {/*
       <Pressable
         style={[styles.googleButton, (!googleRequest || isGoogleSubmitting) && styles.buttonDisabled]}
         onPress={handleGoogleLogin}
         disabled={!googleRequest || isGoogleSubmitting}
       >
-        {isGoogleSubmitting ? <ActivityIndicator color="#1f2328" /> : <Text style={styles.googleButtonText}>Continue with Google</Text>}
+        {isGoogleSubmitting ? (
+          <ActivityIndicator color="#1f2328" />
+        ) : (
+          <Text style={styles.googleButtonText}>Continue with Google</Text>
+        )}
       </Pressable>
-      */}
       <Link href="/auth/register" style={styles.link}>
         Create an account
       </Link>
