@@ -1,7 +1,7 @@
+import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { router } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { useCallback, useEffect, useState } from 'react';
-import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import {
   ActivityIndicator,
   Alert,
@@ -1029,6 +1029,10 @@ const styles = StyleSheet.create({
   },
   keyboardModalOverlay: {
     backgroundColor: 'rgba(0, 0, 0, 0.58)',
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  amountModalDismissArea: {
     flex: 1,
     justifyContent: 'flex-end',
   },
