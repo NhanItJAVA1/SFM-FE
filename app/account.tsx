@@ -1,0 +1,477 @@
+import { router } from "expo-router";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
+
+import { AccountType, FinancialAccount, financialAccountApi } from "@/api/financialAccountApi";
+
+const accountTypes: { label: string; value: AccountType }[] = [
+  { label: "Cash", value: "Cash" },
+  { label: "Bank", value: "Bank" },
+  // { label: 'E-Wallet', value: 'EWallet' },
+  // { label: 'Credit Card', value: 'CreditCard' },
+  { label: "Savings", value: "Savings" },
+];
+
+const walletTypeOptions: { label: string; value: AccountType; color: string; icon: string }[] = [
+  { label: "Ví cơ bản", value: "Cash", color: "#2abd4b", icon: "▰" },
+  { label: "Ví liên kết", value: "Bank", color: "#18cdb0", icon: "▤" },
+  { label: "Ví tiết kiệm", value: "Savings", color: "#f05b5b", icon: "◎" },
+];
+
+type AccountView = "wallets" | "add-options" | "create";
+
+function formatMoney(value: number, currency: string) {
+  return new Intl.NumberFormat("vi-VN", {
+    currency,
+    maximumFractionDigits: 0,
+    style: "currency",
+  }).format(value);
+}
+
+export default function AccountScreen() {
+  const [view, setView] = useState<AccountView>("wallets");
+  const [accounts, setAccounts] = useState<FinancialAccount[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [name, setName] = useState("");
+  const [type, setType] = useState<AccountType>("Cash");
+  const [currency, setCurrency] = useState("VND");
+  const [initialBalance, setInitialBalance] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [openAccountMenu, setOpenAccountMenu] = useState<number | null>(null);
+
+  const totalBalance = useMemo(
+    () => accounts.reduce((total, account) => total + account.initialBalance, 0),
+    [accounts],
+  );
+
+  const loadAccounts = useCallback(async (mode: "loading" | "refreshing" = "loading") => {
+    try {
+      if (mode === "refreshing") {
+        setIsRefreshing(true);
+      } else {
+        setIsLoading(true);
+      }
+
+      const response = await financialAccountApi.list();
+      setAccounts(response.data);
+    } catch (error) {
+      Alert.alert("Không tải được ví", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (view !== "wallets") {
+      return undefined;
+    }
+
+    const timeoutId = setTimeout(() => loadAccounts(), 0);
+
+    return () => clearTimeout(timeoutId);
+  }, [loadAccounts, view]);
+
+  async function handleCreateAccount() {
+    const trimmedName = name.trim();
+    const trimmedCurrency = currency.trim().toUpperCase();
+    const normalizedBalance = initialBalance.trim().replace(/,/g, "");
+    const parsedBalance = Number(normalizedBalance || "0");
+
+    if (!trimmedName) {
+      Alert.alert("Thiếu tên ví", "Vui lòng nhập tên ví.");
+      return;
+    }
+
+    if (!trimmedCurrency) {
+      Alert.alert("Thiếu tiền tệ", "Vui lòng nhập mã tiền tệ, ví dụ VND.");
+      return;
+    }
+
+    if (!Number.isFinite(parsedBalance) || parsedBalance < 0) {
+      Alert.alert("Số dư không hợp lệ", "Số dư ban đầu phải là số lớn hơn hoặc bằng 0.");
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      await financialAccountApi.create({
+        name: trimmedName,
+        type,
+        currency: trimmedCurrency,
+        initialBalance: parsedBalance,
+      });
+      setName("");
+      setType("Cash");
+      setCurrency("VND");
+      setInitialBalance("");
+      setView("wallets");
+    } catch (error) {
+      Alert.alert("Tạo ví thất bại", error instanceof Error ? error.message : "Không thể tạo ví.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  if (view === "add-options") {
+    return (
+      <View style={styles.screen}>
+        <View style={styles.walletHeader}>
+          <Pressable onPress={() => setView("wallets")} hitSlop={12}>
+            <Text style={styles.closeText}>×</Text>
+          </Pressable>
+          <Text style={styles.topTitle}>Thêm Ví</Text>
+          <View style={styles.topSpacer} />
+        </View>
+        <View style={styles.addOptionsPanel}>
+          <Text style={styles.addOptionsTitle}>Thêm ví</Text>
+          <View style={styles.addOptionsGrid}>
+            {walletTypeOptions.map((option) => (
+              <Pressable
+                key={option.value}
+                style={[styles.addOption, { backgroundColor: option.color }]}
+                onPress={() => {
+                  setType(option.value);
+                  setView("create");
+                }}
+              >
+                <Text style={styles.addOptionTitle}>{option.label}</Text>
+                <Text style={styles.addOptionIcon}>{option.icon}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      </View>
+    );
+  }
+
+  if (view === "create") {
+    return (
+      <KeyboardAvoidingView behavior={Platform.select({ ios: "padding", default: undefined })} style={styles.screen}>
+        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+          <View style={styles.topBar}>
+            <Pressable onPress={() => setView("add-options")} hitSlop={12}>
+              <Text style={styles.closeText}>×</Text>
+            </Pressable>
+            <Text style={styles.topTitle}>Thêm ví</Text>
+            <Pressable onPress={handleCreateAccount} disabled={isSubmitting}>
+              <Text style={styles.saveText}>LƯU</Text>
+            </Pressable>
+          </View>
+
+          <View style={styles.form}>
+            <View style={styles.field}>
+              <Text style={styles.label}>Tên Ví</Text>
+              <TextInput
+                placeholder="Cash wallet"
+                placeholderTextColor="#6f7682"
+                style={styles.input}
+                value={name}
+                onChangeText={setName}
+              />
+            </View>
+
+            <View style={styles.field}>
+              <Text style={styles.label}>Loại tài khoản</Text>
+              <View style={styles.typeGrid}>
+                {accountTypes.map((accountType) => {
+                  const isSelected = accountType.value === type;
+
+                  return (
+                    <Pressable
+                      key={accountType.value}
+                      style={[styles.typeOption, isSelected && styles.typeOptionSelected]}
+                      onPress={() => setType(accountType.value)}
+                    >
+                      <Text style={[styles.typeOptionText, isSelected && styles.typeOptionTextSelected]}>
+                        {accountType.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+
+            <View style={styles.row}>
+              <View style={[styles.field, styles.currencyField]}>
+                <Text style={styles.label}>Tiền tệ</Text>
+                <TextInput
+                  autoCapitalize="characters"
+                  maxLength={3}
+                  placeholder="VND"
+                  placeholderTextColor="#6f7682"
+                  style={styles.input}
+                  value={currency}
+                  onChangeText={setCurrency}
+                />
+              </View>
+
+              <View style={[styles.field, styles.balanceField]}>
+                <Text style={styles.label}>Số dư ban đầu</Text>
+                <TextInput
+                  keyboardType="decimal-pad"
+                  placeholder="1000000"
+                  placeholderTextColor="#6f7682"
+                  style={styles.input}
+                  value={initialBalance}
+                  onChangeText={setInitialBalance}
+                />
+              </View>
+            </View>
+
+            <View style={styles.formHint}>
+              <Text style={styles.formHintTitle}>Đang tạo {type === "Savings" ? "Ví tiết kiệm" : "Ví mới"}</Text>
+              <Text style={styles.formHintText}>Thông tin sẽ được lưu vào FinancialAccounts.</Text>
+            </View>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    );
+  }
+
+  if (view === "wallets") {
+    return (
+      <View style={styles.screen}>
+        <View style={styles.walletHeader}>
+          <Pressable onPress={() => router.back()} hitSlop={12}>
+            <Text style={styles.backText}>‹</Text>
+          </Pressable>
+          <Text style={styles.topTitle}>Ví của tôi</Text>
+          <View style={styles.headerTools}>
+            <Text style={styles.filterIcon}>☰</Text>
+            <Text style={styles.searchIcon}>⌕</Text>
+          </View>
+        </View>
+
+        <ScrollView
+          contentContainerStyle={styles.walletList}
+          refreshControl={
+            <RefreshControl refreshing={isRefreshing} onRefresh={() => loadAccounts("refreshing")} tintColor="#fff" />
+          }
+        >
+          <View style={styles.balanceSummary}>
+            <Text style={styles.summaryLabel}>Tổng số dư</Text>
+            <Text style={styles.summaryValue}>{formatMoney(totalBalance, accounts[0]?.currency ?? "VND")}</Text>
+          </View>
+
+          {isLoading ? (
+            <ActivityIndicator color="#31c452" />
+          ) : accounts.length === 0 ? (
+            <Text style={styles.emptyText}>Chưa có Ví nào. Bấm + để thêm Ví đầu tiên.</Text>
+          ) : (
+            accounts.map((account) => (
+              <View key={account.id} style={styles.walletCard}>
+                <View style={styles.walletIcon}>
+                  <Text style={styles.walletIconText}>▣</Text>
+                </View>
+                <View style={styles.walletInfo}>
+                  <Text style={styles.walletName}>{account.name}</Text>
+                  <Text style={styles.walletType}>{account.type}</Text>
+                </View>
+                <View style={styles.walletRight}>
+                  <Text style={styles.walletBalance}>{formatMoney(account.initialBalance, account.currency)}</Text>
+                  <Pressable
+                    style={styles.moreButton}
+                    onPress={() => setOpenAccountMenu(openAccountMenu === account.id ? null : account.id)}
+                  >
+                    <Text style={styles.moreText}>•••</Text>
+                  </Pressable>
+                </View>
+                {openAccountMenu === account.id && (
+                  <View style={styles.accountMenu}>
+                    {[
+                      "★  Đặt làm ví mặc định",
+                      "⇧  Chia sẻ",
+                      "▣  Tạo icon trên màn hình home",
+                      "↔  Chuyển tiền đến ví khác",
+                      "□  Sửa",
+                      "▱  Lưu trữ",
+                      "♧  Xóa",
+                    ].map((item) => (
+                      <Pressable key={item} style={styles.accountMenuItem} onPress={() => setOpenAccountMenu(null)}>
+                        <Text style={styles.accountMenuText}>{item}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                )}
+              </View>
+            ))
+          )}
+        </ScrollView>
+        <Pressable style={styles.floatingAddButton} onPress={() => setView("add-options")}>
+          <Text style={styles.floatingAddText}>+</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  return null;
+}
+
+const styles = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: "#f7f8fa" },
+  content: { padding: 24, paddingBottom: 96 },
+  walletHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingBottom: 16,
+    paddingHorizontal: 20,
+    paddingTop: 56,
+  },
+  backText: { color: "#31c452", fontSize: 17, fontWeight: "700" },
+  closeText: { color: "#252a33", fontSize: 32, fontWeight: "300", lineHeight: 34 },
+  saveText: { color: "#252a33", fontSize: 14, fontWeight: "800" },
+  topTitle: { color: "#171a21", fontSize: 22, fontWeight: "700" },
+  topBar: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 12,
+    marginTop: 32,
+  },
+  topSpacer: { width: 82 },
+  headerTools: { alignItems: "center", flexDirection: "row", gap: 22, width: 72 },
+  filterIcon: { color: "#252a33", fontSize: 21, transform: [{ rotate: "90deg" }] },
+  searchIcon: { color: "#252a33", fontSize: 27 },
+  walletList: { gap: 14, padding: 20, paddingBottom: 96 },
+  balanceSummary: { paddingBottom: 0, paddingTop: 0 },
+  summaryLabel: { color: "#9698a1", fontSize: 14, marginBottom: 4 },
+  summaryValue: { color: "#171a21", fontSize: 26, fontWeight: "700" },
+  walletCard: {
+    alignItems: "center",
+    backgroundColor: "#fff",
+    borderColor: "#e5e8ed",
+    borderRadius: 8,
+    borderWidth: 1,
+    flexDirection: "row",
+    minHeight: 78,
+    padding: 16,
+  },
+  walletIcon: {
+    alignItems: "center",
+    backgroundColor: "#e8edf2",
+    borderRadius: 20,
+    height: 40,
+    justifyContent: "center",
+    marginRight: 14,
+    width: 40,
+  },
+  walletIconText: { color: "#252a33", fontSize: 20 },
+  walletInfo: { flex: 1 },
+  walletName: { color: "#252a33", fontSize: 18, fontWeight: "700" },
+  walletType: { color: "#9698a1", fontSize: 14, marginTop: 3 },
+  walletBalance: { color: "#252a33", fontSize: 16, fontWeight: "700" },
+  walletRight: { alignItems: "flex-end", gap: 12 },
+  moreButton: {
+    alignItems: "center",
+    borderColor: "#d9d9dc",
+    borderRadius: 12,
+    borderWidth: 1.5,
+    height: 24,
+    justifyContent: "center",
+    width: 24,
+  },
+  moreText: { color: "#fff", fontSize: 13, letterSpacing: 1 },
+  accountMenu: {
+    backgroundColor: "#fff",
+    bottom: -300,
+    elevation: 5,
+    minWidth: 220,
+    paddingVertical: 8,
+    position: "absolute",
+    right: 0,
+    shadowColor: "#000",
+    shadowOpacity: 0.16,
+    shadowRadius: 8,
+    zIndex: 3,
+  },
+  accountMenuItem: { minHeight: 38, justifyContent: "center", paddingHorizontal: 16 },
+  accountMenuText: { color: "#252a33", fontSize: 15, lineHeight: 19 },
+  floatingAddButton: {
+    alignItems: "center",
+    backgroundColor: "#28bd4e",
+    borderRadius: 28,
+    bottom: 34,
+    elevation: 8,
+    height: 56,
+    justifyContent: "center",
+    position: "absolute",
+    right: 18,
+    shadowColor: "#000",
+    shadowOffset: { height: 3, width: 0 },
+    shadowOpacity: 0.35,
+    shadowRadius: 5,
+    width: 56,
+  },
+  floatingAddText: { color: "#fff", fontSize: 32, fontWeight: "300", lineHeight: 36 },
+  addOptionsPanel: { backgroundColor: "#fff", marginTop: 322, padding: 16 },
+  addOptionsTitle: { color: "#252a33", fontSize: 20, fontWeight: "800", marginBottom: 28 },
+  addOptionsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 5 },
+  addOption: {
+    borderRadius: 8,
+    height: 95,
+    justifyContent: "space-between",
+    overflow: "hidden",
+    padding: 14,
+    width: "49%",
+  },
+  addOptionTitle: { color: "#fff", fontSize: 19, fontWeight: "800", maxWidth: 120 },
+  addOptionIcon: { alignSelf: "flex-end", color: "#ffffff55", fontSize: 42, lineHeight: 42 },
+  formHint: {
+    backgroundColor: "#fff",
+    borderColor: "#e5e8ed",
+    borderRadius: 8,
+    borderWidth: 1,
+    marginTop: 10,
+    padding: 16,
+  },
+  formHintTitle: { color: "#252a33", fontSize: 15, fontWeight: "700" },
+  formHintText: { color: "#9698a1", fontSize: 13, marginTop: 5 },
+  emptyText: { color: "#9698a1", fontSize: 16, lineHeight: 23, marginTop: 18, textAlign: "center" },
+  form: { gap: 18, paddingTop: 28 },
+  field: { gap: 8 },
+  label: { color: "#f4f6f8", fontSize: 14, fontWeight: "700" },
+  input: {
+    backgroundColor: "#fff",
+    borderColor: "#dfe3e8",
+    borderRadius: 8,
+    borderWidth: 1,
+    color: "#252a33",
+    fontSize: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+  },
+  typeGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  typeOption: {
+    alignItems: "center",
+    backgroundColor: "#fff",
+    borderColor: "#dfe3e8",
+    borderRadius: 8,
+    borderWidth: 1,
+    justifyContent: "center",
+    minHeight: 44,
+    minWidth: 104,
+    paddingHorizontal: 14,
+  },
+  typeOptionSelected: { backgroundColor: "#31c452", borderColor: "#31c452" },
+  typeOptionText: { color: "#c8cbd2", fontWeight: "700" },
+  typeOptionTextSelected: { color: "#fff" },
+  row: { flexDirection: "row", gap: 12 },
+  currencyField: { flex: 0.8 },
+  balanceField: { flex: 1.4 },
+  buttonDisabled: { opacity: 0.7 },
+});

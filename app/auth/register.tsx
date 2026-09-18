@@ -3,8 +3,7 @@ import { useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { authApi } from '@/api/authApi';
-import { setApiAccessToken } from '@/api/axiosClient';
-import { setAuthRefreshToken, setAuthUser } from '@/stores/authSession';
+import { saveAuthSession } from '@/stores/persistedAuthSession';
 
 export default function RegisterScreen() {
   const [username, setUsername] = useState('');
@@ -20,9 +19,7 @@ export default function RegisterScreen() {
       setIsSubmitting(true);
       await authApi.register({ username: trimmedUsername, email: trimmedEmail, password });
       const response = await authApi.login({ username: trimmedUsername, password });
-      setApiAccessToken(response.data.accessToken);
-      setAuthUser(response.data.user);
-      setAuthRefreshToken(response.data.refreshToken ?? null);
+      await saveAuthSession(response.data);
       router.replace('/(tabs)/home');
     } catch (error) {
       Alert.alert('Register failed', error instanceof Error ? error.message : 'Unable to connect to the server.');
@@ -33,8 +30,8 @@ export default function RegisterScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Create account</Text>
-      <Text style={styles.subtitle}>Set up your SFM account.</Text>
+      <Text style={styles.title}>Create user</Text>
+      <Text style={styles.subtitle}>Set up your SFM user profile.</Text>
       <TextInput
         placeholder="Username"
         autoCapitalize="none"
@@ -64,7 +61,7 @@ export default function RegisterScreen() {
       >
         {isSubmitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Register</Text>}
       </Pressable>
-      <Link href="/auth/login" style={styles.link}>Already have an account?</Link>
+      <Link href="/auth/login" style={styles.link}>Already have a user profile?</Link>
     </View>
   );
 }

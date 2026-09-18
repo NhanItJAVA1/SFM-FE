@@ -1,12 +1,12 @@
-import * as Google from 'expo-auth-session/providers/google';
-import * as WebBrowser from 'expo-web-browser';
-import { Link, router } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import * as Google from "expo-auth-session/providers/google";
+import { Link, router } from "expo-router";
+import * as WebBrowser from "expo-web-browser";
+import { useEffect, useState } from "react";
+import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
-import { authApi } from '@/api/authApi';
-import { setApiAccessToken } from '@/api/axiosClient';
-import { setAuthRefreshToken, setAuthUser } from '@/stores/authSession';
+import { authApi } from "@/api/authApi";
+import { getAuthAccessToken } from "@/stores/authSession";
+import { saveAuthSession } from "@/stores/persistedAuthSession";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -20,8 +20,8 @@ const googleClientIdForPlatform = Platform.select({
 });
 
 export default function LoginScreen() {
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false);
   const [googleRequest, googleResponse, promptGoogleSignIn] = Google.useIdTokenAuthRequest({
@@ -32,31 +32,35 @@ export default function LoginScreen() {
   });
 
   useEffect(() => {
+    if (getAuthAccessToken()) {
+      router.replace("/(tabs)/home");
+    }
+  }, []);
+
+  useEffect(() => {
     async function loginWithGoogleToken(token: string) {
       try {
         const response = await authApi.externalLogin({
-          provider: 'Google',
+          provider: "Google",
           token,
         });
-        setApiAccessToken(response.data.accessToken);
-        setAuthUser(response.data.user);
-        setAuthRefreshToken(response.data.refreshToken ?? null);
-        router.replace('/(tabs)/home');
+        await saveAuthSession(response.data);
+        router.replace("/(tabs)/home");
       } catch (error) {
-        Alert.alert('Google sign in failed', error instanceof Error ? error.message : 'Unable to sign in with Google.');
+        Alert.alert("Google sign in failed", error instanceof Error ? error.message : "Unable to sign in with Google.");
       } finally {
         setIsGoogleSubmitting(false);
       }
     }
 
-    if (googleResponse?.type !== 'success') {
+    if (googleResponse?.type !== "success") {
       return;
     }
 
     const token = googleResponse.params.id_token ?? googleResponse.params.access_token;
 
     if (!token) {
-      Alert.alert('Google sign in failed', 'Google did not return a token.');
+      Alert.alert("Google sign in failed", "Google did not return a token.");
       setTimeout(() => setIsGoogleSubmitting(false), 0);
       return;
     }
@@ -68,12 +72,10 @@ export default function LoginScreen() {
     try {
       setIsSubmitting(true);
       const response = await authApi.login({ username: username.trim(), password });
-      setApiAccessToken(response.data.accessToken);
-      setAuthUser(response.data.user);
-      setAuthRefreshToken(response.data.refreshToken ?? null);
-      router.replace('/(tabs)/home');
+      await saveAuthSession(response.data);
+      router.replace("/(tabs)/home");
     } catch (error) {
-      Alert.alert('Sign in failed', error instanceof Error ? error.message : 'Unable to connect to the server.');
+      Alert.alert("Sign in failed", error instanceof Error ? error.message : "Unable to connect to the server.");
     } finally {
       setIsSubmitting(false);
     }
@@ -81,10 +83,7 @@ export default function LoginScreen() {
 
   async function handleGoogleLogin() {
     if (!googleClientIdForPlatform) {
-      Alert.alert(
-        'Google sign in failed',
-        `Missing Google client id for ${Platform.OS}. Check your .env file.`
-      );
+      Alert.alert("Google sign in failed", `Missing Google client id for ${Platform.OS}. Check your .env file.`);
       return;
     }
 
@@ -92,12 +91,12 @@ export default function LoginScreen() {
       setIsGoogleSubmitting(true);
       const result = await promptGoogleSignIn();
 
-      if (result.type !== 'success') {
+      if (result.type !== "success") {
         setIsGoogleSubmitting(false);
         return;
       }
     } catch (error) {
-      Alert.alert('Google sign in failed', error instanceof Error ? error.message : 'Unable to sign in with Google.');
+      Alert.alert("Google sign in failed", error instanceof Error ? error.message : "Unable to sign in with Google.");
       setIsGoogleSubmitting(false);
     }
   }
@@ -138,27 +137,29 @@ export default function LoginScreen() {
           <Text style={styles.googleButtonText}>Continue with Google</Text>
         )}
       </Pressable>
-      <Link href="/auth/register" style={styles.link}>Create an account</Link>
+      <Link href="/auth/register" style={styles.link}>
+        Create a user profile
+      </Link>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: 'center', padding: 24, gap: 14 },
-  title: { fontSize: 32, fontWeight: '700' },
-  subtitle: { color: '#68707d', marginBottom: 12 },
-  input: { borderWidth: 1, borderColor: '#d4d9e1', borderRadius: 10, padding: 14 },
-  button: { backgroundColor: '#1f6feb', borderRadius: 10, padding: 15, alignItems: 'center' },
+  container: { flex: 1, justifyContent: "center", padding: 24, gap: 14 },
+  title: { fontSize: 32, fontWeight: "700" },
+  subtitle: { color: "#68707d", marginBottom: 12 },
+  input: { borderWidth: 1, borderColor: "#d4d9e1", borderRadius: 10, padding: 14 },
+  button: { backgroundColor: "#1f6feb", borderRadius: 10, padding: 15, alignItems: "center" },
   buttonDisabled: { opacity: 0.7 },
-  buttonText: { color: '#fff', fontWeight: '700' },
+  buttonText: { color: "#fff", fontWeight: "700" },
   googleButton: {
     borderWidth: 1,
-    borderColor: '#d4d9e1',
+    borderColor: "#d4d9e1",
     borderRadius: 10,
     padding: 15,
-    alignItems: 'center',
-    backgroundColor: '#fff',
+    alignItems: "center",
+    backgroundColor: "#fff",
   },
-  googleButtonText: { color: '#1f2328', fontWeight: '700' },
-  link: { color: '#1f6feb', textAlign: 'center', marginTop: 8 },
+  googleButtonText: { color: "#1f2328", fontWeight: "700" },
+  link: { color: "#1f6feb", textAlign: "center", marginTop: 8 },
 });

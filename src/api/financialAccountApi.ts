@@ -1,6 +1,6 @@
 import { axiosClient } from './axiosClient';
 
-export type AccountType = 'Cash' | 'Bank' | 'EWallet' | 'CreditCard' | 'Savings';
+export type AccountType = 'Cash' | 'Bank' | 'Savings';
 
 export type CreateFinancialAccountPayload = {
   name: string;
