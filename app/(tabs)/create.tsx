@@ -11,8 +11,8 @@ export default function CreateScreen() {
       <Link href={scanBillHref} style={styles.primaryLink}>
         Quét hóa đơn
       </Link>
-      <Link href="/accounts" style={styles.link}>
-        Tạo tài khoản
+      <Link href="/account" style={styles.link}>
+        Tạo ví
       </Link>
     </View>
   );

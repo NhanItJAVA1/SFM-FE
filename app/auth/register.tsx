@@ -30,8 +30,8 @@ export default function RegisterScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Create account</Text>
-      <Text style={styles.subtitle}>Set up your SFM account.</Text>
+      <Text style={styles.title}>Create user</Text>
+      <Text style={styles.subtitle}>Set up your SFM user profile.</Text>
       <TextInput
         placeholder="Username"
         autoCapitalize="none"
@@ -61,7 +61,7 @@ export default function RegisterScreen() {
       >
         {isSubmitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Register</Text>}
       </Pressable>
-      <Link href="/auth/login" style={styles.link}>Already have an account?</Link>
+      <Link href="/auth/login" style={styles.link}>Already have a user profile?</Link>
     </View>
   );
 }

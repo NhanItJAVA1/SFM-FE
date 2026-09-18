@@ -138,7 +138,7 @@ export default function LoginScreen() {
         )}
       </Pressable>
       <Link href="/auth/register" style={styles.link}>
-        Create an account
+        Create a user profile
       </Link>
     </View>
   );
