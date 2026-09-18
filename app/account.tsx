@@ -93,7 +93,7 @@ export default function AccountScreen() {
     const parsedBalance = Number(normalizedBalance || "0");
 
     if (!trimmedName) {
-      Alert.alert("Thiếu tên ví", "Vui lòng nhập tên tài khoản.");
+      Alert.alert("Thiếu tên ví", "Vui lòng nhập tên ví.");
       return;
     }
 
@@ -121,7 +121,7 @@ export default function AccountScreen() {
       setInitialBalance("");
       setView("wallets");
     } catch (error) {
-      Alert.alert("Tạo ví thất bại", error instanceof Error ? error.message : "Không thể tạo tài khoản.");
+      Alert.alert("Tạo ví thất bại", error instanceof Error ? error.message : "Không thể tạo ví.");
     } finally {
       setIsSubmitting(false);
     }
@@ -134,7 +134,7 @@ export default function AccountScreen() {
           <Pressable onPress={() => setView("wallets")} hitSlop={12}>
             <Text style={styles.closeText}>×</Text>
           </Pressable>
-          <Text style={styles.topTitle}>Thêm Account</Text>
+          <Text style={styles.topTitle}>Thêm Ví</Text>
           <View style={styles.topSpacer} />
         </View>
         <View style={styles.addOptionsPanel}>
@@ -175,7 +175,7 @@ export default function AccountScreen() {
 
           <View style={styles.form}>
             <View style={styles.field}>
-              <Text style={styles.label}>Tên Account</Text>
+              <Text style={styles.label}>Tên Ví</Text>
               <TextInput
                 placeholder="Cash wallet"
                 placeholderTextColor="#6f7682"
@@ -234,9 +234,7 @@ export default function AccountScreen() {
             </View>
 
             <View style={styles.formHint}>
-              <Text style={styles.formHintTitle}>
-                Đang tạo {type === "Savings" ? "Account tiết kiệm" : "Account mới"}
-              </Text>
+              <Text style={styles.formHintTitle}>Đang tạo {type === "Savings" ? "Ví tiết kiệm" : "Ví mới"}</Text>
               <Text style={styles.formHintText}>Thông tin sẽ được lưu vào FinancialAccounts.</Text>
             </View>
           </View>
@@ -252,7 +250,7 @@ export default function AccountScreen() {
           <Pressable onPress={() => router.back()} hitSlop={12}>
             <Text style={styles.backText}>‹</Text>
           </Pressable>
-          <Text style={styles.topTitle}>Account của tôi</Text>
+          <Text style={styles.topTitle}>Ví của tôi</Text>
           <View style={styles.headerTools}>
             <Text style={styles.filterIcon}>☰</Text>
             <Text style={styles.searchIcon}>⌕</Text>
@@ -273,7 +271,7 @@ export default function AccountScreen() {
           {isLoading ? (
             <ActivityIndicator color="#31c452" />
           ) : accounts.length === 0 ? (
-            <Text style={styles.emptyText}>Chưa có Account nào. Bấm + để thêm Account đầu tiên.</Text>
+            <Text style={styles.emptyText}>Chưa có Ví nào. Bấm + để thêm Ví đầu tiên.</Text>
           ) : (
             accounts.map((account) => (
               <View key={account.id} style={styles.walletCard}>

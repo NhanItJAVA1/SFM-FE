@@ -72,7 +72,7 @@ export default function HomeScreen() {
           <Text style={styles.balanceCaption}>Cập nhật vừa xong</Text>
         </View>
 
-        <SectionHeading title="Tài khoản của tôi" action="Xem tất cả" onAction={() => router.push("/account")} />
+        <SectionHeading title="Ví của tôi" action="Xem tất cả" onAction={() => router.push("/account")} />
         <View style={styles.walletCard}>
           {wallets.map((wallet, index) => (
             <Pressable key={wallet.name} style={[styles.walletRow, index < wallets.length - 1 && styles.rowDivider]}>

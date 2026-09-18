@@ -3,38 +3,20 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
-  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 
 import { authApi } from '@/api/authApi';
-import {
-  AccountType,
-  FinancialAccount,
-  financialAccountApi,
-  getFinancialAccountBalance,
-} from '@/api/financialAccountApi';
 import { CategorySpendingItem, CategorySpendingResponse, transactionsApi } from '@/api/transactionsApi';
 import { SpendingDonutChart, SpendingDonutSegment } from '@/components/spending-donut-chart';
 import { getAuthRefreshToken, getAuthUser } from '@/stores/authSession';
 import { clearAuthSession } from '@/stores/persistedAuthSession';
 
-const accountTypes: { label: string; value: AccountType }[] = [
-  { label: 'Cash', value: 'Cash' },
-  { label: 'Bank', value: 'Bank' },
-  // { label: 'E-Wallet', value: 'EWallet' },
-  // { label: 'Credit Card', value: 'CreditCard' },
-  { label: 'Savings', value: 'Savings' },
-];
-
-type UserView = 'menu' | 'manage' | 'wallets' | 'create' | 'spendingStats';
+type UserView = 'menu' | 'manage' | 'spendingStats';
 
 const chartColors = ['#8e7cf4', '#ffb14a', '#31c48d', '#f06292', '#60a5fa', '#facc15', '#9ca3af'];
 
@@ -95,14 +77,6 @@ export default function UserScreen() {
   const user = getAuthUser();
   const initial = (user?.displayName ?? user?.username ?? 'U').trim().charAt(0).toUpperCase() || 'U';
   const [view, setView] = useState<UserView>('menu');
-  const [accounts, setAccounts] = useState<FinancialAccount[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [name, setName] = useState('');
-  const [type, setType] = useState<AccountType>('Cash');
-  const [currency, setCurrency] = useState('VND');
-  const [initialBalance, setInitialBalance] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const today = new Date();
   const defaultMonth = today.getMonth() + 1;
@@ -112,11 +86,6 @@ export default function UserScreen() {
   const [spendingStats, setSpendingStats] = useState<CategorySpendingResponse | null>(null);
   const [isLoadingStats, setIsLoadingStats] = useState(false);
   const [selectedCategoryKey, setSelectedCategoryKey] = useState<string | null>(null);
-
-  const totalBalance = useMemo(
-    () => accounts.reduce((total, account) => total + getFinancialAccountBalance(account), 0),
-    [accounts]
-  );
 
   const isCurrentStatsPeriod = statsMonth === defaultMonth && statsYear === defaultYear;
   const canGoNextStatsPeriod = !isCurrentStatsPeriod;
@@ -137,24 +106,6 @@ export default function UserScreen() {
       }));
   }, [spendingStats]);
 
-  const loadAccounts = useCallback(async (mode: 'loading' | 'refreshing' = 'loading') => {
-    try {
-      if (mode === 'refreshing') {
-        setIsRefreshing(true);
-      } else {
-        setIsLoading(true);
-      }
-
-      const response = await financialAccountApi.list();
-      setAccounts(response.data);
-    } catch (error) {
-      Alert.alert('Không tải được ví', error instanceof Error ? error.message : 'Vui lòng thử lại sau.');
-    } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
-    }
-  }, []);
-
   const loadSpendingStats = useCallback(async () => {
     try {
       setIsLoadingStats(true);
@@ -169,18 +120,6 @@ export default function UserScreen() {
       setIsLoadingStats(false);
     }
   }, [defaultMonth, defaultYear, statsMonth, statsYear]);
-
-  useEffect(() => {
-    if (view === 'wallets') {
-      const timeoutId = setTimeout(() => {
-        loadAccounts();
-      }, 0);
-
-      return () => clearTimeout(timeoutId);
-    }
-
-    return undefined;
-  }, [loadAccounts, view]);
 
   useEffect(() => {
     if (view === 'spendingStats') {
@@ -212,48 +151,6 @@ export default function UserScreen() {
 
   function handleSelectCategory(key: string) {
     setSelectedCategoryKey(key);
-  }
-
-  async function handleCreateAccount() {
-    const trimmedName = name.trim();
-    const trimmedCurrency = currency.trim().toUpperCase();
-    const normalizedBalance = initialBalance.trim().replace(/,/g, '');
-    const parsedBalance = Number(normalizedBalance || '0');
-
-    if (!trimmedName) {
-      Alert.alert('Thiếu tên ví', 'Vui lòng nhập tên tài khoản.');
-      return;
-    }
-
-    if (!trimmedCurrency) {
-      Alert.alert('Thiếu tiền tệ', 'Vui lòng nhập mã tiền tệ, ví dụ VND.');
-      return;
-    }
-
-    if (!Number.isFinite(parsedBalance) || parsedBalance < 0) {
-      Alert.alert('Số dư không hợp lệ', 'Số dư ban đầu phải là số lớn hơn hoặc bằng 0.');
-      return;
-    }
-
-    try {
-      setIsSubmitting(true);
-      await financialAccountApi.create({
-        name: trimmedName,
-        type,
-        currency: trimmedCurrency,
-        initialBalance: parsedBalance,
-      });
-      setName('');
-      setType('Cash');
-      setCurrency('VND');
-      setInitialBalance('');
-      setView('wallets');
-      await loadAccounts();
-    } catch (error) {
-      Alert.alert('Tạo ví thất bại', error instanceof Error ? error.message : 'Không thể tạo tài khoản.');
-    } finally {
-      setIsSubmitting(false);
-    }
   }
 
   async function handleLogout() {
@@ -302,91 +199,6 @@ export default function UserScreen() {
           </Pressable>
         </View>
       </View>
-    );
-  }
-
-  if (view === 'create') {
-    return (
-      <KeyboardAvoidingView behavior={Platform.select({ ios: 'padding', default: undefined })} style={styles.screen}>
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          <View style={styles.topBar}>
-            <Pressable onPress={() => setView('wallets')} hitSlop={12}>
-              <Text style={styles.backText}>‹ Ví của tôi</Text>
-            </Pressable>
-            <Text style={styles.topTitle}>Thêm ví</Text>
-            <View style={styles.topSpacer} />
-          </View>
-
-          <View style={styles.form}>
-            <View style={styles.field}>
-              <Text style={styles.label}>Tên ví</Text>
-              <TextInput
-                placeholder="Cash wallet"
-                placeholderTextColor="#6f7682"
-                style={styles.input}
-                value={name}
-                onChangeText={setName}
-              />
-            </View>
-
-            <View style={styles.field}>
-              <Text style={styles.label}>Loại tài khoản</Text>
-              <View style={styles.typeGrid}>
-                {accountTypes.map((accountType) => {
-                  const isSelected = accountType.value === type;
-
-                  return (
-                    <Pressable
-                      key={accountType.value}
-                      style={[styles.typeOption, isSelected && styles.typeOptionSelected]}
-                      onPress={() => setType(accountType.value)}
-                    >
-                      <Text style={[styles.typeOptionText, isSelected && styles.typeOptionTextSelected]}>
-                        {accountType.label}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            </View>
-
-            <View style={styles.row}>
-              <View style={[styles.field, styles.currencyField]}>
-                <Text style={styles.label}>Tiền tệ</Text>
-                <TextInput
-                  autoCapitalize="characters"
-                  maxLength={3}
-                  placeholder="VND"
-                  placeholderTextColor="#6f7682"
-                  style={styles.input}
-                  value={currency}
-                  onChangeText={setCurrency}
-                />
-              </View>
-
-              <View style={[styles.field, styles.balanceField]}>
-                <Text style={styles.label}>Số dư ban đầu</Text>
-                <TextInput
-                  keyboardType="decimal-pad"
-                  placeholder="1000000"
-                  placeholderTextColor="#6f7682"
-                  style={styles.input}
-                  value={initialBalance}
-                  onChangeText={setInitialBalance}
-                />
-              </View>
-            </View>
-
-            <Pressable
-              style={[styles.primaryButton, isSubmitting && styles.buttonDisabled]}
-              onPress={handleCreateAccount}
-              disabled={isSubmitting}
-            >
-              {isSubmitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryButtonText}>Tạo ví</Text>}
-            </Pressable>
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
     );
   }
 
@@ -517,53 +329,6 @@ export default function UserScreen() {
     );
   }
 
-  if (view === 'wallets') {
-    return (
-      <View style={styles.screen}>
-        <View style={styles.walletHeader}>
-          <Pressable onPress={() => setView('menu')} hitSlop={12}>
-            <Text style={styles.backText}>‹ Người dùng</Text>
-          </Pressable>
-          <Text style={styles.topTitle}>Ví của tôi</Text>
-          <Pressable style={styles.addWalletButton} onPress={() => setView('create')}>
-            <Text style={styles.addWalletText}>+</Text>
-          </Pressable>
-        </View>
-
-        <ScrollView
-          contentContainerStyle={styles.walletList}
-          refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={() => loadAccounts('refreshing')} tintColor="#fff" />}
-        >
-          <View style={styles.balanceSummary}>
-            <Text style={styles.summaryLabel}>Tổng số dư</Text>
-            <Text style={styles.summaryValue}>{formatMoney(totalBalance, accounts[0]?.currency ?? 'VND')}</Text>
-          </View>
-
-          {isLoading ? (
-            <ActivityIndicator color="#31c452" />
-          ) : accounts.length === 0 ? (
-            <Text style={styles.emptyText}>Chưa có ví nào. Bấm + để thêm ví đầu tiên.</Text>
-          ) : (
-            accounts.map((account) => (
-              <View key={account.id} style={styles.walletCard}>
-                <View style={styles.walletIcon}>
-                  <Text style={styles.walletIconText}>▣</Text>
-                </View>
-                <View style={styles.walletInfo}>
-                  <Text style={styles.walletName}>{account.name}</Text>
-                  <Text style={styles.walletType}>{account.type}</Text>
-                </View>
-                <Text style={styles.walletBalance}>
-                  {formatMoney(getFinancialAccountBalance(account), account.currency)}
-                </Text>
-              </View>
-            ))
-          )}
-        </ScrollView>
-      </View>
-    );
-  }
-
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <View style={styles.headerRow}>
@@ -592,7 +357,7 @@ export default function UserScreen() {
       </View>
 
       <View style={styles.menuCard}>
-        <Pressable style={styles.menuRow} onPress={() => setView('wallets')}>
+        <Pressable style={styles.menuRow} onPress={() => router.push('/account')}>
           <Text style={styles.menuIcon}>▰</Text>
           <Text style={styles.menuText}>Ví của tôi</Text>
           <Text style={styles.chevron}>›</Text>
