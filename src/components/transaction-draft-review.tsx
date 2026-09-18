@@ -18,7 +18,7 @@ import {
 } from 'react-native';
 
 import { categoriesApi, Category, CategoryType } from '@/api/categoriesApi';
-import { FinancialAccount, financialAccountApi, getFinancialAccountBalance } from '@/api/financialAccountApi';
+import { FinancialAccount, financialAccountApi } from '@/api/financialAccountApi';
 import {
   buildCreateTransactionFromScanPayload,
   TransactionDraft,
@@ -388,7 +388,7 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
               {selectedAccount?.name ?? (isLoadingAccounts ? 'Đang tải...' : 'Chọn ví')}
             </Text>
             <Text style={styles.summaryTileMeta} numberOfLines={1}>
-              {selectedAccount ? formatAmount(getFinancialAccountBalance(selectedAccount)) : 'Bấm để chọn'}
+              {selectedAccount ? formatAmount(selectedAccount.initialBalance) : 'Bấm để chọn'}
             </Text>
           </Pressable>
 
@@ -510,7 +510,7 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
                       <View style={styles.accountInfo}>
                         <Text style={styles.accountName}>{account.name}</Text>
                         <Text style={styles.accountMeta}>
-                          {account.type} · {formatAmount(getFinancialAccountBalance(account))}
+                          {account.type} · {formatAmount(account.initialBalance)}
                         </Text>
                       </View>
                     </Pressable>
