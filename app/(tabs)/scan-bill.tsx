@@ -1,15 +1,20 @@
 import { CameraCapturedPicture, CameraView, useCameraPermissions } from "expo-camera";
+import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
 import { useRef, useState } from "react";
-import { ActivityIndicator, Alert, Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, Image, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { TransactionDraft, transactionsApi } from "@/api/transactionsApi";
 import { TransactionDraftReview } from "@/components/transaction-draft-review";
 
+const loadingGif = require("../../assets/loading.gif");
+
+type BillPhoto = Pick<CameraCapturedPicture, "uri">;
+
 export default function ScanBillScreen() {
   const cameraRef = useRef<CameraView>(null);
   const [permission, requestPermission] = useCameraPermissions();
-  const [photo, setPhoto] = useState<CameraCapturedPicture | null>(null);
+  const [photo, setPhoto] = useState<BillPhoto | null>(null);
   const [draft, setDraft] = useState<TransactionDraft | null>(null);
   const [isTakingPicture, setIsTakingPicture] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -31,6 +36,29 @@ export default function ScanBillScreen() {
       Alert.alert("Không chụp được ảnh", error instanceof Error ? error.message : "Vui lòng thử lại.");
     } finally {
       setIsTakingPicture(false);
+    }
+  }
+
+  async function handlePickImage() {
+    try {
+      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+      if (!permissionResult.granted) {
+        Alert.alert("Cần quyền thư viện ảnh", "Vui lòng cho phép SFM truy cập ảnh để tải hóa đơn lên.");
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        allowsEditing: false,
+        mediaTypes: ["images"],
+        quality: 0.8,
+      });
+
+      if (!result.canceled) {
+        setPhoto({ uri: result.assets[0].uri });
+      }
+    } catch (error) {
+      Alert.alert("Không chọn được ảnh", error instanceof Error ? error.message : "Vui lòng thử lại.");
     }
   }
 
@@ -100,9 +128,10 @@ export default function ScanBillScreen() {
             onPress={handleUploadPhoto}
             disabled={isUploading}
           >
-            {isUploading ? <ActivityIndicator color="#fff" /> : <Text style={styles.uploadButtonText}>Gửi về BE</Text>}
+            <Text style={styles.uploadButtonText}>{isUploading ? "Đang phân tích..." : "Gửi về BE"}</Text>
           </Pressable>
         </View>
+        <ScanBillLoadingOverlay visible={isUploading} />
       </View>
     );
   }
@@ -126,6 +155,10 @@ export default function ScanBillScreen() {
           <View style={styles.cornerBottomRight} />
         </View>
 
+        <Pressable style={styles.galleryButton} onPress={handlePickImage} hitSlop={12}>
+          <Text style={styles.galleryButtonIcon}>🖼️</Text>
+        </Pressable>
+
         <Text style={styles.hint}>Đặt hóa đơn trong khung và chụp rõ nội dung</Text>
 
         <Pressable
@@ -136,6 +169,18 @@ export default function ScanBillScreen() {
           <View style={styles.shutterInner} />
         </Pressable>
       </View>
+    </View>
+  );
+}
+
+function ScanBillLoadingOverlay({ visible }: { visible: boolean }) {
+  if (!visible) {
+    return null;
+  }
+
+  return (
+    <View style={styles.loadingOverlay}>
+      <Image source={loadingGif} style={styles.loadingImage} resizeMode="contain" />
     </View>
   );
 }
@@ -158,6 +203,22 @@ const styles = StyleSheet.create({
   topTitle: { color: "#fff", fontSize: 20, fontWeight: "800" },
   topSpacer: { width: 58 },
   scanFrame: { alignSelf: "center", height: 390, marginTop: 48, position: "relative", width: "88%" },
+  galleryButton: {
+    alignItems: "center",
+    backgroundColor: "rgba(0,0,0,0.42)",
+    borderColor: "rgba(255,255,255,0.52)",
+    borderRadius: 23,
+    borderWidth: 1,
+    height: 46,
+    justifyContent: "center",
+    marginBottom: 10,
+    marginRight: 4,
+    marginTop: -14,
+    position: "relative",
+    alignSelf: "flex-end",
+    width: 46,
+  },
+  galleryButtonIcon: { fontSize: 22 },
   cornerTopLeft: {
     borderColor: "#31c452",
     borderLeftWidth: 5,
@@ -252,4 +313,15 @@ const styles = StyleSheet.create({
   },
   uploadButtonText: { color: "#fff", fontSize: 17, fontWeight: "800" },
   buttonDisabled: { opacity: 0.65 },
+  loadingOverlay: {
+    alignItems: "center",
+    bottom: 0,
+    justifyContent: "center",
+    left: 0,
+    padding: 24,
+    position: "absolute",
+    right: 0,
+    top: 0,
+  },
+  loadingImage: { height: 132, width: 132 },
 });

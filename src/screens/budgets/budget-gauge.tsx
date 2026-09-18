@@ -5,9 +5,22 @@ import { styles } from './budgets.styles';
 
 const gaugeSize = 244;
 const gaugeStrokeWidth = 10;
+const safeColor = '#31c452';
+const warningColor = '#f4b740';
+const alertColor = '#ff5a5f';
+const warningThresholdRatio = 2 / 3;
 
-export function BudgetGauge({ percentage }: { percentage: number }) {
+export function BudgetGauge({
+  alertThreshold,
+  isAlert,
+  percentage,
+}: {
+  alertThreshold: number;
+  isAlert: boolean;
+  percentage: number;
+}) {
   const clampedPercentage = Math.min(Math.max(percentage, 0), 100);
+  const progressColor = getProgressColor(percentage, alertThreshold, isAlert);
   const radius = (gaugeSize - gaugeStrokeWidth) / 2;
   const center = gaugeSize / 2;
   const progressEnd = getGaugePoint(center, radius, clampedPercentage);
@@ -29,7 +42,7 @@ export function BudgetGauge({ percentage }: { percentage: number }) {
           <Path
             d={progressArc}
             fill="none"
-            stroke="#31c452"
+            stroke={progressColor}
             strokeLinecap="round"
             strokeWidth={gaugeStrokeWidth}
           />
@@ -37,6 +50,18 @@ export function BudgetGauge({ percentage }: { percentage: number }) {
       </Svg>
     </View>
   );
+}
+
+function getProgressColor(percentage: number, alertThreshold: number, isAlert: boolean) {
+  if (isAlert) {
+    return alertColor;
+  }
+
+  if (Number.isFinite(alertThreshold) && percentage >= alertThreshold * warningThresholdRatio) {
+    return warningColor;
+  }
+
+  return safeColor;
 }
 
 function getGaugePoint(center: number, radius: number, percentage: number) {

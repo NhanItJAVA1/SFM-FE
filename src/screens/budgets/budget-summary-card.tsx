@@ -20,9 +20,13 @@ export function BudgetSummaryCard({
         <Text style={styles.summaryBudgetName}>{name}</Text>
         <Text style={styles.summaryBudgetCategory}>{categoryName}</Text>
       </View>
-      <BudgetGauge percentage={summary.usedPercentage} />
+      <BudgetGauge
+        alertThreshold={summary.alertThreshold}
+        isAlert={summary.isAlert}
+        percentage={summary.usedPercentage}
+      />
       <Text style={styles.summaryCaption}>Số tiền bạn có thể chi</Text>
-      <Text style={[styles.remainingValue, summary.remainingAmount < 0 && styles.dangerText]}>
+      <Text style={[styles.remainingValue, summary.isAlert && styles.dangerText]}>
         {formatMoney(summary.remainingAmount)}
       </Text>
       <View style={styles.summaryStats}>

@@ -39,6 +39,22 @@ export type CreateTransactionFromScanPayload = {
   items: TransactionDraftItem[];
 };
 
+export type TransactionNotification = {
+  type?: string | null;
+  budgetId?: number | null;
+  level?: 'Warning' | 'Critical' | string | null;
+  title?: string | null;
+  body?: string | null;
+  message?: string | null;
+  [key: string]: unknown;
+};
+
+export type CreateTransactionFromScanResponse = {
+  notifications?: TransactionNotification[] | null;
+  notification?: TransactionNotification | null;
+  [key: string]: unknown;
+};
+
 export type SpendingPeriod = {
   month: number;
   year: number;
@@ -126,7 +142,7 @@ export const transactionsApi = {
     return axiosClient.uploadFormData<ScanBillResponse>('/transactions/scan-bill', formData);
   },
   createFromScan: (payload: CreateTransactionFromScanPayload) =>
-    axiosClient.post('/transactions', payload),
+    axiosClient.post<CreateTransactionFromScanResponse>('/transactions', payload),
   categorySpending: (params: CategorySpendingParams = {}) =>
     axiosClient.get<CategorySpendingResponse>(`/transactions/category-spending${buildQuery(params)}`),
 };

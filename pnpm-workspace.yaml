@@ -6,3 +6,6 @@ minimumReleaseAgeExclude:
   - expo-json-utils@57.0.2
   - expo-manifests@57.0.2
   - expo-updates-interface@57.0.2
+  - expo-image-picker@57.0.19
+  - expo-constants@57.0.19
+  - expo-notifications@57.0.20

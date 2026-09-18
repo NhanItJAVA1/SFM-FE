@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Animated, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 
 import { budgetsApi } from '@/api/budgetsApi';
@@ -37,6 +38,7 @@ export default function BudgetsScreen() {
   const [tabWidth, setTabWidth] = useState(0);
   const [form, setForm] = useState<BudgetFormState>(() => getDefaultBudgetFormState());
   const [tabTranslateX] = useState(() => new Animated.Value(0));
+  const hasLoadedBudgetsRef = useRef(false);
 
   const expenseCategories = useMemo(() => categories.filter((category) => category.type === 'Expense'), [categories]);
   const sortedBudgets = useMemo(() => sortBudgetsForCategoryTab(budgets), [budgets]);
@@ -53,11 +55,11 @@ export default function BudgetsScreen() {
     [selectedBudget],
   );
 
-  const loadBudgets = useCallback(async (mode: 'loading' | 'refreshing' = 'loading') => {
+  const loadBudgets = useCallback(async (mode: 'loading' | 'refreshing' | 'silent' = 'loading') => {
     try {
       if (mode === 'refreshing') {
         setIsRefreshing(true);
-      } else {
+      } else if (mode === 'loading') {
         setIsLoading(true);
       }
 
@@ -79,18 +81,17 @@ export default function BudgetsScreen() {
     } catch (error) {
       Alert.alert('Không tải được ngân sách', error instanceof Error ? error.message : 'Vui lòng thử lại sau.');
     } finally {
+      hasLoadedBudgetsRef.current = true;
       setIsLoading(false);
       setIsRefreshing(false);
     }
   }, []);
 
-  useEffect(() => {
-    const timeoutId = setTimeout(() => {
-      loadBudgets();
-    }, 0);
-
-    return () => clearTimeout(timeoutId);
-  }, [loadBudgets]);
+  useFocusEffect(
+    useCallback(() => {
+      loadBudgets(hasLoadedBudgetsRef.current ? 'silent' : 'loading');
+    }, [loadBudgets]),
+  );
 
   const changeTab = useCallback(
     (nextTab: BudgetsTab) => {

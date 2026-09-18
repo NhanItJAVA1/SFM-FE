@@ -53,6 +53,17 @@ function getAuthHeaders(): Record<string, string> {
   return accessToken ? { Authorization: `Bearer ${accessToken}` } : {};
 }
 
+function getNoCacheHeaders(method: RequestOptions['method']): Record<string, string> {
+  if ((method ?? 'GET') !== 'GET') {
+    return {};
+  }
+
+  return {
+    'Cache-Control': 'no-cache, no-store, must-revalidate',
+    Pragma: 'no-cache',
+  };
+}
+
 async function parseResponse<T>(response: Response): Promise<ApiResponse<T>> {
   const text = await response.text();
   const data = text ? JSON.parse(text) : null;
@@ -130,11 +141,13 @@ async function request<T = unknown>(
   options: RequestOptions = {},
   canRetryAuth = true,
 ): Promise<ApiResponse<T>> {
+  const method = options.method ?? 'GET';
   const response = await fetch(buildUrl(path), {
-    method: options.method ?? 'GET',
+    method,
     headers: {
       Accept: 'application/json',
       'Content-Type': 'application/json',
+      ...getNoCacheHeaders(method),
       ...getAuthHeaders(),
       ...options.headers,
     },

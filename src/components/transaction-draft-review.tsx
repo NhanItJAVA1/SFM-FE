@@ -25,6 +25,7 @@ import {
   TransactionDraftItem,
   transactionsApi,
 } from '@/api/transactionsApi';
+import { presentTransactionNotifications } from '@/services/transactionNotifications';
 
 type TransactionDraftReviewProps = {
   draft: TransactionDraft;
@@ -333,7 +334,7 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
 
     try {
       setIsSaving(true);
-      await transactionsApi.createFromScan(
+      const response = await transactionsApi.createFromScan(
         buildCreateTransactionFromScanPayload(
           {
             ...draft,
@@ -350,6 +351,7 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
           selectedAccountId
         )
       );
+      await presentTransactionNotifications(response.data);
       Alert.alert('Đã lưu giao dịch', 'Giao dịch từ hóa đơn đã được lưu.', [
         {
           text: 'OK',
