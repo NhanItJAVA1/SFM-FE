@@ -27,7 +27,6 @@ const accountTypes: { label: string; value: AccountType }[] = [
 const walletTypeOptions: { label: string; value: AccountType; color: string; icon: string }[] = [
   { label: "Ví cơ bản", value: "Cash", color: "#2abd4b", icon: "▰" },
   { label: "Ví liên kết", value: "Bank", color: "#18cdb0", icon: "▤" },
-  { label: "Ví tín dụng", value: "CreditCard", color: "#e84f91", icon: "▱" },
   { label: "Ví tiết kiệm", value: "Savings", color: "#f05b5b", icon: "◎" },
 ];
 
