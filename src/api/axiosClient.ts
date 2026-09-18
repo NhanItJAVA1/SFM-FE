@@ -176,5 +176,14 @@ export const axiosClient = {
       method: 'POST',
       body,
     }),
+  put: <T = unknown>(path: string, body?: unknown) =>
+    request<T>(path, {
+      method: 'PUT',
+      body,
+    }),
+  delete: <T = unknown>(path: string) =>
+    request<T>(path, {
+      method: 'DELETE',
+    }),
   uploadFormData,
 };
