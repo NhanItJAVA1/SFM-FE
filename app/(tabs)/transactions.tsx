@@ -4,7 +4,7 @@ import { ActivityIndicator, Alert, Pressable, RefreshControl, ScrollView, StyleS
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { FinancialAccount, financialAccountApi } from "@/api/financialAccountApi";
-import { Transaction, TransactionType, transactionApi } from "@/api/transactionApi";
+import { Transaction, TransactionType, transactionApi } from "@/api/transactionsApi";
 
 type Period = "previous" | "current" | "future";
 
