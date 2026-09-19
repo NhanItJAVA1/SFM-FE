@@ -165,7 +165,6 @@ export default function HomeScreen() {
     [monthTransactions],
   );
   const monthlyExpense = spendingStats?.totalAmount ?? fallbackExpense;
-  const monthlyNet = monthlyIncome - monthlyExpense;
   const recentTransactions = monthTransactions.slice(0, 5);
   const topCategories = useMemo(
     () =>
@@ -175,7 +174,36 @@ export default function HomeScreen() {
         .slice(0, 4),
     [spendingStats],
   );
-  const expenseRatio = monthlyIncome > 0 ? Math.min(100, Math.round((monthlyExpense / monthlyIncome) * 100)) : 0;
+
+  // Tính toán dữ liệu chi tiêu theo ngày
+  const dailySpending = useMemo(() => {
+    const daysInMonth = new Date(monthEnd.getFullYear(), monthEnd.getMonth(), 0).getDate();
+    const spendingMap = new Map<number, number>();
+
+    monthTransactions
+      .filter((t) => !isIncome(t.type))
+      .forEach((t) => {
+        const day = new Date(t.transactionDate).getDate();
+        spendingMap.set(day, (spendingMap.get(day) || 0) + t.amount);
+      });
+
+    return Array.from({ length: daysInMonth }, (_, i) => spendingMap.get(i + 1) || 0);
+  }, [monthTransactions, monthEnd]);
+
+  const maxDailySpending = useMemo(() => Math.max(...dailySpending, 2000000), [dailySpending]);
+  // Lọc dữ liệu các ngày có giao dịch (tối đa 15 ngày)
+  const activeDaysData = useMemo(() => {
+    const data = dailySpending
+      .map((amount, i) => ({ day: i + 1, amount }))
+      .filter((item) => item.amount > 0);
+    
+    // Nếu quá 15 ngày, lấy 15 ngày gần cuối
+    if (data.length > 15) {
+      return data.slice(-15);
+    }
+    return data;
+  }, [dailySpending]);
+
   const displayName = user?.displayName ?? user?.username ?? "bạn";
 
   return (
@@ -278,27 +306,37 @@ export default function HomeScreen() {
             <View style={styles.reportCard}>
               <View style={styles.reportHeader}>
                 <View>
-                  <Text style={styles.reportLabel}>Dòng tiền ròng</Text>
-                  <Text style={[styles.reportValue, monthlyNet >= 0 ? styles.positiveText : styles.negativeText]}>
-                    {formatMoney(monthlyNet, currency)}
+                  <Text style={styles.reportLabel}>Tổng chi tiêu</Text>
+                  <Text style={[styles.reportValue, styles.negativeText]}>
+                    {formatMoney(monthlyExpense, currency)}
                   </Text>
                 </View>
-                <View style={styles.trendBadge}>
-                  <Text style={styles.trendText}>{formatTrend(spendingStats?.totalChangePercentage)}</Text>
+                <View>
+                  <Text style={styles.reportLabel}>Tổng thu nhập</Text>
+                  <Text style={[styles.reportValue, styles.positiveText]}>
+                    {formatMoney(monthlyIncome, currency)}
+                  </Text>
                 </View>
               </View>
-              <View style={styles.progressHeader}>
-                <Text style={styles.progressLabel}>Tỷ lệ chi / thu</Text>
-                <Text style={styles.progressValue}>{expenseRatio}%</Text>
+
+              {/* Biểu đồ cột chi tiêu theo ngày */}
+              <View style={styles.chartWrapper}>
+                <View style={styles.dailyChartContainer}>
+                  {activeDaysData.map((item, index) => (
+                    <View key={index} style={styles.dailyBarWrapper}>
+                      <Text style={styles.barAmountText}>{formatShortMoney(item.amount)}</Text>
+                      <View
+                        style={[
+                          styles.dailyBar,
+                          { height: `${(item.amount / maxDailySpending) * 100}%` },
+                        ]}
+                      />
+                      <Text style={styles.xAxisLabel}>{item.day}</Text>
+                    </View>
+                  ))}
+                </View>
               </View>
-              <View style={styles.progressTrack}>
-                <View style={[styles.progressFill, { width: `${expenseRatio}%` }]} />
-              </View>
-              <View style={styles.reportSummaryRow}>
-                <ReportSummary label="Thu" value={monthlyIncome} color="#1b8f5a" currency={currency} />
-                <ReportSummary label="Chi" value={monthlyExpense} color="#d7505f" currency={currency} />
-                <ReportSummary label="Giao dịch" value={monthTransactions.length} color="#3557a4" />
-              </View>
+              <Text style={styles.chartFooter}>Ngày trong tháng</Text>
             </View>
 
             <SectionHeading
@@ -348,18 +386,6 @@ export default function HomeScreen() {
   );
 }
 
-function formatTrend(value: number | null | undefined) {
-  if (value === null || value === undefined) {
-    return "Kỳ mới";
-  }
-
-  if (value === 0) {
-    return "Ổn định";
-  }
-
-  return `${value > 0 ? "Tăng" : "Giảm"} ${Math.abs(value).toFixed(1)}%`;
-}
-
 function MetricPill({ label, tone, value }: { label: string; tone: "good" | "warn"; value: string }) {
   return (
     <View style={[styles.metricPill, tone === "good" ? styles.metricGood : styles.metricWarn]}>
@@ -395,26 +421,6 @@ function HeroAccountRow({
           : "••••••••"}
       </Text>
     </Pressable>
-  );
-}
-
-// Báo cáo tháng này
-function ReportSummary({
-  color,
-  currency,
-  label,
-  value,
-}: {
-  color: string;
-  currency?: string;
-  label: string;
-  value: number;
-}) {
-  return (
-    <View style={styles.reportSummaryItem}>
-      <Text style={styles.reportSummaryLabel}>{label}</Text>
-      <Text style={[styles.reportSummaryValue, { color }]}>{currency ? formatShortMoney(value) : value}</Text>
-    </View>
   );
 }
 
@@ -648,11 +654,51 @@ const styles = StyleSheet.create({
   reportValue: { fontSize: 26, fontWeight: "900", marginTop: 4 },
   trendBadge: { backgroundColor: "#edf1f7", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7 },
   trendText: { color: "#3557a4", fontSize: 12, fontWeight: "900" },
-  progressHeader: { alignItems: "center", flexDirection: "row", justifyContent: "space-between", marginTop: 18 },
-  progressLabel: { color: "#6d746f", fontSize: 12, fontWeight: "800" },
-  progressValue: { color: "#27312c", fontSize: 12, fontWeight: "900" },
-  progressTrack: { backgroundColor: "#edf1ec", borderRadius: 5, height: 10, marginTop: 8, overflow: "hidden" },
-  progressFill: { backgroundColor: "#d7505f", borderRadius: 5, height: "100%" },
+  chartWrapper: {
+    flexDirection: "row",
+    marginTop: 20,
+    height: 100,
+    marginBottom: 20,
+  },
+  dailyChartContainer: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: 4,
+    paddingTop: 20,
+    paddingBottom: 4,
+  },
+  dailyBarWrapper: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "flex-end",
+  },
+  barAmountText: {
+    fontSize: 8,
+    color: "#7c8580",
+    marginBottom: 2,
+    textAlign: "center",
+  },
+  dailyBar: {
+    backgroundColor: "#d7505f",
+    borderRadius: 2,
+    width: "100%",
+    minHeight: 2,
+  },
+  xAxisLabel: {
+    color: "#7c8580",
+    fontSize: 8,
+    fontWeight: "700",
+    marginTop: 4,
+  },
+  chartFooter: {
+    color: "#7c8580",
+    fontSize: 11,
+    fontWeight: "700",
+    textAlign: "center",
+    marginTop: 4,
+    marginBottom: 8,
+  },
   reportSummaryRow: {
     borderTopColor: "#edf1ec",
     borderTopWidth: 1,
