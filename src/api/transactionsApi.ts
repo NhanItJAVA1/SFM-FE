@@ -1,4 +1,4 @@
-import { axiosClient } from './axiosClient';
+import { axiosClient } from "./axiosClient";
 
 export type TransactionDraftItem = {
   name?: string | null;
@@ -94,19 +94,19 @@ function buildQuery(params: CategorySpendingParams) {
   const searchParams = new URLSearchParams();
 
   Object.entries(params).forEach(([key, value]) => {
-    if (typeof value === 'number') {
+    if (typeof value === "number") {
       searchParams.set(key, String(value));
     }
   });
 
   const query = searchParams.toString();
 
-  return query ? `?${query}` : '';
+  return query ? `?${query}` : "";
 }
 
 export function buildCreateTransactionFromScanPayload(
   draft: TransactionDraft,
-  accountId: number
+  accountId: number,
 ): CreateTransactionFromScanPayload {
   const items = Array.isArray(draft.items)
     ? draft.items.map((item) => ({
@@ -120,7 +120,7 @@ export function buildCreateTransactionFromScanPayload(
   return {
     accountId,
     categoryId: draft.categoryId ?? null,
-    type: draft.type ?? 'Expense',
+    type: draft.type ?? "Expense",
     amount: draft.amount ?? null,
     description: draft.description ?? draft.merchantName ?? null,
     transactionDate: draft.transactionDate ?? null,
@@ -134,15 +134,37 @@ export const transactionsApi = {
   scanBill: async (imageUri: string) => {
     const imageResponse = await fetch(imageUri);
     const imageBlob = await imageResponse.blob();
-    const jpegBlob = imageBlob.type === 'image/jpeg' ? imageBlob : new Blob([imageBlob], { type: 'image/jpeg' });
+    const jpegBlob = imageBlob.type === "image/jpeg" ? imageBlob : new Blob([imageBlob], { type: "image/jpeg" });
     const formData = new FormData();
 
-    formData.append('image', jpegBlob, `bill-${Date.now()}.jpg`);
+    formData.append("image", jpegBlob, `bill-${Date.now()}.jpg`);
 
-    return axiosClient.uploadFormData<ScanBillResponse>('/transactions/scan-bill', formData);
+    return axiosClient.uploadFormData<ScanBillResponse>("/transactions/scan-bill", formData);
   },
   createFromScan: (payload: CreateTransactionFromScanPayload) =>
     axiosClient.post<CreateTransactionFromScanResponse>('/transactions', payload),
   categorySpending: (params: CategorySpendingParams = {}) =>
     axiosClient.get<CategorySpendingResponse>(`/transactions/category-spending${buildQuery(params)}`),
+};
+
+export type TransactionType = "Income" | "Expense" | "TransferIn" | "TransferOut";
+
+export type Transaction = {
+  id: number;
+  userId: number;
+  accountId: number;
+  categoryId: number | null;
+  type: TransactionType;
+  amount: number;
+  description: string | null;
+  transactionDate: string;
+  location: string | null;
+  isExcluded: boolean;
+  createdAt: string;
+  updatedAt: string | null;
+};
+
+export const transactionApi = {
+  list: (filter: "NotDeleted" | "Deleted" | "All" = "NotDeleted") =>
+    axiosClient.get<Transaction[]>(`/transactions?filter=${filter}`),
 };
