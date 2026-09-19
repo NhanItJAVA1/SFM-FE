@@ -1,4 +1,4 @@
-import * as Notifications from 'expo-notifications';
+import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
 import type { CreateTransactionFromScanResponse, TransactionNotification } from '@/api/transactionsApi';
@@ -6,23 +6,20 @@ import type { CreateTransactionFromScanResponse, TransactionNotification } from 
 const defaultNotificationTitle = 'Cảnh báo ngân sách';
 const defaultNotificationBody = 'Một ngân sách vừa đạt ngưỡng cảnh báo.';
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldPlaySound: false,
-    shouldSetBadge: false,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
-});
-
 export async function presentTransactionNotifications(response: CreateTransactionFromScanResponse | null | undefined) {
   const notifications = getTransactionNotifications(response);
 
-  if (notifications.length === 0 || !(await ensureNotificationPermission())) {
+  if (notifications.length === 0 || isExpoGoAndroid()) {
     return;
   }
 
-  await Promise.all(notifications.map(scheduleTransactionNotification));
+  const Notifications = await loadNotifications();
+
+  if (!Notifications || !(await ensureNotificationPermission(Notifications))) {
+    return;
+  }
+
+  await Promise.all(notifications.map((notification) => scheduleTransactionNotification(Notifications, notification)));
 }
 
 function getTransactionNotifications(response: CreateTransactionFromScanResponse | null | undefined) {
@@ -37,7 +34,30 @@ function getTransactionNotifications(response: CreateTransactionFromScanResponse
   return response.notification ? [response.notification] : [];
 }
 
-async function ensureNotificationPermission() {
+async function loadNotifications() {
+  try {
+    const Notifications = await import('expo-notifications');
+
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldPlaySound: false,
+        shouldSetBadge: false,
+        shouldShowBanner: true,
+        shouldShowList: true,
+      }),
+    });
+
+    return Notifications;
+  } catch {
+    return null;
+  }
+}
+
+function isExpoGoAndroid() {
+  return Platform.OS === 'android' && Constants.appOwnership === 'expo';
+}
+
+async function ensureNotificationPermission(Notifications: NonNullable<Awaited<ReturnType<typeof loadNotifications>>>) {
   if (Platform.OS === 'android') {
     await Notifications.setNotificationChannelAsync('budget-alerts', {
       importance: Notifications.AndroidImportance.HIGH,
@@ -56,7 +76,10 @@ async function ensureNotificationPermission() {
   return finalStatus === 'granted';
 }
 
-function scheduleTransactionNotification(notification: TransactionNotification) {
+function scheduleTransactionNotification(
+  Notifications: NonNullable<Awaited<ReturnType<typeof loadNotifications>>>,
+  notification: TransactionNotification,
+) {
   const title = notification.title?.trim() || getTitleByLevel(notification.level);
   const body = notification.body?.trim() || notification.message?.trim() || defaultNotificationBody;
 
