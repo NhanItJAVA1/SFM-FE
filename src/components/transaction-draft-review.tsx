@@ -715,8 +715,12 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
             )}
 
             {isCreateCategoryVisible ? (
-              <View style={styles.inlineCreateOverlay}>
-                <View style={styles.createCategoryModal}>
+              <KeyboardAvoidingView
+                behavior={Platform.select({ ios: 'padding', android: 'height' })}
+                style={styles.inlineCreateOverlay}
+              >
+                <Pressable style={styles.inlineCreateDismissArea} onPress={Keyboard.dismiss}>
+                  <Pressable style={styles.createCategoryModal} onPress={(event) => event.stopPropagation()}>
                   <Text style={styles.createCategoryTitle}>Thêm category</Text>
                   <TextInput
                     placeholder="Tên category"
@@ -768,8 +772,9 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
                       )}
                     </Pressable>
                   </View>
-                </View>
-              </View>
+                  </Pressable>
+                </Pressable>
+              </KeyboardAvoidingView>
             ) : null}
           </Pressable>
         </Pressable>
@@ -780,7 +785,10 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
         visible={isBillEditorVisible}
         onRequestClose={() => setIsBillEditorVisible(false)}
       >
-        <View style={styles.editorScreen}>
+        <KeyboardAvoidingView
+          behavior={Platform.select({ ios: 'padding', android: 'height' })}
+          style={styles.editorScreen}
+        >
           <View style={styles.header}>
             <Pressable onPress={() => setIsBillEditorVisible(false)} hitSlop={12}>
               <Text style={styles.headerAction}>Không lưu</Text>
@@ -874,7 +882,7 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
               )}
             </View>
           </ScrollView>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       <View style={styles.footer}>
@@ -1087,10 +1095,16 @@ const styles = StyleSheet.create({
     bottom: 0,
     justifyContent: 'center',
     left: 0,
-    padding: 24,
     position: 'absolute',
     right: 0,
     top: 0,
+  },
+  inlineCreateDismissArea: {
+    alignItems: 'center',
+    flex: 1,
+    justifyContent: 'center',
+    padding: 24,
+    width: '100%',
   },
   createCategoryModal: {
     backgroundColor: '#1e1e1f',

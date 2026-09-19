@@ -1,7 +1,9 @@
 import { Redirect, Tabs } from "expo-router";
 import { StyleSheet, Text, View } from "react-native";
 
+import { useAppTheme } from "@/hooks/use-app-theme";
 import { getAuthAccessToken } from "@/stores/authSession";
+import type { AppTheme } from "@/theme/appTheme";
 
 type TabIconName = "home" | "ledger" | "plus" | "budget" | "user";
 
@@ -13,19 +15,21 @@ const tabIcons: Record<TabIconName, string> = {
   user: "♙",
 };
 
-function TabIcon({ name, focused }: { name: TabIconName; focused: boolean }) {
+function TabIcon({ name, focused, theme }: { name: TabIconName; focused: boolean; theme: AppTheme }) {
   if (name === "plus") {
     return (
-      <View style={styles.addButton}>
-        <Text style={styles.addIcon}>{tabIcons.plus}</Text>
+      <View style={[styles.addButton, { backgroundColor: theme.primary }]}>
+        <Text style={[styles.addIcon, { color: theme.textInverse }]}>{tabIcons.plus}</Text>
       </View>
     );
   }
 
-  return <Text style={[styles.icon, focused && styles.iconFocused]}>{tabIcons[name]}</Text>;
+  return <Text style={[styles.icon, { color: focused ? theme.text : theme.textSubtle }]}>{tabIcons[name]}</Text>;
 }
 
 export default function TabsLayout() {
+  const theme = useAppTheme();
+
   if (!getAuthAccessToken()) {
     return <Redirect href="/auth/login" />;
   }
@@ -34,10 +38,13 @@ export default function TabsLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: "#1d232d",
-        tabBarInactiveTintColor: "#89919d",
+        tabBarActiveTintColor: theme.text,
+        tabBarInactiveTintColor: theme.textSubtle,
         tabBarLabelStyle: styles.label,
-        tabBarStyle: styles.tabBar,
+        tabBarStyle: [
+          styles.tabBar,
+          { backgroundColor: theme.tabBar, borderTopColor: theme.tabBorder },
+        ],
         tabBarItemStyle: styles.tabItem,
       }}
     >
@@ -45,21 +52,21 @@ export default function TabsLayout() {
         name="home"
         options={{
           title: "Tổng quan",
-          tabBarIcon: ({ focused }) => <TabIcon name="home" focused={focused} />,
+          tabBarIcon: ({ focused }) => <TabIcon name="home" focused={focused} theme={theme} />,
         }}
       />
       <Tabs.Screen
         name="transactions"
         options={{
           title: "Sổ giao dịch",
-          tabBarIcon: ({ focused }) => <TabIcon name="ledger" focused={focused} />,
+          tabBarIcon: ({ focused }) => <TabIcon name="ledger" focused={focused} theme={theme} />,
         }}
       />
       <Tabs.Screen
         name="scan-bill"
         options={{
           title: "",
-          tabBarIcon: ({ focused }) => <TabIcon name="plus" focused={focused} />,
+          tabBarIcon: ({ focused }) => <TabIcon name="plus" focused={focused} theme={theme} />,
           tabBarLabel: () => null,
           tabBarStyle: { display: "none" },
         }}
@@ -68,14 +75,14 @@ export default function TabsLayout() {
         name="budgets"
         options={{
           title: "Ngân sách",
-          tabBarIcon: ({ focused }) => <TabIcon name="budget" focused={focused} />,
+          tabBarIcon: ({ focused }) => <TabIcon name="budget" focused={focused} theme={theme} />,
         }}
       />
       <Tabs.Screen
         name="user"
         options={{
           title: "Cá nhân",
-          tabBarIcon: ({ focused }) => <TabIcon name="user" focused={focused} />,
+          tabBarIcon: ({ focused }) => <TabIcon name="user" focused={focused} theme={theme} />,
         }}
       />
       <Tabs.Screen name="create" options={{ href: null }} />
@@ -87,8 +94,6 @@ export default function TabsLayout() {
 
 const styles = StyleSheet.create({
   tabBar: {
-    backgroundColor: "#ffffff",
-    borderTopColor: "#e3e7ec",
     height: 64,
     paddingBottom: 6,
     paddingTop: 6,
@@ -102,17 +107,12 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
   icon: {
-    color: "#89919d",
     fontSize: 23,
     fontWeight: "700",
     lineHeight: 26,
   },
-  iconFocused: {
-    color: "#1d232d",
-  },
   addButton: {
     alignItems: "center",
-    backgroundColor: "#31c452",
     borderRadius: 26,
     height: 52,
     justifyContent: "center",
@@ -120,7 +120,6 @@ const styles = StyleSheet.create({
     width: 52,
   },
   addIcon: {
-    color: "#fff",
     fontSize: 30,
     fontWeight: "700",
     lineHeight: 34,

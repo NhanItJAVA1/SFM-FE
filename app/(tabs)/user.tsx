@@ -1,4 +1,5 @@
 import { router } from 'expo-router';
+import { SymbolView } from 'expo-symbols';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -13,8 +14,12 @@ import {
 import { authApi } from '@/api/authApi';
 import { CategorySpendingItem, CategorySpendingResponse, transactionsApi } from '@/api/transactionsApi';
 import { SpendingDonutChart, SpendingDonutSegment } from '@/components/spending-donut-chart';
+import { useAppTheme } from '@/hooks/use-app-theme';
+import { useThemeMode } from '@/hooks/use-theme-mode';
 import { getAuthRefreshToken, getAuthUser } from '@/stores/authSession';
 import { clearAuthSession } from '@/stores/persistedAuthSession';
+import { getNextThemeMode, setThemeMode } from '@/stores/themePreference';
+import type { AppTheme } from '@/theme/appTheme';
 
 type UserView = 'menu' | 'manage' | 'spendingStats';
 
@@ -75,6 +80,10 @@ function formatSignedMoney(current: number, compare: number) {
 
 export default function UserScreen() {
   const user = getAuthUser();
+  const theme = useAppTheme();
+  const themeMode = useThemeMode();
+  const isDarkMode = themeMode === 'dark';
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const initial = (user?.displayName ?? user?.username ?? 'U').trim().charAt(0).toUpperCase() || 'U';
   const [view, setView] = useState<UserView>('menu');
   const [isLoggingOut, setIsLoggingOut] = useState(false);
@@ -168,6 +177,10 @@ export default function UserScreen() {
     }
   }
 
+  async function handleToggleThemeMode() {
+    await setThemeMode(getNextThemeMode(themeMode));
+  }
+
   if (view === 'manage') {
     return (
       <View style={styles.screen}>
@@ -195,7 +208,7 @@ export default function UserScreen() {
             onPress={handleLogout}
             disabled={isLoggingOut}
           >
-            {isLoggingOut ? <ActivityIndicator color="#fff" /> : <Text style={styles.logoutButtonText}>Đăng xuất</Text>}
+            {isLoggingOut ? <ActivityIndicator color={theme.textInverse} /> : <Text style={styles.logoutButtonText}>Đăng xuất</Text>}
           </Pressable>
         </View>
       </View>
@@ -239,7 +252,7 @@ export default function UserScreen() {
 
             {isLoadingStats ? (
               <View style={styles.statsLoading}>
-                <ActivityIndicator color="#31c452" />
+                <ActivityIndicator color={theme.primary} />
               </View>
             ) : spendingStats ? (
               <>
@@ -332,9 +345,24 @@ export default function UserScreen() {
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <View style={styles.headerRow}>
-        <View style={styles.headerSide} />
+        <View style={styles.headerSide}>
+          <Text style={styles.supportText}>Hỗ trợ</Text>
+        </View>
         <Text style={styles.pageTitle}>Cá nhân</Text>
-        <Text style={styles.supportText}>Hỗ trợ ?</Text>
+        <View style={styles.headerActions}>
+          <Pressable style={styles.themeButton} onPress={handleToggleThemeMode} hitSlop={10}>
+            <SymbolView
+              name={{
+                ios: isDarkMode ? 'sun.max.fill' : 'moon.fill',
+                android: isDarkMode ? 'light_mode' : 'dark_mode',
+                web: isDarkMode ? 'light_mode' : 'dark_mode',
+              }}
+              size={21}
+              tintColor={theme.text}
+              fallback={<Text style={styles.themeFallbackIcon}>{isDarkMode ? '☀' : '☾'}</Text>}
+            />
+          </Pressable>
+        </View>
       </View>
 
       <View style={styles.profileCard}>
@@ -373,45 +401,58 @@ export default function UserScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#020204' },
+function createStyles(theme: AppTheme) {
+  return StyleSheet.create({
+  screen: { flex: 1, backgroundColor: theme.screen },
   content: { padding: 24, paddingBottom: 96 },
   headerRow: { alignItems: 'center', flexDirection: 'row', marginBottom: 32, marginTop: 36 },
   headerSide: { flex: 1 },
-  pageTitle: { color: '#fff', flex: 1, fontSize: 24, fontWeight: '700', textAlign: 'center' },
-  supportText: { color: '#fff', flex: 1, fontSize: 16, textAlign: 'right' },
-  profileCard: { backgroundColor: '#1e1e1f', borderRadius: 8, overflow: 'hidden', paddingTop: 34 },
+  pageTitle: { color: theme.text, flex: 1, fontSize: 24, fontWeight: '700', textAlign: 'center' },
+  headerActions: { alignItems: 'center', flex: 1, flexDirection: 'row', justifyContent: 'flex-end' },
+  supportText: { color: theme.text, fontSize: 16 },
+  themeButton: {
+    alignItems: 'center',
+    backgroundColor: theme.card,
+    borderColor: theme.border,
+    borderRadius: 17,
+    borderWidth: 1,
+    height: 34,
+    justifyContent: 'center',
+    width: 34,
+  },
+  themeFallbackIcon: { color: theme.text, fontSize: 18, fontWeight: '800' },
+  profileCard: { backgroundColor: theme.card, borderRadius: 8, overflow: 'hidden', paddingTop: 34 },
   avatar: {
     alignItems: 'center',
     alignSelf: 'center',
-    backgroundColor: '#2fa9df',
+    backgroundColor: theme.avatar,
     borderRadius: 44,
     height: 88,
     justifyContent: 'center',
     marginBottom: 16,
     width: 88,
   },
-  avatarText: { color: '#fff', fontSize: 44, fontWeight: '500' },
-  username: { color: '#fff', fontSize: 23, fontWeight: '600', textAlign: 'center' },
-  email: { color: '#9698a1', fontSize: 17, marginTop: 6, textAlign: 'center' },
-  divider: { backgroundColor: '#303039', height: 1, marginTop: 34 },
+  avatarText: { color: theme.textInverse, fontSize: 44, fontWeight: '500' },
+  username: { color: theme.text, fontSize: 23, fontWeight: '600', textAlign: 'center' },
+  email: { color: theme.textMuted, fontSize: 17, marginTop: 6, textAlign: 'center' },
+  divider: { backgroundColor: theme.border, height: 1, marginTop: 34 },
   manageRow: { alignItems: 'center', flexDirection: 'row', minHeight: 78, paddingHorizontal: 22 },
-  manageIcon: { color: '#fff', fontSize: 30, width: 46 },
+  manageIcon: { color: theme.text, fontSize: 30, width: 46 },
   manageTextGroup: { flex: 1 },
-  manageTitle: { color: '#fff', fontSize: 18, fontWeight: '700' },
-  manageSubtitle: { color: '#9698a1', fontSize: 16, marginTop: 3 },
+  manageTitle: { color: theme.text, fontSize: 18, fontWeight: '700' },
+  manageSubtitle: { color: theme.textMuted, fontSize: 16, marginTop: 3 },
   manageContent: { gap: 18, padding: 20 },
-  profileMiniCard: { alignItems: 'center', backgroundColor: '#1e1e1f', borderRadius: 8, flexDirection: 'row', minHeight: 84, padding: 18 },
-  smallAvatar: { alignItems: 'center', backgroundColor: '#2fa9df', borderRadius: 24, height: 48, justifyContent: 'center', marginRight: 14, width: 48 },
-  smallAvatarText: { color: '#fff', fontSize: 24, fontWeight: '700' },
-  logoutButton: { alignItems: 'center', backgroundColor: '#d83b3b', borderRadius: 8, justifyContent: 'center', minHeight: 52 },
-  logoutButtonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
-  chevron: { color: '#6f727b', fontSize: 40, lineHeight: 42 },
-  menuCard: { backgroundColor: '#1e1e1f', borderRadius: 8, marginTop: 34, overflow: 'hidden' },
+  profileMiniCard: { alignItems: 'center', backgroundColor: theme.card, borderRadius: 8, flexDirection: 'row', minHeight: 84, padding: 18 },
+  smallAvatar: { alignItems: 'center', backgroundColor: theme.avatar, borderRadius: 24, height: 48, justifyContent: 'center', marginRight: 14, width: 48 },
+  smallAvatarText: { color: theme.textInverse, fontSize: 24, fontWeight: '700' },
+  logoutButton: { alignItems: 'center', backgroundColor: theme.danger, borderRadius: 8, justifyContent: 'center', minHeight: 52 },
+  logoutButtonText: { color: theme.textInverse, fontSize: 16, fontWeight: '700' },
+  chevron: { color: theme.chevron, fontSize: 40, lineHeight: 42 },
+  menuCard: { backgroundColor: theme.card, borderRadius: 8, marginTop: 34, overflow: 'hidden' },
   menuRow: { alignItems: 'center', flexDirection: 'row', minHeight: 76, paddingHorizontal: 22 },
-  menuDivider: { backgroundColor: '#303039', height: 1, marginLeft: 68 },
-  menuIcon: { color: '#fff', fontSize: 30, width: 46 },
-  menuText: { color: '#fff', flex: 1, fontSize: 22, fontWeight: '500' },
+  menuDivider: { backgroundColor: theme.border, height: 1, marginLeft: 68 },
+  menuIcon: { color: theme.text, fontSize: 30, width: 46 },
+  menuText: { color: theme.text, flex: 1, fontSize: 22, fontWeight: '500' },
   walletHeader: {
     alignItems: 'center',
     flexDirection: 'row',
@@ -420,8 +461,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 56,
   },
-  backText: { color: '#31c452', fontSize: 17, fontWeight: '700' },
-  topTitle: { color: '#fff', fontSize: 22, fontWeight: '700' },
+  backText: { color: theme.primary, fontSize: 17, fontWeight: '700' },
+  topTitle: { color: theme.text, fontSize: 22, fontWeight: '700' },
   topBar: {
     alignItems: 'center',
     flexDirection: 'row',
@@ -432,43 +473,43 @@ const styles = StyleSheet.create({
   topSpacer: { width: 82 },
   addWalletButton: {
     alignItems: 'center',
-    backgroundColor: '#31c452',
+    backgroundColor: theme.primary,
     borderRadius: 20,
     height: 40,
     justifyContent: 'center',
     width: 40,
   },
-  addWalletText: { color: '#fff', fontSize: 30, fontWeight: '500', lineHeight: 33 },
+  addWalletText: { color: theme.textInverse, fontSize: 30, fontWeight: '500', lineHeight: 33 },
   walletList: { gap: 14, padding: 20, paddingBottom: 96 },
-  statsContent: { backgroundColor: '#020204', padding: 14, paddingBottom: 96 },
-  statsPanel: { backgroundColor: '#020204', borderRadius: 8, gap: 12, padding: 4 },
+  statsContent: { backgroundColor: theme.screen, padding: 14, paddingBottom: 96 },
+  statsPanel: { backgroundColor: theme.screen, borderRadius: 8, gap: 12, padding: 4 },
   monthSwitcher: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', minHeight: 44 },
   monthButton: { alignItems: 'center', height: 36, justifyContent: 'center', width: 36 },
   monthButtonDisabled: { opacity: 0.28 },
-  monthButtonText: { color: '#6f727b', fontSize: 34, fontWeight: '500', lineHeight: 34 },
+  monthButtonText: { color: theme.chevron, fontSize: 34, fontWeight: '500', lineHeight: 34 },
   monthTitleWrap: { alignItems: 'center', flex: 1 },
-  monthTitle: { color: '#fff', fontSize: 15, fontWeight: '800' },
-  monthSubtitle: { color: '#9698a1', fontSize: 11, fontWeight: '700', marginTop: 2 },
+  monthTitle: { color: theme.text, fontSize: 15, fontWeight: '800' },
+  monthSubtitle: { color: theme.textMuted, fontSize: 11, fontWeight: '700', marginTop: 2 },
   statsLoading: { alignItems: 'center', minHeight: 260, justifyContent: 'center' },
   statsSummaryRow: { flexDirection: 'row', gap: 8 },
   statsSummaryCard: {
-    backgroundColor: '#1e1e1f',
-    borderColor: '#303039',
+    backgroundColor: theme.card,
+    borderColor: theme.border,
     borderRadius: 8,
     borderWidth: 1,
     flex: 1,
     minHeight: 72,
     padding: 10,
   },
-  statsSummaryCardActive: { borderColor: '#ff4fa3' },
-  statsSummaryLabel: { color: '#9698a1', fontSize: 12, fontWeight: '800', marginBottom: 7 },
-  statsSummaryValue: { color: '#fff', fontSize: 18, fontWeight: '900' },
+  statsSummaryCardActive: { borderColor: theme.accent },
+  statsSummaryLabel: { color: theme.textMuted, fontSize: 12, fontWeight: '800', marginBottom: 7 },
+  statsSummaryValue: { color: theme.text, fontSize: 18, fontWeight: '900' },
   statsTrendCard: { borderRadius: 8, minHeight: 42, justifyContent: 'center', paddingHorizontal: 12, paddingVertical: 8 },
-  statsTrendCardGood: { backgroundColor: '#11291a' },
-  statsTrendCardWarn: { backgroundColor: '#33200d' },
+  statsTrendCardGood: { backgroundColor: theme.goodBackground },
+  statsTrendCardWarn: { backgroundColor: theme.warningBackground },
   statsTrendText: { fontSize: 13, fontWeight: '800', lineHeight: 18 },
-  statsTrendTextGood: { color: '#22a84e' },
-  statsTrendTextWarn: { color: '#d97706' },
+  statsTrendTextGood: { color: theme.goodText },
+  statsTrendTextWarn: { color: theme.warning },
   chartSection: {
     alignItems: 'center',
     elevation: 24,
@@ -476,50 +517,50 @@ const styles = StyleSheet.create({
     position: 'relative',
     zIndex: 24,
   },
-  detailTitle: { color: '#ff4fa3', fontSize: 13, fontWeight: '900', marginTop: 2, textAlign: 'center' },
-  statsEmptyText: { color: '#9698a1', fontSize: 15, lineHeight: 22, paddingVertical: 36, textAlign: 'center' },
-  balanceSummary: { backgroundColor: '#1e1e1f', borderRadius: 8, padding: 18 },
-  summaryLabel: { color: '#9698a1', fontSize: 14, marginBottom: 4 },
-  summaryValue: { color: '#fff', fontSize: 26, fontWeight: '700' },
-  walletCard: { alignItems: 'center', backgroundColor: '#1e1e1f', borderRadius: 8, flexDirection: 'row', minHeight: 78, padding: 16 },
-  statControlCard: { backgroundColor: '#1e1e1f', borderRadius: 8, gap: 14, padding: 16 },
-  statControlTitle: { color: '#9698a1', fontSize: 13, fontWeight: '800' },
+  detailTitle: { color: theme.accent, fontSize: 13, fontWeight: '900', marginTop: 2, textAlign: 'center' },
+  statsEmptyText: { color: theme.textMuted, fontSize: 15, lineHeight: 22, paddingVertical: 36, textAlign: 'center' },
+  balanceSummary: { backgroundColor: theme.card, borderRadius: 8, padding: 18 },
+  summaryLabel: { color: theme.textMuted, fontSize: 14, marginBottom: 4 },
+  summaryValue: { color: theme.text, fontSize: 26, fontWeight: '700' },
+  walletCard: { alignItems: 'center', backgroundColor: theme.card, borderRadius: 8, flexDirection: 'row', minHeight: 78, padding: 16 },
+  statControlCard: { backgroundColor: theme.card, borderRadius: 8, gap: 14, padding: 16 },
+  statControlTitle: { color: theme.textMuted, fontSize: 13, fontWeight: '800' },
   periodRow: { alignItems: 'center', flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  periodValue: { color: '#fff', fontSize: 15, fontWeight: '800', minWidth: 64, textAlign: 'center' },
-  stepButton: { alignItems: 'center', backgroundColor: '#303039', borderRadius: 8, height: 34, justifyContent: 'center', width: 34 },
-  stepButtonText: { color: '#fff', fontSize: 22, fontWeight: '700', lineHeight: 24 },
+  periodValue: { color: theme.text, fontSize: 15, fontWeight: '800', minWidth: 64, textAlign: 'center' },
+  stepButton: { alignItems: 'center', backgroundColor: theme.cardAlt, borderRadius: 8, height: 34, justifyContent: 'center', width: 34 },
+  stepButtonText: { color: theme.text, fontSize: 22, fontWeight: '700', lineHeight: 24 },
   statCard: {
-    backgroundColor: '#1e1e1f',
-    borderColor: '#303039',
+    backgroundColor: theme.card,
+    borderColor: theme.border,
     borderRadius: 8,
     borderWidth: 1,
     gap: 10,
     padding: 14,
   },
-  statCardSelected: { borderColor: '#ff4fa3', shadowColor: '#ff4fa3', shadowOpacity: 0.2, shadowRadius: 10 },
+  statCardSelected: { borderColor: theme.accent, shadowColor: theme.accent, shadowOpacity: 0.2, shadowRadius: 10 },
   statCategoryHeader: { alignItems: 'center', flexDirection: 'row' },
-  statIcon: { alignItems: 'center', backgroundColor: '#303039', borderRadius: 20, height: 40, justifyContent: 'center', marginRight: 14, width: 40 },
-  statIconText: { color: '#31c452', fontSize: 18, fontWeight: '800' },
-  statCategoryName: { color: '#fff', fontSize: 16, fontWeight: '900' },
-  statCategoryMeta: { color: '#9698a1', fontSize: 13, fontWeight: '700', marginTop: 3 },
-  statCategoryAmount: { color: '#fff', fontSize: 15, fontWeight: '900' },
-  statCompareText: { color: '#9698a1', fontSize: 13, lineHeight: 19 },
-  walletIcon: { alignItems: 'center', backgroundColor: '#303039', borderRadius: 20, height: 40, justifyContent: 'center', marginRight: 14, width: 40 },
-  walletIconText: { color: '#fff', fontSize: 20 },
+  statIcon: { alignItems: 'center', backgroundColor: theme.cardAlt, borderRadius: 20, height: 40, justifyContent: 'center', marginRight: 14, width: 40 },
+  statIconText: { color: theme.primary, fontSize: 18, fontWeight: '800' },
+  statCategoryName: { color: theme.text, fontSize: 16, fontWeight: '900' },
+  statCategoryMeta: { color: theme.textMuted, fontSize: 13, fontWeight: '700', marginTop: 3 },
+  statCategoryAmount: { color: theme.text, fontSize: 15, fontWeight: '900' },
+  statCompareText: { color: theme.textMuted, fontSize: 13, lineHeight: 19 },
+  walletIcon: { alignItems: 'center', backgroundColor: theme.cardAlt, borderRadius: 20, height: 40, justifyContent: 'center', marginRight: 14, width: 40 },
+  walletIconText: { color: theme.text, fontSize: 20 },
   walletInfo: { flex: 1 },
-  walletName: { color: '#fff', fontSize: 18, fontWeight: '700' },
-  walletType: { color: '#9698a1', fontSize: 14, marginTop: 3 },
-  walletBalance: { color: '#fff', fontSize: 16, fontWeight: '700' },
-  emptyText: { color: '#9698a1', fontSize: 16, lineHeight: 23, marginTop: 18, textAlign: 'center' },
+  walletName: { color: theme.text, fontSize: 18, fontWeight: '700' },
+  walletType: { color: theme.textMuted, fontSize: 14, marginTop: 3 },
+  walletBalance: { color: theme.text, fontSize: 16, fontWeight: '700' },
+  emptyText: { color: theme.textMuted, fontSize: 16, lineHeight: 23, marginTop: 18, textAlign: 'center' },
   form: { gap: 18, paddingTop: 28 },
   field: { gap: 8 },
-  label: { color: '#f4f6f8', fontSize: 14, fontWeight: '700' },
+  label: { color: theme.text, fontSize: 14, fontWeight: '700' },
   input: {
-    backgroundColor: '#1e1e1f',
-    borderColor: '#303039',
+    backgroundColor: theme.card,
+    borderColor: theme.border,
     borderRadius: 8,
     borderWidth: 1,
-    color: '#fff',
+    color: theme.text,
     fontSize: 16,
     paddingHorizontal: 14,
     paddingVertical: 13,
@@ -527,8 +568,8 @@ const styles = StyleSheet.create({
   typeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   typeOption: {
     alignItems: 'center',
-    backgroundColor: '#1e1e1f',
-    borderColor: '#303039',
+    backgroundColor: theme.card,
+    borderColor: theme.border,
     borderRadius: 8,
     borderWidth: 1,
     justifyContent: 'center',
@@ -536,13 +577,14 @@ const styles = StyleSheet.create({
     minWidth: 104,
     paddingHorizontal: 14,
   },
-  typeOptionSelected: { backgroundColor: '#31c452', borderColor: '#31c452' },
-  typeOptionText: { color: '#c8cbd2', fontWeight: '700' },
-  typeOptionTextSelected: { color: '#fff' },
+  typeOptionSelected: { backgroundColor: theme.primary, borderColor: theme.primary },
+  typeOptionText: { color: theme.textSoft, fontWeight: '700' },
+  typeOptionTextSelected: { color: theme.textInverse },
   row: { flexDirection: 'row', gap: 12 },
   currencyField: { flex: 0.8 },
   balanceField: { flex: 1.4 },
-  primaryButton: { alignItems: 'center', backgroundColor: '#31c452', borderRadius: 8, justifyContent: 'center', minHeight: 50 },
+  primaryButton: { alignItems: 'center', backgroundColor: theme.primary, borderRadius: 8, justifyContent: 'center', minHeight: 50 },
   buttonDisabled: { opacity: 0.7 },
-  primaryButtonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
-});
+  primaryButtonText: { color: theme.textInverse, fontSize: 16, fontWeight: '700' },
+  });
+}

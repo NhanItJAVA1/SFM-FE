@@ -6,10 +6,11 @@ import { budgetsApi } from '@/api/budgetsApi';
 import type { Budget } from '@/api/budgetsApi';
 import { categoriesApi } from '@/api/categoriesApi';
 import type { Category } from '@/api/categoriesApi';
+import { useAppTheme } from '@/hooks/use-app-theme';
 import { BudgetCategoryItem } from '@/screens/budgets/budget-category-item';
 import { BudgetSummaryCard } from '@/screens/budgets/budget-summary-card';
 import { BudgetTransactionList } from '@/screens/budgets/budget-transaction-list';
-import { styles } from '@/screens/budgets/budgets.styles';
+import { useBudgetStyles } from '@/screens/budgets/budgets.styles';
 import { CreateBudgetModal } from '@/screens/budgets/create-budget-modal';
 import {
   buildBudgetPayload,
@@ -26,6 +27,8 @@ const TAB_INDEX: Record<BudgetsTab, number> = {
 };
 
 export default function BudgetsScreen() {
+  const theme = useAppTheme();
+  const styles = useBudgetStyles();
   const [budgets, setBudgets] = useState<BudgetWithProgress[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -199,7 +202,7 @@ export default function BudgetsScreen() {
 
       {isLoading ? (
         <View style={styles.loadingState}>
-          <ActivityIndicator color="#31c452" />
+          <ActivityIndicator color={theme.primary} />
         </View>
       ) : budgets.length === 0 ? (
         <View style={styles.emptyState}>
@@ -231,7 +234,7 @@ export default function BudgetsScreen() {
                     <RefreshControl
                       refreshing={isRefreshing}
                       onRefresh={() => loadBudgets('refreshing')}
-                      tintColor="#fff"
+                      tintColor={theme.text}
                     />
                   }
                 >
@@ -255,7 +258,7 @@ export default function BudgetsScreen() {
                   <RefreshControl
                     refreshing={isRefreshing}
                     onRefresh={() => loadBudgets('refreshing')}
-                    tintColor="#fff"
+                    tintColor={theme.text}
                   />
                 }
               >

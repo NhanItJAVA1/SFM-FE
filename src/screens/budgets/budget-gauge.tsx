@@ -1,7 +1,9 @@
 import { View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 
-import { styles } from './budgets.styles';
+import { useAppTheme } from '@/hooks/use-app-theme';
+
+import { useBudgetStyles } from './budgets.styles';
 
 const gaugeSize = 244;
 const gaugeStrokeWidth = 10;
@@ -19,6 +21,8 @@ export function BudgetGauge({
   isAlert: boolean;
   percentage: number;
 }) {
+  const theme = useAppTheme();
+  const styles = useBudgetStyles();
   const clampedPercentage = Math.min(Math.max(percentage, 0), 100);
   const progressColor = getProgressColor(percentage, alertThreshold, isAlert);
   const radius = (gaugeSize - gaugeStrokeWidth) / 2;
@@ -34,7 +38,7 @@ export function BudgetGauge({
         <Path
           d={`M ${center - radius} ${center} A ${radius} ${radius} 0 0 1 ${center + radius} ${center}`}
           fill="none"
-          stroke="#777982"
+          stroke={theme.progressTrack}
           strokeLinecap="round"
           strokeWidth={gaugeStrokeWidth}
         />

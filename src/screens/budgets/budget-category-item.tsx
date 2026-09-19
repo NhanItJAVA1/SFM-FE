@@ -3,7 +3,7 @@ import { Animated, PanResponder, Pressable, Text, View } from 'react-native';
 
 import type { Category } from '@/api/categoriesApi';
 
-import { styles } from './budgets.styles';
+import { useBudgetStyles } from './budgets.styles';
 import { describeCategory, formatMoney, isBudgetExpired } from './helpers';
 import type { BudgetWithProgress } from './types';
 
@@ -28,6 +28,7 @@ export function BudgetCategoryItem({
   onPress: () => void;
   onRequestDelete: (resetSwipe: () => void) => void;
 }) {
+  const styles = useBudgetStyles();
   const [rowWidth, setRowWidth] = useState(0);
   const [translateX] = useState(() => new Animated.Value(0));
   const category = categories.find((item) => item.id === budget.categoryId);

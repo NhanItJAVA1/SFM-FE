@@ -3,13 +3,14 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
 import { restoreAuthSession } from '@/stores/persistedAuthSession';
+import { restoreThemeMode } from '@/stores/themePreference';
 
 export default function RootLayout() {
   const [isRestoringSession, setIsRestoringSession] = useState(true);
 
   useEffect(() => {
     async function hydrateSession() {
-      await restoreAuthSession();
+      await Promise.all([restoreThemeMode(), restoreAuthSession()]);
       setIsRestoringSession(false);
     }
 

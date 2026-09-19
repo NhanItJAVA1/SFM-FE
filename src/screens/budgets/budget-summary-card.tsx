@@ -1,6 +1,6 @@
 import { Text, View } from 'react-native';
 
-import { styles } from './budgets.styles';
+import { useBudgetStyles } from './budgets.styles';
 import { BudgetGauge } from './budget-gauge';
 import { formatMoney } from './helpers';
 import type { BudgetSummary } from './types';
@@ -14,6 +14,8 @@ export function BudgetSummaryCard({
   name: string;
   summary: BudgetSummary;
 }) {
+  const styles = useBudgetStyles();
+
   return (
     <View style={styles.summaryCard}>
       <View style={styles.summaryBudgetInfo}>
@@ -39,6 +41,8 @@ export function BudgetSummaryCard({
 }
 
 function SummaryMetric({ label, value }: { label: string; value: string }) {
+  const styles = useBudgetStyles();
+
   return (
     <View style={styles.summaryMetric}>
       <Text style={styles.summaryMetricValue}>{value}</Text>
