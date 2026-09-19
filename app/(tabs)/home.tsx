@@ -5,8 +5,13 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { categoriesApi, Category } from "@/api/categoriesApi";
 import { FinancialAccount, financialAccountApi, getFinancialAccountBalance } from "@/api/financialAccountApi";
-import { Transaction, transactionApi, TransactionType } from "@/api/transactionApi";
-import { CategorySpendingResponse, transactionsApi } from "@/api/transactionsApi";
+import {
+  CategorySpendingResponse,
+  Transaction,
+  transactionApi,
+  transactionsApi,
+  TransactionType,
+} from "@/api/transactionsApi";
 import { getAuthUser } from "@/stores/authSession";
 
 const accountTypeMeta: Record<FinancialAccount["type"], { color: string; icon: string; label: string }> = {
@@ -83,6 +88,7 @@ export default function HomeScreen() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [spendingStats, setSpendingStats] = useState<CategorySpendingResponse | null>(null);
   const [isBalanceVisible, setIsBalanceVisible] = useState(true);
+  const [isAccountsVisible, setIsAccountsVisible] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -131,13 +137,6 @@ export default function HomeScreen() {
   const activeAccounts = useMemo(() => accounts.filter((account) => account.isActive), [accounts]);
   const totalBalance = useMemo(
     () => activeAccounts.reduce((total, account) => total + getFinancialAccountBalance(account), 0),
-    [activeAccounts],
-  );
-  const topAccounts = useMemo(
-    () =>
-      [...activeAccounts]
-        .sort((left, right) => getFinancialAccountBalance(right) - getFinancialAccountBalance(left))
-        .slice(0, 4),
     [activeAccounts],
   );
 
@@ -206,21 +205,54 @@ export default function HomeScreen() {
 
         <View style={styles.heroCard}>
           <View style={styles.heroTopRow}>
-            <View>
-              <Text style={styles.heroLabel}>Tổng số dư</Text>
-              <Text style={styles.heroCaption}>{activeAccounts.length} ví đang hoạt động</Text>
-            </View>
+            <Pressable style={{ flex: 1 }} onPress={() => setIsAccountsVisible((visible) => !visible)}>
+              <View style={styles.heroTitleRow}>
+                <Text style={styles.heroLabel}>Tổng số dư</Text>
+                <Text style={styles.chevronText}>{isAccountsVisible ? " ▾" : " ▸"}</Text>
+              </View>
+              <Text style={styles.heroCaption}>
+                {activeAccounts.length} ví · {isAccountsVisible ? "Nhấn để thu gọn" : "Nhấn để xem chi tiết"}
+              </Text>
+            </Pressable>
             <Pressable style={styles.eyeButton} onPress={() => setIsBalanceVisible((visible) => !visible)} hitSlop={10}>
               <Text style={styles.eyeText}>{isBalanceVisible ? "◉" : "○"}</Text>
             </Pressable>
           </View>
-          <Text style={styles.heroBalance}>
-            {isBalanceVisible ? formatMoney(totalBalance, currency) : "••••••••••"}
-          </Text>
+          <Pressable onPress={() => setIsAccountsVisible((visible) => !visible)}>
+            <Text style={styles.heroBalance}>
+              {isBalanceVisible ? formatMoney(totalBalance, currency) : "••••••••••"}
+            </Text>
+          </Pressable>
           <View style={styles.heroStats}>
             <MetricPill label="Thu tháng này" tone="good" value={formatMoney(monthlyIncome, currency)} />
             <MetricPill label="Chi tháng này" tone="warn" value={formatMoney(monthlyExpense, currency)} />
           </View>
+
+          {isAccountsVisible && (
+            <View style={styles.heroAccountsList}>
+              <View style={styles.heroDivider} />
+              <View style={styles.heroAccountsHeader}>
+                <Text style={styles.heroAccountsTitle}>Danh sách tài khoản</Text>
+                <Pressable onPress={() => router.push("/account")} hitSlop={8}>
+                  <Text style={styles.heroAccountsAction}>Quản lý ví ➔</Text>
+                </Pressable>
+              </View>
+              <View style={styles.heroAccountsGrid}>
+                {activeAccounts.length === 0 ? (
+                  <EmptyState title="Chưa có ví" description="Tạo ví đầu tiên để bắt đầu theo dõi số dư." />
+                ) : (
+                  activeAccounts.map((account) => (
+                    <HeroAccountRow
+                      key={account.id}
+                      account={account}
+                      currency={currency}
+                      isBalanceVisible={isBalanceVisible}
+                    />
+                  ))
+                )}
+              </View>
+            </View>
+          )}
         </View>
 
         {errorMessage ? (
@@ -237,14 +269,6 @@ export default function HomeScreen() {
           </View>
         ) : (
           <>
-            <SectionHeading title="Ví của tôi" action="Xem tất cả" onAction={() => router.push("/account")} />
-            <View style={styles.walletGrid}>
-              {topAccounts.length === 0 ? (
-                <EmptyState title="Chưa có ví" description="Tạo ví đầu tiên để bắt đầu theo dõi số dư." />
-              ) : (
-                topAccounts.map((account) => <WalletCard key={account.id} account={account} currency={currency} />)
-              )}
-            </View>
 
             <SectionHeading
               title="Báo cáo tháng này"
@@ -345,21 +369,30 @@ function MetricPill({ label, tone, value }: { label: string; tone: "good" | "war
   );
 }
 
-// Ví của tôi
-function WalletCard({ account, currency }: { account: FinancialAccount; currency: string }) {
-  const meta = accountTypeMeta[account.type];
+// Tài khoản trong Tổng số dư
+function HeroAccountRow({
+  account,
+  currency,
+  isBalanceVisible,
+}: {
+  account: FinancialAccount;
+  currency: string;
+  isBalanceVisible: boolean;
+}) {
+  const meta = accountTypeMeta[account.type] || { color: "#8fa49a", icon: "●", label: "Ví" };
 
   return (
-    <Pressable style={styles.walletCard} onPress={() => router.push("/account")}>
-      <View style={[styles.walletIcon, { backgroundColor: `${meta.color}22` }]}>
-        <Text style={[styles.walletIconText, { color: meta.color }]}>{meta.icon}</Text>
+    <Pressable style={styles.heroAccountRow} onPress={() => router.push("/account")}>
+      <View style={[styles.heroAccountIcon, { backgroundColor: `${meta.color}33` }]}>
+        <Text style={[styles.heroAccountIconText, { color: meta.color }]}>{meta.icon}</Text>
       </View>
-      <Text numberOfLines={1} style={styles.walletName}>
+      <Text numberOfLines={1} style={styles.heroAccountName}>
         {account.name}
       </Text>
-      {/* <Text style={styles.walletType}>{meta.label}</Text> */}
-      <Text style={styles.walletBalance}>
-        {formatMoney(getFinancialAccountBalance(account), account.currency || currency)}
+      <Text style={styles.heroAccountBalance}>
+        {isBalanceVisible
+          ? formatMoney(getFinancialAccountBalance(account), account.currency || currency)
+          : "••••••••"}
       </Text>
     </Pressable>
   );
@@ -540,55 +573,74 @@ const styles = StyleSheet.create({
   },
   sectionTitle: { color: "#27312c", fontSize: 17, fontWeight: "900" },
   sectionAction: { color: "#206b4f", fontSize: 13, fontWeight: "900" },
-  walletGrid: {
-    gap: 10,
-  },
-
-  walletCard: {
-    backgroundColor: "#ffffff",
-    borderColor: "#dfe5df",
-    borderRadius: 8,
-    borderWidth: 1,
-    minHeight: 80,
-    padding: 14,
-    width: "100%",
+  heroTitleRow: {
     flexDirection: "row",
     alignItems: "center",
+    gap: 4,
   },
-
-  walletIcon: {
+  chevronText: {
+    color: "#cde9d8",
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  heroDivider: {
+    backgroundColor: "rgba(255, 255, 255, 0.15)",
+    height: 1,
+    marginVertical: 14,
+  },
+  heroAccountsList: {
+    marginTop: 4,
+  },
+  heroAccountsHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "center",
-    borderRadius: 20,
-    height: 40,
+    marginBottom: 12,
+  },
+  heroAccountsTitle: {
+    color: "#d9e7df",
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  heroAccountsAction: {
+    color: "#8fa49a",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  heroAccountsGrid: {
+    gap: 8,
+  },
+  heroAccountRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.05)",
+    borderRadius: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+  },
+  heroAccountIcon: {
+    alignItems: "center",
+    borderRadius: 15,
+    height: 30,
     justifyContent: "center",
-    width: 40,
-    marginRight: 12,
+    marginRight: 10,
+    width: 30,
   },
-
-  walletIconText: {
-    fontSize: 20,
-    fontWeight: "900",
-  },
-
-  walletName: {
-    color: "#27312c",
+  heroAccountIconText: {
     fontSize: 15,
     fontWeight: "900",
   },
-
-  // walletType: {
-  //   color: "#7c8580",
-  //   fontSize: 12,
-  //   fontWeight: "700",
-  //   marginTop: 4,
-  // },
-
-  walletBalance: {
-    color: "#16201b",
-    fontSize: 16,
-    fontWeight: "900",
-    marginTop: 0,
-    marginLeft: "auto",
+  heroAccountName: {
+    color: "#ffffff",
+    fontSize: 14,
+    fontWeight: "700",
+    flex: 1,
+    marginRight: 8,
+  },
+  heroAccountBalance: {
+    color: "#ffffff",
+    fontSize: 14,
+    fontWeight: "800",
   },
   reportCard: { backgroundColor: "#ffffff", borderColor: "#dfe5df", borderRadius: 8, borderWidth: 1, padding: 16 },
   reportHeader: { alignItems: "flex-start", flexDirection: "row", gap: 10, justifyContent: "space-between" },
