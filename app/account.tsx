@@ -24,6 +24,7 @@ const accountTypes: { label: string; value: AccountType }[] = [
   { label: "Savings", value: "Savings" },
 ];
 
+// Các lựa chọn hiển thị ở bước đầu; giá trị `value` được dùng để khởi tạo form.
 const walletTypeOptions: { label: string; value: AccountType; color: string; icon: string }[] = [
   { label: "Ví cơ bản", value: "Cash", color: "#2abd4b", icon: "▰" },
   { label: "Ví liên kết", value: "Bank", color: "#18cdb0", icon: "▤" },
@@ -41,6 +42,7 @@ function formatMoney(value: number, currency: string) {
 }
 
 export default function AccountScreen() {
+  // `view` điều khiển ba trạng thái màn hình: danh sách ví, chọn loại ví và form tạo ví.
   const [view, setView] = useState<AccountView>("wallets");
   const [accounts, setAccounts] = useState<FinancialAccount[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -51,12 +53,15 @@ export default function AccountScreen() {
   const [initialBalance, setInitialBalance] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [openAccountMenu, setOpenAccountMenu] = useState<number | null>(null);
+  const [editingAccount, setEditingAccount] = useState<FinancialAccount | null>(null);
 
+  // Tổng số dư chỉ được tính lại khi danh sách tài khoản thay đổi.
   const totalBalance = useMemo(
     () => accounts.reduce((total, account) => total + account.initialBalance, 0),
     [accounts],
   );
 
+  // Tải lại danh sách ví, đồng thời phân biệt loading lần đầu với pull-to-refresh.
   const loadAccounts = useCallback(async (mode: "loading" | "refreshing" = "loading") => {
     try {
       if (mode === "refreshing") {
@@ -76,6 +81,7 @@ export default function AccountScreen() {
   }, []);
 
   useEffect(() => {
+    // Chỉ gọi API khi đang ở màn hình danh sách; các màn hình form không cần tải lại dữ liệu.
     if (view !== "wallets") {
       return undefined;
     }
@@ -85,12 +91,25 @@ export default function AccountScreen() {
     return () => clearTimeout(timeoutId);
   }, [loadAccounts, view]);
 
-  async function handleCreateAccount() {
+  function handleEditAccount(account: FinancialAccount) {
+    // Nạp dữ liệu ví vào form dùng chung cho cả tạo mới và cập nhật.
+    setEditingAccount(account);
+    setName(account.name);
+    setType(account.type);
+    setCurrency(account.currency);
+    setInitialBalance(String(account.initialBalance));
+    setOpenAccountMenu(null);
+    setView("create");
+  }
+
+  async function handleSaveAccount() {
+    // Chuẩn hóa dữ liệu nhập trước khi kiểm tra và gửi lên API.
     const trimmedName = name.trim();
     const trimmedCurrency = currency.trim().toUpperCase();
     const normalizedBalance = initialBalance.trim().replace(/,/g, "");
     const parsedBalance = Number(normalizedBalance || "0");
 
+    // Dừng sớm để tránh gửi request khi dữ liệu form chưa hợp lệ.
     if (!trimmedName) {
       Alert.alert("Thiếu tên ví", "Vui lòng nhập tên ví.");
       return;
@@ -107,25 +126,62 @@ export default function AccountScreen() {
     }
 
     try {
+      // Khóa nút LƯU trong thời gian request để tránh gửi trùng dữ liệu.
       setIsSubmitting(true);
-      await financialAccountApi.create({
-        name: trimmedName,
-        type,
-        currency: trimmedCurrency,
-        initialBalance: parsedBalance,
-      });
+      if (editingAccount) {
+        await financialAccountApi.update(editingAccount.id, {
+          name: trimmedName,
+          type,
+          currency: trimmedCurrency,
+          isActive: editingAccount.isActive,
+        });
+      } else {
+        await financialAccountApi.create({
+          name: trimmedName,
+          type,
+          currency: trimmedCurrency,
+          initialBalance: parsedBalance,
+        });
+      }
       setName("");
       setType("Cash");
       setCurrency("VND");
       setInitialBalance("");
+      setEditingAccount(null);
       setView("wallets");
     } catch (error) {
-      Alert.alert("Tạo ví thất bại", error instanceof Error ? error.message : "Không thể tạo ví.");
+      Alert.alert(
+        editingAccount ? "Cập nhật ví thất bại" : "Tạo ví thất bại",
+        error instanceof Error ? error.message : "Không thể lưu ví.",
+      );
     } finally {
       setIsSubmitting(false);
     }
   }
 
+  async function deleteAccount(account: FinancialAccount) {
+    try {
+      await financialAccountApi.delete(account.id);
+      setAccounts((currentAccounts) => currentAccounts.filter((item) => item.id !== account.id));
+    } catch (error) {
+      Alert.alert("Xóa ví thất bại", error instanceof Error ? error.message : "Không thể xóa ví.");
+    }
+  }
+
+  function handleDeleteAccount(account: FinancialAccount) {
+    setOpenAccountMenu(null);
+    Alert.alert("Xóa ví", `Bạn có chắc muốn xóa ví "${account.name}" không?`, [
+      { text: "Hủy", style: "cancel" },
+      { text: "Xóa", style: "destructive", onPress: () => void deleteAccount(account) },
+    ]);
+  }
+
+  function handleCloseForm() {
+    setEditingAccount(null);
+    setView("add-options");
+  }
+
+  // Bước chọn loại ví trước khi mở form chi tiết.
   if (view === "add-options") {
     return (
       <View style={styles.screen}>
@@ -158,16 +214,17 @@ export default function AccountScreen() {
     );
   }
 
+  // Form nhập thông tin ví mới hoặc chỉnh sửa ví hiện tại.
   if (view === "create") {
     return (
       <KeyboardAvoidingView behavior={Platform.select({ ios: "padding", default: undefined })} style={styles.screen}>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           <View style={styles.topBar}>
-            <Pressable onPress={() => setView("add-options")} hitSlop={12}>
+            <Pressable onPress={handleCloseForm} hitSlop={12}>
               <Text style={styles.closeText}>×</Text>
             </Pressable>
-            <Text style={styles.topTitle}>Thêm ví</Text>
-            <Pressable onPress={handleCreateAccount} disabled={isSubmitting}>
+            <Text style={styles.topTitle}>{editingAccount ? "Sửa ví" : "Thêm ví"}</Text>
+            <Pressable onPress={handleSaveAccount} disabled={isSubmitting}>
               <Text style={styles.saveText}>LƯU</Text>
             </Pressable>
           </View>
@@ -222,10 +279,11 @@ export default function AccountScreen() {
               <View style={[styles.field, styles.balanceField]}>
                 <Text style={styles.label}>Số dư ban đầu</Text>
                 <TextInput
+                  editable={!editingAccount}
                   keyboardType="decimal-pad"
                   placeholder="1000000"
                   placeholderTextColor="#6f7682"
-                  style={styles.input}
+                  style={[styles.input, editingAccount && styles.inputDisabled]}
                   value={initialBalance}
                   onChangeText={setInitialBalance}
                 />
@@ -233,8 +291,14 @@ export default function AccountScreen() {
             </View>
 
             <View style={styles.formHint}>
-              <Text style={styles.formHintTitle}>Đang tạo {type === "Savings" ? "Ví tiết kiệm" : "Ví mới"}</Text>
-              <Text style={styles.formHintText}>Thông tin sẽ được lưu vào FinancialAccounts.</Text>
+              <Text style={styles.formHintTitle}>
+                {editingAccount ? "Đang chỉnh sửa ví" : `Đang tạo ${type === "Savings" ? "Ví tiết kiệm" : "Ví mới"}`}
+              </Text>
+              <Text style={styles.formHintText}>
+                {editingAccount
+                  ? "Số dư ban đầu không thay đổi khi cập nhật thông tin ví."
+                  : "Thông tin sẽ được lưu vào FinancialAccounts."}
+              </Text>
             </View>
           </View>
         </ScrollView>
@@ -242,6 +306,7 @@ export default function AccountScreen() {
     );
   }
 
+  // Màn hình mặc định: tổng số dư, danh sách ví và thao tác thêm ví.
   if (view === "wallets") {
     return (
       <View style={styles.screen}>
@@ -272,6 +337,7 @@ export default function AccountScreen() {
           ) : accounts.length === 0 ? (
             <Text style={styles.emptyText}>Chưa có Ví nào. Bấm + để thêm Ví đầu tiên.</Text>
           ) : (
+            // Menu thao tác của từng ví được mở độc lập theo `account.id`.
             accounts.map((account) => (
               <View key={account.id} style={styles.walletCard}>
                 <View style={styles.walletIcon}>
@@ -292,19 +358,18 @@ export default function AccountScreen() {
                 </View>
                 {openAccountMenu === account.id && (
                   <View style={styles.accountMenu}>
-                    {[
-                      "★  Đặt làm ví mặc định",
-                      "⇧  Chia sẻ",
-                      "▣  Tạo icon trên màn hình home",
-                      "↔  Chuyển tiền đến ví khác",
-                      "□  Sửa",
-                      "▱  Lưu trữ",
-                      "♧  Xóa",
-                    ].map((item) => (
-                      <Pressable key={item} style={styles.accountMenuItem} onPress={() => setOpenAccountMenu(null)}>
-                        <Text style={styles.accountMenuText}>{item}</Text>
-                      </Pressable>
-                    ))}
+                    <Pressable style={styles.accountMenuItem} onPress={() => setOpenAccountMenu(null)}>
+                      <Text style={styles.accountMenuText}>★  Đặt làm ví mặc định</Text>
+                    </Pressable>
+                    <Pressable style={styles.accountMenuItem} onPress={() => setOpenAccountMenu(null)}>
+                      <Text style={styles.accountMenuText}>↔  Chuyển tiền đến ví khác</Text>
+                    </Pressable>
+                    <Pressable style={styles.accountMenuItem} onPress={() => handleEditAccount(account)}>
+                      <Text style={styles.accountMenuText}>□  Sửa</Text>
+                    </Pressable>
+                    <Pressable style={styles.accountMenuItem} onPress={() => handleDeleteAccount(account)}>
+                      <Text style={styles.accountMenuText}>♧  Xóa</Text>
+                    </Pressable>
                   </View>
                 )}
               </View>
@@ -455,6 +520,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 13,
   },
+  inputDisabled: { backgroundColor: "#eef0f2", color: "#9698a1" },
   typeGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   typeOption: {
     alignItems: "center",
