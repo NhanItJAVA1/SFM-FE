@@ -1,15 +1,24 @@
 import { CameraCapturedPicture, CameraView, useCameraPermissions } from "expo-camera";
+import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
-import { useRef, useState } from "react";
-import { ActivityIndicator, Alert, Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { useMemo, useRef, useState } from "react";
+import { Alert, Image, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { TransactionDraft, transactionsApi } from "@/api/transactionsApi";
 import { TransactionDraftReview } from "@/components/transaction-draft-review";
+import { useAppTheme } from "@/hooks/use-app-theme";
+import type { AppTheme } from "@/theme/appTheme";
+
+const loadingGif = require("../../assets/loading.gif");
+
+type BillPhoto = Pick<CameraCapturedPicture, "uri">;
 
 export default function ScanBillScreen() {
+  const theme = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const cameraRef = useRef<CameraView>(null);
   const [permission, requestPermission] = useCameraPermissions();
-  const [photo, setPhoto] = useState<CameraCapturedPicture | null>(null);
+  const [photo, setPhoto] = useState<BillPhoto | null>(null);
   const [draft, setDraft] = useState<TransactionDraft | null>(null);
   const [isTakingPicture, setIsTakingPicture] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -31,6 +40,29 @@ export default function ScanBillScreen() {
       Alert.alert("Không chụp được ảnh", error instanceof Error ? error.message : "Vui lòng thử lại.");
     } finally {
       setIsTakingPicture(false);
+    }
+  }
+
+  async function handlePickImage() {
+    try {
+      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+      if (!permissionResult.granted) {
+        Alert.alert("Cần quyền thư viện ảnh", "Vui lòng cho phép SFM truy cập ảnh để tải hóa đơn lên.");
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        allowsEditing: false,
+        mediaTypes: ["images"],
+        quality: 0.8,
+      });
+
+      if (!result.canceled) {
+        setPhoto({ uri: result.assets[0].uri });
+      }
+    } catch (error) {
+      Alert.alert("Không chọn được ảnh", error instanceof Error ? error.message : "Vui lòng thử lại.");
     }
   }
 
@@ -100,9 +132,10 @@ export default function ScanBillScreen() {
             onPress={handleUploadPhoto}
             disabled={isUploading}
           >
-            {isUploading ? <ActivityIndicator color="#fff" /> : <Text style={styles.uploadButtonText}>Gửi về BE</Text>}
+            <Text style={styles.uploadButtonText}>{isUploading ? "Đang phân tích..." : "Gửi về BE"}</Text>
           </Pressable>
         </View>
+        <ScanBillLoadingOverlay visible={isUploading} />
       </View>
     );
   }
@@ -126,6 +159,10 @@ export default function ScanBillScreen() {
           <View style={styles.cornerBottomRight} />
         </View>
 
+        <Pressable style={styles.galleryButton} onPress={handlePickImage} hitSlop={12}>
+          <Text style={styles.galleryButtonIcon}>🖼️</Text>
+        </Pressable>
+
         <Text style={styles.hint}>Đặt hóa đơn trong khung và chụp rõ nội dung</Text>
 
         <Pressable
@@ -140,8 +177,24 @@ export default function ScanBillScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { backgroundColor: "#020204", flex: 1 },
+function ScanBillLoadingOverlay({ visible }: { visible: boolean }) {
+  const theme = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
+
+  if (!visible) {
+    return null;
+  }
+
+  return (
+    <View style={styles.loadingOverlay}>
+      <Image source={loadingGif} style={styles.loadingImage} resizeMode="contain" />
+    </View>
+  );
+}
+
+function createStyles(theme: AppTheme) {
+  return StyleSheet.create({
+  screen: { backgroundColor: theme.screen, flex: 1 },
   camera: { flex: 1 },
   cameraOverlay: {
     bottom: 0,
@@ -154,12 +207,28 @@ const styles = StyleSheet.create({
     top: 0,
   },
   topBar: { alignItems: "center", flexDirection: "row", justifyContent: "space-between", paddingTop: 26 },
-  topAction: { color: "#31c452", fontSize: 17, fontWeight: "800" },
-  topTitle: { color: "#fff", fontSize: 20, fontWeight: "800" },
+  topAction: { color: theme.primary, fontSize: 17, fontWeight: "800" },
+  topTitle: { color: theme.textInverse, fontSize: 20, fontWeight: "800" },
   topSpacer: { width: 58 },
   scanFrame: { alignSelf: "center", height: 390, marginTop: 48, position: "relative", width: "88%" },
+  galleryButton: {
+    alignItems: "center",
+    backgroundColor: theme.overlayStrong,
+    borderColor: "rgba(255,255,255,0.52)",
+    borderRadius: 23,
+    borderWidth: 1,
+    height: 46,
+    justifyContent: "center",
+    marginBottom: 10,
+    marginRight: 4,
+    marginTop: -14,
+    position: "relative",
+    alignSelf: "flex-end",
+    width: 46,
+  },
+  galleryButtonIcon: { fontSize: 22 },
   cornerTopLeft: {
-    borderColor: "#31c452",
+    borderColor: theme.primary,
     borderLeftWidth: 5,
     borderTopWidth: 5,
     height: 54,
@@ -169,7 +238,7 @@ const styles = StyleSheet.create({
     width: 54,
   },
   cornerTopRight: {
-    borderColor: "#31c452",
+    borderColor: theme.primary,
     borderRightWidth: 5,
     borderTopWidth: 5,
     height: 54,
@@ -180,7 +249,7 @@ const styles = StyleSheet.create({
   },
   cornerBottomLeft: {
     borderBottomWidth: 5,
-    borderColor: "#31c452",
+    borderColor: theme.primary,
     borderLeftWidth: 5,
     bottom: 0,
     height: 54,
@@ -190,7 +259,7 @@ const styles = StyleSheet.create({
   },
   cornerBottomRight: {
     borderBottomWidth: 5,
-    borderColor: "#31c452",
+    borderColor: theme.primary,
     borderRightWidth: 5,
     bottom: 0,
     height: 54,
@@ -198,40 +267,40 @@ const styles = StyleSheet.create({
     right: 0,
     width: 54,
   },
-  hint: { color: "#fff", fontSize: 15, fontWeight: "700", lineHeight: 22, marginHorizontal: 18, textAlign: "center" },
+  hint: { color: theme.textInverse, fontSize: 15, fontWeight: "700", lineHeight: 22, marginHorizontal: 18, textAlign: "center" },
   shutterButton: {
     alignItems: "center",
     alignSelf: "center",
     backgroundColor: "rgba(255,255,255,0.24)",
-    borderColor: "#fff",
+    borderColor: theme.textInverse,
     borderRadius: 42,
     borderWidth: 4,
     height: 84,
     justifyContent: "center",
     width: 84,
   },
-  shutterInner: { backgroundColor: "#fff", borderRadius: 30, height: 60, width: 60 },
+  shutterInner: { backgroundColor: theme.textInverse, borderRadius: 30, height: 60, width: 60 },
   permissionScreen: {
     alignItems: "center",
-    backgroundColor: "#020204",
+    backgroundColor: theme.screen,
     flex: 1,
     justifyContent: "center",
     padding: 24,
   },
-  permissionTitle: { color: "#fff", fontSize: 28, fontWeight: "800", marginBottom: 10 },
-  permissionText: { color: "#a5a8b0", fontSize: 16, lineHeight: 23, marginBottom: 24, textAlign: "center" },
+  permissionTitle: { color: theme.text, fontSize: 28, fontWeight: "800", marginBottom: 10 },
+  permissionText: { color: theme.textMuted, fontSize: 16, lineHeight: 23, marginBottom: 24, textAlign: "center" },
   primaryButton: {
     alignItems: "center",
-    backgroundColor: "#31c452",
+    backgroundColor: theme.primary,
     borderRadius: 8,
     minHeight: 50,
     justifyContent: "center",
     paddingHorizontal: 20,
     width: "100%",
   },
-  primaryButtonText: { color: "#fff", fontSize: 16, fontWeight: "800" },
+  primaryButtonText: { color: theme.textInverse, fontSize: 16, fontWeight: "800" },
   secondaryButton: { alignItems: "center", minHeight: 48, justifyContent: "center", marginTop: 10, width: "100%" },
-  secondaryButtonText: { color: "#8f939d", fontSize: 16, fontWeight: "700" },
+  secondaryButtonText: { color: theme.textSubtle, fontSize: 16, fontWeight: "700" },
   previewImage: { height: "100%", width: "100%" },
   previewOverlay: {
     bottom: 0,
@@ -245,11 +314,23 @@ const styles = StyleSheet.create({
   },
   uploadButton: {
     alignItems: "center",
-    backgroundColor: "#31c452",
+    backgroundColor: theme.primary,
     borderRadius: 8,
     minHeight: 54,
     justifyContent: "center",
   },
-  uploadButtonText: { color: "#fff", fontSize: 17, fontWeight: "800" },
+  uploadButtonText: { color: theme.textInverse, fontSize: 17, fontWeight: "800" },
   buttonDisabled: { opacity: 0.65 },
-});
+  loadingOverlay: {
+    alignItems: "center",
+    bottom: 0,
+    justifyContent: "center",
+    left: 0,
+    padding: 24,
+    position: "absolute",
+    right: 0,
+    top: 0,
+  },
+  loadingImage: { height: 132, width: 132 },
+  });
+}

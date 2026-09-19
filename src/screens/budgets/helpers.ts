@@ -51,13 +51,17 @@ export function getBudgetSummary(budget: BudgetWithProgress): BudgetSummary {
   const totalAmount = progress?.amount ?? budget.amount;
   const spentAmount = progress?.spentAmount ?? 0;
   const remainingAmount = progress?.remainingAmount ?? budget.amount;
+  const usedPercentage = totalAmount > 0 ? (spentAmount / totalAmount) * 100 : 0;
+  const alertThreshold = progress?.alertThreshold ?? budget.alertThreshold;
 
   return {
+    alertThreshold,
     daysLeft: getDaysUntilEnd([budget]),
+    isAlert: progress?.isAlert ?? usedPercentage >= alertThreshold,
     remainingAmount,
     spentAmount,
     totalAmount,
-    usedPercentage: totalAmount > 0 ? (spentAmount / totalAmount) * 100 : 0,
+    usedPercentage,
   };
 }
 

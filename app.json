@@ -34,6 +34,19 @@
         }
       ],
       [
+        "expo-image-picker",
+        {
+          "photosPermission": "Cho phép SFM truy cập thư viện ảnh để tải hóa đơn"
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#31c452",
+          "defaultChannel": "budget-alerts"
+        }
+      ],
+      [
         "expo-splash-screen",
         {
           "backgroundColor": "#208AEF",

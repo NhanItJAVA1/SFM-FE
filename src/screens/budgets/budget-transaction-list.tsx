@@ -3,10 +3,11 @@ import { Modal, Pressable, ScrollView, Text, View } from 'react-native';
 
 import type { BudgetDailySpending } from '@/api/budgetsApi';
 
-import { styles } from './budgets.styles';
+import { useBudgetStyles } from './budgets.styles';
 import { formatMoney } from './helpers';
 
 export function BudgetTransactionList({ dailySpendings }: { dailySpendings: BudgetDailySpending[] }) {
+  const styles = useBudgetStyles();
   const [selectedDay, setSelectedDay] = useState<BudgetDailySpending | null>(null);
 
   return (
@@ -28,6 +29,7 @@ export function BudgetTransactionList({ dailySpendings }: { dailySpendings: Budg
 }
 
 function DailyBudgetSpendingRow({ day, onPress }: { day: BudgetDailySpending; onPress: () => void }) {
+  const styles = useBudgetStyles();
   const progressWidth = `${Math.min(Math.max(day.usedPercentage, 0), 100)}%` as `${number}%`;
   const isToday = isSameDate(new Date(day.date), new Date());
 
@@ -65,6 +67,8 @@ function BudgetDayTransactionsSheet({
   day: BudgetDailySpending | null;
   onClose: () => void;
 }) {
+  const styles = useBudgetStyles();
+
   return (
     <Modal animationType="slide" transparent visible={day !== null} onRequestClose={onClose}>
       <Pressable style={styles.bottomSheetOverlay} onPress={onClose}>
