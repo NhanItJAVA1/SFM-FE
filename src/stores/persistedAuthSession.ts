@@ -74,6 +74,24 @@ export async function saveAuthSession(response: LoginResponse) {
   await setStorageItem(sessionStorageKey, JSON.stringify(session));
 }
 
+export async function updatePersistedAuthUser(user: AuthUser) {
+  const rawSession = await getStorageItem(sessionStorageKey);
+
+  if (!rawSession) {
+    setAuthUser(user);
+    return;
+  }
+
+  const session = JSON.parse(rawSession) as PersistedAuthSession;
+  const nextSession: PersistedAuthSession = {
+    ...session,
+    user,
+  };
+
+  applyAuthSession(nextSession);
+  await setStorageItem(sessionStorageKey, JSON.stringify(nextSession));
+}
+
 export async function restoreAuthSession() {
   try {
     const rawSession = await getStorageItem(sessionStorageKey);

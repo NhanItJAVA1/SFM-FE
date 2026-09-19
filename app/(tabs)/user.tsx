@@ -1,27 +1,31 @@
 import { router } from 'expo-router';
+import * as ImagePicker from 'expo-image-picker';
 import { SymbolView } from 'expo-symbols';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Image,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 
 import { authApi } from '@/api/authApi';
 import { CategorySpendingItem, CategorySpendingResponse, transactionsApi } from '@/api/transactionsApi';
+import { usersApi } from '@/api/usersApi';
 import { SpendingDonutChart, SpendingDonutSegment } from '@/components/spending-donut-chart';
 import { useAppTheme } from '@/hooks/use-app-theme';
 import { useThemeMode } from '@/hooks/use-theme-mode';
 import { getAuthRefreshToken, getAuthUser } from '@/stores/authSession';
-import { clearAuthSession } from '@/stores/persistedAuthSession';
+import { clearAuthSession, updatePersistedAuthUser } from '@/stores/persistedAuthSession';
 import { getNextThemeMode, setThemeMode } from '@/stores/themePreference';
 import type { AppTheme } from '@/theme/appTheme';
 
-type UserView = 'menu' | 'manage' | 'spendingStats';
+type UserView = 'menu' | 'manage' | 'editProfile' | 'spendingStats';
 
 const chartColors = ['#8e7cf4', '#ffb14a', '#31c48d', '#f06292', '#60a5fa', '#facc15', '#9ca3af'];
 
@@ -78,14 +82,34 @@ function formatSignedMoney(current: number, compare: number) {
   return `${sign}${formatMoney(Math.abs(difference), 'VND')}`;
 }
 
+function getS3ErrorCode(detail: string) {
+  return detail.match(/<Code>([^<]+)<\/Code>/)?.[1] ?? null;
+}
+
+function getAvatarCacheKey(avatarUrl: string | null | undefined) {
+  return avatarUrl ?? 'avatar-empty';
+}
+
+function getSignedHeaders(uploadUrl: string) {
+  try {
+    return new URL(uploadUrl).searchParams.get('X-Amz-SignedHeaders')?.toLowerCase().split(';') ?? [];
+  } catch {
+    return [];
+  }
+}
+
 export default function UserScreen() {
-  const user = getAuthUser();
+  const [user, setUser] = useState(() => getAuthUser());
   const theme = useAppTheme();
   const themeMode = useThemeMode();
   const isDarkMode = themeMode === 'dark';
   const styles = useMemo(() => createStyles(theme), [theme]);
   const initial = (user?.displayName ?? user?.username ?? 'U').trim().charAt(0).toUpperCase() || 'U';
   const [view, setView] = useState<UserView>('menu');
+  const [editDisplayName, setEditDisplayName] = useState(user?.displayName ?? '');
+  const [editAvatarUrl, setEditAvatarUrl] = useState<string | null>(user?.avatarUrl ?? null);
+  const [selectedAvatar, setSelectedAvatar] = useState<ImagePicker.ImagePickerAsset | null>(null);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const today = new Date();
   const defaultMonth = today.getMonth() + 1;
@@ -162,6 +186,108 @@ export default function UserScreen() {
     setSelectedCategoryKey(key);
   }
 
+  function openEditProfile() {
+    setEditDisplayName(user?.displayName ?? '');
+    setEditAvatarUrl(user?.avatarUrl ?? null);
+    setSelectedAvatar(null);
+    setView('editProfile');
+  }
+
+  async function handlePickAvatar() {
+    const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+    if (!permissionResult.granted) {
+      Alert.alert('Cần quyền truy cập ảnh', 'Vui lòng cấp quyền thư viện ảnh để đổi avatar.');
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      allowsEditing: true,
+      aspect: [1, 1],
+      mediaTypes: ['images'],
+      quality: 0.85,
+    });
+
+    if (result.canceled) {
+      return;
+    }
+
+    const asset = result.assets[0];
+    setSelectedAvatar(asset);
+    setEditAvatarUrl(asset.uri);
+  }
+
+  async function uploadAvatar(asset: ImagePicker.ImagePickerAsset) {
+    const imageResponse = await fetch(asset.uri);
+    const imageBlob = await imageResponse.blob();
+    const contentType = imageBlob.type || asset.mimeType || 'image/jpeg';
+    const extension = contentType.split('/')[1] === 'jpeg' ? 'jpg' : contentType.split('/')[1] || 'jpg';
+    const fileName = asset.fileName ?? `avatar.${extension}`;
+    const uploadUrlResponse = await usersApi.createAvatarUploadUrl({ contentType, fileName });
+    const signedHeaders = getSignedHeaders(uploadUrlResponse.data.uploadUrl);
+    const headers = signedHeaders.includes('content-type') ? { 'Content-Type': contentType } : undefined;
+    const s3Response = await fetch(uploadUrlResponse.data.uploadUrl, {
+      method: 'PUT',
+      headers,
+      body: imageBlob,
+    });
+
+    if (!s3Response.ok) {
+      const detail = await s3Response.text();
+      const s3ErrorCode = getS3ErrorCode(detail);
+      const statusText = s3Response.statusText ? ` ${s3Response.statusText}` : '';
+      console.warn('Upload avatar lên S3 thất bại', {
+        contentType,
+        detail,
+        fileName,
+        s3ErrorCode,
+        signedHeaders,
+        status: s3Response.status,
+        statusText: s3Response.statusText,
+      });
+      throw new Error(
+        s3ErrorCode
+          ? `Upload S3 lỗi ${s3Response.status}: ${s3ErrorCode}.`
+          : `Upload S3 lỗi ${s3Response.status}${statusText}.`,
+      );
+    }
+
+    return uploadUrlResponse.data.publicUrl;
+  }
+
+  async function handleSaveProfile() {
+    if (!user) {
+      Alert.alert('Chưa có người dùng', 'Vui lòng đăng nhập lại để cập nhật hồ sơ.');
+      return;
+    }
+
+    try {
+      setIsSavingProfile(true);
+      const nextAvatarUrl = selectedAvatar ? await uploadAvatar(selectedAvatar) : editAvatarUrl;
+      const nextDisplayName = editDisplayName.trim() || null;
+
+      await usersApi.update(user.id, {
+        avatarUrl: nextAvatarUrl,
+        displayName: nextDisplayName,
+        email: user.email,
+      });
+
+      const nextUserResponse = await usersApi.get(user.id);
+      const nextUser = nextUserResponse.data;
+
+      await updatePersistedAuthUser(nextUser);
+      setUser(nextUser);
+      setSelectedAvatar(null);
+      setView('menu');
+      Alert.alert('Đã cập nhật', 'Hồ sơ người dùng đã được lưu.');
+    } catch (error) {
+      console.warn('Không lưu được hồ sơ', error);
+      Alert.alert('Không lưu được hồ sơ', error instanceof Error ? error.message : 'Vui lòng thử lại sau.');
+    } finally {
+      setIsSavingProfile(false);
+    }
+  }
+
   async function handleLogout() {
     try {
       setIsLoggingOut(true);
@@ -195,7 +321,16 @@ export default function UserScreen() {
         <View style={styles.manageContent}>
           <View style={styles.profileMiniCard}>
             <View style={styles.smallAvatar}>
-              <Text style={styles.smallAvatarText}>{initial}</Text>
+              {user?.avatarUrl ? (
+                <Image
+                  key={getAvatarCacheKey(user.avatarUrl)}
+                  source={{ uri: user.avatarUrl }}
+                  style={styles.smallAvatarImage}
+                  onError={(event) => console.warn('Không tải được avatar nhỏ', event.nativeEvent)}
+                />
+              ) : (
+                <Text style={styles.smallAvatarText}>{initial}</Text>
+              )}
             </View>
             <View style={styles.manageTextGroup}>
               <Text style={styles.manageTitle}>{user?.username ?? 'Người dùng'}</Text>
@@ -211,6 +346,67 @@ export default function UserScreen() {
             {isLoggingOut ? <ActivityIndicator color={theme.textInverse} /> : <Text style={styles.logoutButtonText}>Đăng xuất</Text>}
           </Pressable>
         </View>
+      </View>
+    );
+  }
+
+  if (view === 'editProfile') {
+    return (
+      <View style={styles.screen}>
+        <View style={styles.walletHeader}>
+          <Pressable onPress={() => setView('menu')} hitSlop={12}>
+            <Text style={styles.backText}>‹ Cá nhân</Text>
+          </Pressable>
+          <Text style={styles.topTitle}>Chỉnh sửa hồ sơ</Text>
+          <View style={styles.topSpacer} />
+        </View>
+
+        <ScrollView contentContainerStyle={styles.editProfileContent}>
+          <Pressable style={styles.editAvatarButton} onPress={handlePickAvatar}>
+            {editAvatarUrl ? (
+              <Image
+                key={getAvatarCacheKey(editAvatarUrl)}
+                source={{ uri: editAvatarUrl }}
+                style={styles.editAvatarImage}
+                onError={(event) => console.warn('Không tải được avatar edit', event.nativeEvent)}
+              />
+            ) : (
+              <Text style={styles.editAvatarText}>{initial}</Text>
+            )}
+            <View style={styles.avatarChangeBadge}>
+              <Text style={styles.avatarChangeText}>Đổi ảnh</Text>
+            </View>
+          </Pressable>
+
+          <View style={styles.field}>
+            <Text style={styles.label}>Tên hiển thị</Text>
+            <TextInput
+              value={editDisplayName}
+              onChangeText={setEditDisplayName}
+              placeholder="Nhập tên hiển thị"
+              placeholderTextColor={theme.inputPlaceholder}
+              style={styles.input}
+            />
+          </View>
+
+          <View style={styles.profileInfoBox}>
+            <Text style={styles.profileInfoLabel}>Tài khoản</Text>
+            <Text style={styles.profileInfoValue}>{user?.username ?? 'Người dùng'}</Text>
+            <Text style={styles.profileInfoSubValue}>{user?.email ?? 'Chưa có email'}</Text>
+          </View>
+
+          <Pressable
+            style={[styles.primaryButton, isSavingProfile && styles.buttonDisabled]}
+            onPress={handleSaveProfile}
+            disabled={isSavingProfile}
+          >
+            {isSavingProfile ? (
+              <ActivityIndicator color={theme.textInverse} />
+            ) : (
+              <Text style={styles.primaryButtonText}>Lưu thay đổi</Text>
+            )}
+          </Pressable>
+        </ScrollView>
       </View>
     );
   }
@@ -366,19 +562,28 @@ export default function UserScreen() {
       </View>
 
       <View style={styles.profileCard}>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>{initial}</Text>
-        </View>
-        <Text style={styles.username}>{user?.username ?? 'Người dùng'}</Text>
+        <Pressable style={styles.avatar} onPress={openEditProfile} accessibilityLabel="Chỉnh sửa hồ sơ">
+          {user?.avatarUrl ? (
+            <Image
+              key={getAvatarCacheKey(user.avatarUrl)}
+              source={{ uri: user.avatarUrl }}
+              style={styles.avatarImage}
+              onError={(event) => console.warn('Không tải được avatar', event.nativeEvent)}
+            />
+          ) : (
+            <Text style={styles.avatarText}>{initial}</Text>
+          )}
+        </Pressable>
+        <Text style={styles.username}>{user?.displayName ?? user?.username ?? 'Người dùng'}</Text>
         <Text style={styles.email}>{user?.email ?? 'Chưa có email'}</Text>
 
         <View style={styles.divider} />
 
-        <Pressable style={styles.manageRow} onPress={() => setView('manage')}>
+        <Pressable style={styles.manageRow} onPress={openEditProfile}>
           <Text style={styles.manageIcon}>♙</Text>
           <View style={styles.manageTextGroup}>
-            <Text style={styles.manageTitle}>Quản lý người dùng</Text>
-            <Text style={styles.manageSubtitle}>Hồ sơ cá nhân</Text>
+            <Text style={styles.manageTitle}>Chỉnh sửa hồ sơ</Text>
+            <Text style={styles.manageSubtitle}>Avatar và tên hiển thị</Text>
           </View>
           <Text style={styles.chevron}>›</Text>
         </Pressable>
@@ -394,6 +599,12 @@ export default function UserScreen() {
         <Pressable style={styles.menuRow} onPress={() => setView('spendingStats')}>
           <Text style={styles.menuIcon}>◷</Text>
           <Text style={styles.menuText}>Thống kê chi tiêu</Text>
+          <Text style={styles.chevron}>›</Text>
+        </Pressable>
+        <View style={styles.menuDivider} />
+        <Pressable style={styles.menuRow} onPress={() => setView('manage')}>
+          <Text style={styles.menuIcon}>⚙</Text>
+          <Text style={styles.menuText}>Tài khoản</Text>
           <Text style={styles.chevron}>›</Text>
         </Pressable>
       </View>
@@ -432,6 +643,7 @@ function createStyles(theme: AppTheme) {
     marginBottom: 16,
     width: 88,
   },
+  avatarImage: { borderRadius: 44, height: 88, width: 88 },
   avatarText: { color: theme.textInverse, fontSize: 44, fontWeight: '500' },
   username: { color: theme.text, fontSize: 23, fontWeight: '600', textAlign: 'center' },
   email: { color: theme.textMuted, fontSize: 17, marginTop: 6, textAlign: 'center' },
@@ -444,7 +656,44 @@ function createStyles(theme: AppTheme) {
   manageContent: { gap: 18, padding: 20 },
   profileMiniCard: { alignItems: 'center', backgroundColor: theme.card, borderRadius: 8, flexDirection: 'row', minHeight: 84, padding: 18 },
   smallAvatar: { alignItems: 'center', backgroundColor: theme.avatar, borderRadius: 24, height: 48, justifyContent: 'center', marginRight: 14, width: 48 },
+  smallAvatarImage: { borderRadius: 24, height: 48, width: 48 },
   smallAvatarText: { color: theme.textInverse, fontSize: 24, fontWeight: '700' },
+  editProfileContent: { gap: 18, padding: 20, paddingBottom: 96 },
+  editAvatarButton: {
+    alignItems: 'center',
+    alignSelf: 'center',
+    backgroundColor: theme.avatar,
+    borderRadius: 58,
+    height: 116,
+    justifyContent: 'center',
+    marginBottom: 8,
+    overflow: 'hidden',
+    width: 116,
+  },
+  editAvatarImage: { height: 116, width: 116 },
+  editAvatarText: { color: theme.textInverse, fontSize: 52, fontWeight: '700' },
+  avatarChangeBadge: {
+    alignItems: 'center',
+    backgroundColor: theme.overlayStrong,
+    bottom: 0,
+    height: 34,
+    justifyContent: 'center',
+    left: 0,
+    position: 'absolute',
+    right: 0,
+  },
+  avatarChangeText: { color: theme.textInverse, fontSize: 12, fontWeight: '800' },
+  profileInfoBox: {
+    backgroundColor: theme.card,
+    borderColor: theme.border,
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 4,
+    padding: 14,
+  },
+  profileInfoLabel: { color: theme.textMuted, fontSize: 12, fontWeight: '800' },
+  profileInfoValue: { color: theme.text, fontSize: 16, fontWeight: '800' },
+  profileInfoSubValue: { color: theme.textMuted, fontSize: 14, fontWeight: '600' },
   logoutButton: { alignItems: 'center', backgroundColor: theme.danger, borderRadius: 8, justifyContent: 'center', minHeight: 52 },
   logoutButtonText: { color: theme.textInverse, fontSize: 16, fontWeight: '700' },
   chevron: { color: theme.chevron, fontSize: 40, lineHeight: 42 },
