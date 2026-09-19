@@ -22,6 +22,9 @@ const accountTypeMeta: Record<FinancialAccount["type"], { color: string; icon: s
   Savings: { color: "#d9962b", icon: "◎", label: "Saving" },
 };
 
+const maxChartBarHeight = 58;
+const minChartBarHeight = 6;
+
 function useHomeStyles() {
   const theme = useAppTheme();
 
@@ -198,7 +201,6 @@ export default function HomeScreen() {
     return Array.from({ length: daysInMonth }, (_, i) => spendingMap.get(i + 1) || 0);
   }, [monthTransactions, monthEnd]);
 
-  const maxDailySpending = useMemo(() => Math.max(...dailySpending, 2000000), [dailySpending]);
   // Lọc dữ liệu các ngày có giao dịch (tối đa 15 ngày)
   const activeDaysData = useMemo(() => {
     const data = dailySpending
@@ -211,6 +213,10 @@ export default function HomeScreen() {
     }
     return data;
   }, [dailySpending]);
+  const maxDailySpending = useMemo(
+    () => Math.max(...activeDaysData.map((item) => item.amount), 1),
+    [activeDaysData],
+  );
 
   const displayName = user?.displayName ?? user?.username ?? "bạn";
 
@@ -329,20 +335,31 @@ export default function HomeScreen() {
 
               {/* Biểu đồ cột chi tiêu theo ngày */}
               <View style={styles.chartWrapper}>
-                <View style={styles.dailyChartContainer}>
-                  {activeDaysData.map((item, index) => (
-                    <View key={index} style={styles.dailyBarWrapper}>
-                      <Text style={styles.barAmountText}>{formatShortMoney(item.amount)}</Text>
-                      <View
-                        style={[
-                          styles.dailyBar,
-                          { height: `${(item.amount / maxDailySpending) * 100}%` },
-                        ]}
-                      />
-                      <Text style={styles.xAxisLabel}>{item.day}</Text>
-                    </View>
-                  ))}
-                </View>
+                {activeDaysData.length === 0 ? (
+                  <View style={styles.chartEmptyState}>
+                    <Text style={styles.chartEmptyText}>Chưa có chi tiêu trong tháng</Text>
+                  </View>
+                ) : (
+                  <View style={styles.dailyChartContainer}>
+                    {activeDaysData.map((item) => (
+                      <View key={item.day} style={styles.dailyBarWrapper}>
+                        <Text style={styles.barAmountText}>{formatShortMoney(item.amount)}</Text>
+                        <View
+                          style={[
+                            styles.dailyBar,
+                            {
+                              height: Math.max(
+                                minChartBarHeight,
+                                (item.amount / maxDailySpending) * maxChartBarHeight,
+                              ),
+                            },
+                          ]}
+                        />
+                        <Text style={styles.xAxisLabel}>{item.day}</Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
               </View>
               <Text style={styles.chartFooter}>Ngày trong tháng</Text>
             </View>
@@ -680,6 +697,14 @@ function createStyles(theme: AppTheme) {
     height: 100,
     marginBottom: 20,
   },
+  chartEmptyState: {
+    alignItems: "center",
+    backgroundColor: theme.cardAlt,
+    borderRadius: 8,
+    flex: 1,
+    justifyContent: "center",
+  },
+  chartEmptyText: { color: theme.textSubtle, fontSize: 12, fontWeight: "700" },
   dailyChartContainer: {
     flex: 1,
     flexDirection: "row",
