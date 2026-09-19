@@ -15,6 +15,8 @@ import {
 } from "react-native";
 
 import { AccountType, FinancialAccount, financialAccountApi } from "@/api/financialAccountApi";
+import { useAppTheme } from "@/hooks/use-app-theme";
+import type { AppTheme } from "@/theme/appTheme";
 
 const accountTypes: { label: string; value: AccountType }[] = [
   { label: "Cash", value: "Cash" },
@@ -42,6 +44,8 @@ function formatMoney(value: number, currency: string) {
 }
 
 export default function AccountScreen() {
+  const theme = useAppTheme();
+  const styles = useMemo(() => createStyles(theme), [theme]);
   // `view` điều khiển ba trạng thái màn hình: danh sách ví, chọn loại ví và form tạo ví.
   const [view, setView] = useState<AccountView>("wallets");
   const [accounts, setAccounts] = useState<FinancialAccount[]>([]);
@@ -234,7 +238,7 @@ export default function AccountScreen() {
               <Text style={styles.label}>Tên Ví</Text>
               <TextInput
                 placeholder="Cash wallet"
-                placeholderTextColor="#6f7682"
+                placeholderTextColor={theme.inputPlaceholder}
                 style={styles.input}
                 value={name}
                 onChangeText={setName}
@@ -269,7 +273,7 @@ export default function AccountScreen() {
                   autoCapitalize="characters"
                   maxLength={3}
                   placeholder="VND"
-                  placeholderTextColor="#6f7682"
+                  placeholderTextColor={theme.inputPlaceholder}
                   style={styles.input}
                   value={currency}
                   onChangeText={setCurrency}
@@ -282,7 +286,7 @@ export default function AccountScreen() {
                   editable={!editingAccount}
                   keyboardType="decimal-pad"
                   placeholder="1000000"
-                  placeholderTextColor="#6f7682"
+                  placeholderTextColor={theme.inputPlaceholder}
                   style={[styles.input, editingAccount && styles.inputDisabled]}
                   value={initialBalance}
                   onChangeText={setInitialBalance}
@@ -324,7 +328,7 @@ export default function AccountScreen() {
         <ScrollView
           contentContainerStyle={styles.walletList}
           refreshControl={
-            <RefreshControl refreshing={isRefreshing} onRefresh={() => loadAccounts("refreshing")} tintColor="#fff" />
+            <RefreshControl refreshing={isRefreshing} onRefresh={() => loadAccounts("refreshing")} tintColor={theme.text} />
           }
         >
           <View style={styles.balanceSummary}>
@@ -333,7 +337,7 @@ export default function AccountScreen() {
           </View>
 
           {isLoading ? (
-            <ActivityIndicator color="#31c452" />
+            <ActivityIndicator color={theme.primary} />
           ) : accounts.length === 0 ? (
             <Text style={styles.emptyText}>Chưa có Ví nào. Bấm + để thêm Ví đầu tiên.</Text>
           ) : (
@@ -401,8 +405,9 @@ export default function AccountScreen() {
   return null;
 }
 
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: "#f7f8fa" },
+function createStyles(theme: AppTheme) {
+  return StyleSheet.create({
+  screen: { flex: 1, backgroundColor: theme.screen },
   content: { padding: 24, paddingBottom: 96 },
   walletHeader: {
     alignItems: "center",
@@ -412,10 +417,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 56,
   },
-  backText: { color: "#31c452", fontSize: 17, fontWeight: "700" },
-  closeText: { color: "#252a33", fontSize: 32, fontWeight: "300", lineHeight: 34 },
-  saveText: { color: "#252a33", fontSize: 14, fontWeight: "800" },
-  topTitle: { color: "#171a21", fontSize: 22, fontWeight: "700" },
+  backText: { color: theme.primary, fontSize: 17, fontWeight: "700" },
+  closeText: { color: theme.text, fontSize: 32, fontWeight: "300", lineHeight: 34 },
+  saveText: { color: theme.text, fontSize: 14, fontWeight: "800" },
+  topTitle: { color: theme.text, fontSize: 22, fontWeight: "700" },
   topBar: {
     alignItems: "center",
     flexDirection: "row",
@@ -425,16 +430,16 @@ const styles = StyleSheet.create({
   },
   topSpacer: { width: 82 },
   headerTools: { alignItems: "center", flexDirection: "row", gap: 22, width: 72 },
-  filterIcon: { color: "#252a33", fontSize: 21, transform: [{ rotate: "90deg" }] },
-  searchIcon: { color: "#252a33", fontSize: 27 },
+  filterIcon: { color: theme.text, fontSize: 21, transform: [{ rotate: "90deg" }] },
+  searchIcon: { color: theme.text, fontSize: 27 },
   walletList: { gap: 14, padding: 20, paddingBottom: 96 },
   balanceSummary: { paddingBottom: 0, paddingTop: 0 },
-  summaryLabel: { color: "#9698a1", fontSize: 14, marginBottom: 4 },
-  summaryValue: { color: "#171a21", fontSize: 26, fontWeight: "700" },
+  summaryLabel: { color: theme.textMuted, fontSize: 14, marginBottom: 4 },
+  summaryValue: { color: theme.text, fontSize: 26, fontWeight: "700" },
   walletCard: {
     alignItems: "center",
-    backgroundColor: "#fff",
-    borderColor: "#e5e8ed",
+    backgroundColor: theme.card,
+    borderColor: theme.border,
     borderRadius: 8,
     borderWidth: 1,
     flexDirection: "row",
@@ -442,41 +447,41 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   walletCardOpen: {
-    borderColor: "#31c452",
+    borderColor: theme.primary,
     elevation: 8,
     shadowOpacity: 0.1,
     zIndex: 10,
   },
   walletIcon: {
     alignItems: "center",
-    backgroundColor: "#f3f5f7",
-    borderColor: "#e1e5e9",
+    backgroundColor: theme.cardAlt,
+    borderColor: theme.border,
     borderRadius: 20,
     borderWidth: 1,
     justifyContent: "center",
     marginRight: 14,
     width: 40,
   },
-  walletIconText: { color: "#252a33", fontSize: 20 },
+  walletIconText: { color: theme.text, fontSize: 20 },
   walletInfo: { flex: 1 },
-  walletName: { color: "#252a33", fontSize: 18, fontWeight: "700" },
-  walletType: { color: "#9698a1", fontSize: 14, marginTop: 3 },
-  walletBalance: { color: "#252a33", fontSize: 16, fontWeight: "700" },
+  walletName: { color: theme.text, fontSize: 18, fontWeight: "700" },
+  walletType: { color: theme.textMuted, fontSize: 14, marginTop: 3 },
+  walletBalance: { color: theme.text, fontSize: 16, fontWeight: "700" },
   walletRight: { alignItems: "flex-end", gap: 12 },
   moreButton: {
     alignItems: "center",
-    backgroundColor: "#f3f5f7",
-    borderColor: "#e1e5e9",
+    backgroundColor: theme.cardAlt,
+    borderColor: theme.border,
     borderRadius: 12,
     borderWidth: 1,
     height: 24,
     justifyContent: "center",
     width: 24,
   },
-  moreText: { color: "#252a33", fontSize: 22, lineHeight: 17 },
+  moreText: { color: theme.text, fontSize: 22, lineHeight: 17 },
   accountMenu: {
-    backgroundColor: "#fff",
-    borderColor: "#e5e8ed",
+    backgroundColor: theme.sheet,
+    borderColor: theme.border,
     borderRadius: 10,
     borderWidth: 1,
     elevation: 12,
@@ -491,12 +496,12 @@ const styles = StyleSheet.create({
     zIndex: 20,
   },
   accountMenuItem: { minHeight: 42, justifyContent: "center", paddingHorizontal: 16 },
-  accountMenuItemPressed: { backgroundColor: "#f1f8f2" },
-  accountMenuText: { color: "#252a33", fontSize: 15, lineHeight: 19 },
-  deleteMenuText: { color: "#d64545" },
+  accountMenuItemPressed: { backgroundColor: theme.primaryPressed },
+  accountMenuText: { color: theme.text, fontSize: 15, lineHeight: 19 },
+  deleteMenuText: { color: theme.dangerText },
   floatingAddButton: {
     alignItems: "center",
-    backgroundColor: "#28bd4e",
+    backgroundColor: theme.primary,
     borderRadius: 28,
     bottom: 34,
     elevation: 8,
@@ -510,9 +515,9 @@ const styles = StyleSheet.create({
     shadowRadius: 5,
     width: 56,
   },
-  floatingAddText: { color: "#fff", fontSize: 32, fontWeight: "300", lineHeight: 36 },
-  addOptionsPanel: { backgroundColor: "#fff", marginTop: 322, padding: 16 },
-  addOptionsTitle: { color: "#252a33", fontSize: 20, fontWeight: "800", marginBottom: 28 },
+  floatingAddText: { color: theme.textInverse, fontSize: 32, fontWeight: "300", lineHeight: 36 },
+  addOptionsPanel: { backgroundColor: theme.card, marginTop: 322, padding: 16 },
+  addOptionsTitle: { color: theme.text, fontSize: 20, fontWeight: "800", marginBottom: 28 },
   addOptionsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 5 },
   addOption: {
     borderRadius: 8,
@@ -522,38 +527,38 @@ const styles = StyleSheet.create({
     padding: 14,
     width: "49%",
   },
-  addOptionTitle: { color: "#fff", fontSize: 19, fontWeight: "800", maxWidth: 120 },
+  addOptionTitle: { color: theme.textInverse, fontSize: 19, fontWeight: "800", maxWidth: 120 },
   addOptionIcon: { alignSelf: "flex-end", color: "#ffffff55", fontSize: 42, lineHeight: 42 },
   formHint: {
-    backgroundColor: "#fff",
-    borderColor: "#e5e8ed",
+    backgroundColor: theme.card,
+    borderColor: theme.border,
     borderRadius: 8,
     borderWidth: 1,
     marginTop: 10,
     padding: 16,
   },
-  formHintTitle: { color: "#252a33", fontSize: 15, fontWeight: "700" },
-  formHintText: { color: "#9698a1", fontSize: 13, marginTop: 5 },
-  emptyText: { color: "#9698a1", fontSize: 16, lineHeight: 23, marginTop: 18, textAlign: "center" },
+  formHintTitle: { color: theme.text, fontSize: 15, fontWeight: "700" },
+  formHintText: { color: theme.textMuted, fontSize: 13, marginTop: 5 },
+  emptyText: { color: theme.textMuted, fontSize: 16, lineHeight: 23, marginTop: 18, textAlign: "center" },
   form: { gap: 18, paddingTop: 28 },
   field: { gap: 8 },
-  label: { color: "#f4f6f8", fontSize: 14, fontWeight: "700" },
+  label: { color: theme.text, fontSize: 14, fontWeight: "700" },
   input: {
-    backgroundColor: "#fff",
-    borderColor: "#dfe3e8",
+    backgroundColor: theme.card,
+    borderColor: theme.border,
     borderRadius: 8,
     borderWidth: 1,
-    color: "#252a33",
+    color: theme.text,
     fontSize: 16,
     paddingHorizontal: 14,
     paddingVertical: 13,
   },
-  inputDisabled: { backgroundColor: "#eef0f2", color: "#9698a1" },
+  inputDisabled: { backgroundColor: theme.cardAlt, color: theme.textMuted },
   typeGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   typeOption: {
     alignItems: "center",
-    backgroundColor: "#fff",
-    borderColor: "#dfe3e8",
+    backgroundColor: theme.card,
+    borderColor: theme.border,
     borderRadius: 8,
     borderWidth: 1,
     justifyContent: "center",
@@ -561,11 +566,12 @@ const styles = StyleSheet.create({
     minWidth: 104,
     paddingHorizontal: 14,
   },
-  typeOptionSelected: { backgroundColor: "#31c452", borderColor: "#31c452" },
-  typeOptionText: { color: "#c8cbd2", fontWeight: "700" },
-  typeOptionTextSelected: { color: "#fff" },
+  typeOptionSelected: { backgroundColor: theme.primary, borderColor: theme.primary },
+  typeOptionText: { color: theme.textSoft, fontWeight: "700" },
+  typeOptionTextSelected: { color: theme.textInverse },
   row: { flexDirection: "row", gap: 12 },
   currencyField: { flex: 0.8 },
   balanceField: { flex: 1.4 },
   buttonDisabled: { opacity: 0.7 },
-});
+  });
+}
