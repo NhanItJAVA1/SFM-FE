@@ -339,7 +339,10 @@ export default function AccountScreen() {
           ) : (
             // Menu thao tác của từng ví được mở độc lập theo `account.id`.
             accounts.map((account) => (
-              <View key={account.id} style={styles.walletCard}>
+              <View
+                key={account.id}
+                style={[styles.walletCard, openAccountMenu === account.id && styles.walletCardOpen]}
+              >
                 <View style={styles.walletIcon}>
                   <Text style={styles.walletIconText}>▣</Text>
                 </View>
@@ -353,22 +356,34 @@ export default function AccountScreen() {
                     style={styles.moreButton}
                     onPress={() => setOpenAccountMenu(openAccountMenu === account.id ? null : account.id)}
                   >
-                    <Text style={styles.moreText}>•••</Text>
+                    <Text style={styles.moreText}>⋯</Text>
                   </Pressable>
                 </View>
                 {openAccountMenu === account.id && (
                   <View style={styles.accountMenu}>
-                    <Pressable style={styles.accountMenuItem} onPress={() => setOpenAccountMenu(null)}>
-                      <Text style={styles.accountMenuText}>★  Đặt làm ví mặc định</Text>
+                    <Pressable
+                      style={({ pressed }) => [styles.accountMenuItem, pressed && styles.accountMenuItemPressed]}
+                      onPress={() => setOpenAccountMenu(null)}
+                    >
+                      <Text style={styles.accountMenuText}>★ Đặt làm ví mặc định</Text>
                     </Pressable>
-                    <Pressable style={styles.accountMenuItem} onPress={() => setOpenAccountMenu(null)}>
-                      <Text style={styles.accountMenuText}>↔  Chuyển tiền đến ví khác</Text>
+                    <Pressable
+                      style={({ pressed }) => [styles.accountMenuItem, pressed && styles.accountMenuItemPressed]}
+                      onPress={() => setOpenAccountMenu(null)}
+                    >
+                      <Text style={styles.accountMenuText}>↔ Chuyển tiền đến ví khác</Text>
                     </Pressable>
-                    <Pressable style={styles.accountMenuItem} onPress={() => handleEditAccount(account)}>
-                      <Text style={styles.accountMenuText}>□  Sửa</Text>
+                    <Pressable
+                      style={({ pressed }) => [styles.accountMenuItem, pressed && styles.accountMenuItemPressed]}
+                      onPress={() => handleEditAccount(account)}
+                    >
+                      <Text style={styles.accountMenuText}>□ Sửa</Text>
                     </Pressable>
-                    <Pressable style={styles.accountMenuItem} onPress={() => handleDeleteAccount(account)}>
-                      <Text style={styles.accountMenuText}>♧  Xóa</Text>
+                    <Pressable
+                      style={({ pressed }) => [styles.accountMenuItem, pressed && styles.accountMenuItemPressed]}
+                      onPress={() => handleDeleteAccount(account)}
+                    >
+                      <Text style={[styles.accountMenuText, styles.deleteMenuText]}>♧ Xóa</Text>
                     </Pressable>
                   </View>
                 )}
@@ -426,11 +441,18 @@ const styles = StyleSheet.create({
     minHeight: 78,
     padding: 16,
   },
+  walletCardOpen: {
+    borderColor: "#31c452",
+    elevation: 8,
+    shadowOpacity: 0.1,
+    zIndex: 10,
+  },
   walletIcon: {
     alignItems: "center",
-    backgroundColor: "#e8edf2",
+    backgroundColor: "#f3f5f7",
+    borderColor: "#e1e5e9",
     borderRadius: 20,
-    height: 40,
+    borderWidth: 1,
     justifyContent: "center",
     marginRight: 14,
     width: 40,
@@ -443,29 +465,35 @@ const styles = StyleSheet.create({
   walletRight: { alignItems: "flex-end", gap: 12 },
   moreButton: {
     alignItems: "center",
-    borderColor: "#d9d9dc",
+    backgroundColor: "#f3f5f7",
+    borderColor: "#e1e5e9",
     borderRadius: 12,
-    borderWidth: 1.5,
+    borderWidth: 1,
     height: 24,
     justifyContent: "center",
     width: 24,
   },
-  moreText: { color: "#fff", fontSize: 13, letterSpacing: 1 },
+  moreText: { color: "#252a33", fontSize: 22, lineHeight: 17 },
   accountMenu: {
     backgroundColor: "#fff",
-    bottom: -300,
-    elevation: 5,
-    minWidth: 220,
-    paddingVertical: 8,
+    borderColor: "#e5e8ed",
+    borderRadius: 10,
+    borderWidth: 1,
+    elevation: 12,
+    minWidth: 236,
+    paddingVertical: 6,
     position: "absolute",
-    right: 0,
+    right: 8,
     shadowColor: "#000",
     shadowOpacity: 0.16,
     shadowRadius: 8,
-    zIndex: 3,
+    top: 62,
+    zIndex: 20,
   },
-  accountMenuItem: { minHeight: 38, justifyContent: "center", paddingHorizontal: 16 },
+  accountMenuItem: { minHeight: 42, justifyContent: "center", paddingHorizontal: 16 },
+  accountMenuItemPressed: { backgroundColor: "#f1f8f2" },
   accountMenuText: { color: "#252a33", fontSize: 15, lineHeight: 19 },
+  deleteMenuText: { color: "#d64545" },
   floatingAddButton: {
     alignItems: "center",
     backgroundColor: "#28bd4e",
