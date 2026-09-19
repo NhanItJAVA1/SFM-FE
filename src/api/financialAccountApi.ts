@@ -21,6 +21,10 @@ export type FinancialAccount = {
   updatedAt: string | null;
 };
 
+export function getFinancialAccountBalance(account: FinancialAccount) {
+  return account.initialBalance;
+}
+
 export const financialAccountApi = {
   list: () => axiosClient.get<FinancialAccount[]>('/accounts'),
   create: (payload: CreateFinancialAccountPayload) => axiosClient.post('/accounts', payload),

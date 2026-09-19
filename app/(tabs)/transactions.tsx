@@ -4,7 +4,9 @@ import { ActivityIndicator, Alert, Pressable, RefreshControl, ScrollView, StyleS
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { FinancialAccount, financialAccountApi } from "@/api/financialAccountApi";
+import { useAppTheme } from "@/hooks/use-app-theme";
 import { Transaction, TransactionType, transactionApi } from "@/api/transactionsApi";
+import type { AppTheme } from "@/theme/appTheme";
 
 type Period = "previous" | "current" | "future";
 
@@ -20,6 +22,12 @@ const typeLabels: Record<TransactionType, string> = {
   TransferIn: "Chuyển vào",
   TransferOut: "Chuyển ra",
 };
+
+function useTransactionStyles() {
+  const theme = useAppTheme();
+
+  return useMemo(() => createStyles(theme), [theme]);
+}
 
 function formatMoney(amount: number, currency = "VND") {
   return new Intl.NumberFormat("vi-VN", { currency, maximumFractionDigits: 0, style: "currency" }).format(amount);
@@ -38,6 +46,8 @@ function isPositive(type: TransactionType) {
 }
 
 export default function TransactionsScreen() {
+  const theme = useAppTheme();
+  const styles = useTransactionStyles();
   const [period, setPeriod] = useState<Period>("current");
   const [accounts, setAccounts] = useState<FinancialAccount[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -112,7 +122,7 @@ export default function TransactionsScreen() {
       <ScrollView
         contentContainerStyle={styles.content}
         refreshControl={
-          <RefreshControl refreshing={isRefreshing} onRefresh={() => loadData(true)} tintColor="#31c452" />
+          <RefreshControl refreshing={isRefreshing} onRefresh={() => loadData(true)} tintColor={theme.primary} />
         }
         showsVerticalScrollIndicator={false}
       >
@@ -176,12 +186,12 @@ export default function TransactionsScreen() {
           <Text style={styles.availableBalance}>Số dư khả dụng</Text>
           <Text style={styles.availableValue}>{formatMoney(summary.net, currency)}</Text>
           <View style={styles.summaryGrid}>
-            <SummaryItem label="Dòng tiền vào" value={summary.incoming} color="#1eaa57" currency={currency} />
-            <SummaryItem label="Dòng tiền ra" value={summary.outgoing} color="#e6535d" currency={currency} />
+            <SummaryItem label="Dòng tiền vào" value={summary.incoming} color={theme.goodText} currency={currency} />
+            <SummaryItem label="Dòng tiền ra" value={summary.outgoing} color={theme.dangerText} currency={currency} />
             <SummaryItem
               label="Dòng tiền ròng"
               value={summary.net}
-              color={summary.net >= 0 ? "#1eaa57" : "#e6535d"}
+              color={summary.net >= 0 ? theme.goodText : theme.dangerText}
               currency={currency}
             />
           </View>
@@ -197,7 +207,7 @@ export default function TransactionsScreen() {
           <Text style={styles.sectionMeta}>{filteredTransactions.length} giao dịch</Text>
         </View>
         {isLoading ? (
-          <ActivityIndicator color="#31c452" style={styles.loader} />
+          <ActivityIndicator color={theme.primary} style={styles.loader} />
         ) : groupedTransactions.length === 0 ? (
           <EmptyState />
         ) : (
@@ -209,7 +219,7 @@ export default function TransactionsScreen() {
         <View style={styles.netCard}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Thu nhập ròng</Text>
-            <Text style={[styles.netValue, { color: summary.net >= 0 ? "#1eaa57" : "#e6535d" }]}>
+            <Text style={[styles.netValue, { color: summary.net >= 0 ? theme.goodText : theme.dangerText }]}>
               {formatMoney(summary.net, currency)}
             </Text>
           </View>
@@ -223,15 +233,15 @@ export default function TransactionsScreen() {
         <View style={styles.breakdownCard}>
           <Text style={styles.sectionTitle}>Báo cáo theo nhóm</Text>
           <View style={styles.breakdownRow}>
-            <Donut value={summary.incoming} color="#27b866" label="Thu nhập" />
-            <Donut value={summary.outgoing} color="#ef626b" label="Chi tiêu" />
+            <Donut value={summary.incoming} color={theme.goodText} label="Thu nhập" />
+            <Donut value={summary.outgoing} color={theme.dangerText} label="Chi tiêu" />
           </View>
         </View>
         <View style={styles.otherCard}>
           <Text style={styles.sectionTitle}>Nợ, cho vay và khác</Text>
-          <SummaryItem label="Nợ" value={0} color="#e6535d" currency={currency} />
-          <SummaryItem label="Cho vay" value={0} color="#e2a23a" currency={currency} />
-          <SummaryItem label="Khác" value={0} color="#737984" currency={currency} />
+          <SummaryItem label="Nợ" value={0} color={theme.dangerText} currency={currency} />
+          <SummaryItem label="Cho vay" value={0} color={theme.warning} currency={currency} />
+          <SummaryItem label="Khác" value={0} color={theme.textSubtle} currency={currency} />
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -239,6 +249,8 @@ export default function TransactionsScreen() {
 }
 
 function AccountOption({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
+  const styles = useTransactionStyles();
+
   return (
     <Pressable style={styles.pickerOption} onPress={onPress}>
       <Text style={styles.pickerOptionText}>{label}</Text>
@@ -258,6 +270,8 @@ function SummaryItem({
   color: string;
   currency: string;
 }) {
+  const styles = useTransactionStyles();
+
   return (
     <View style={styles.summaryItem}>
       <Text style={styles.summaryLabel}>{label}</Text>
@@ -275,6 +289,9 @@ function TransactionDay({
   transactions: Transaction[];
   currency: string;
 }) {
+  const theme = useAppTheme();
+  const styles = useTransactionStyles();
+
   const movement = transactions.reduce(
     (sum, transaction) => sum + (isPositive(transaction.type) ? transaction.amount : -transaction.amount),
     0,
@@ -285,16 +302,19 @@ function TransactionDay({
         <Text style={styles.dayTitle}>
           {new Intl.DateTimeFormat("vi-VN", { day: "numeric", month: "long", year: "numeric" }).format(new Date(date))}
         </Text>
-        <Text style={[styles.dayTotal, { color: movement >= 0 ? "#1eaa57" : "#e6535d" }]}>
+        <Text style={[styles.dayTotal, { color: movement >= 0 ? theme.goodText : theme.dangerText }]}>
           {formatMoney(movement, currency)}
         </Text>
       </View>
       {transactions.map((transaction) => (
         <View key={transaction.id} style={styles.transactionRow}>
           <View
-            style={[styles.transactionIcon, { backgroundColor: isPositive(transaction.type) ? "#e4f7eb" : "#ffeaec" }]}
+            style={[
+              styles.transactionIcon,
+              { backgroundColor: isPositive(transaction.type) ? theme.goodBackground : theme.warningBackground },
+            ]}
           >
-            <Text style={{ color: isPositive(transaction.type) ? "#1eaa57" : "#e6535d", fontSize: 18 }}>
+            <Text style={{ color: isPositive(transaction.type) ? theme.goodText : theme.dangerText, fontSize: 18 }}>
               {isPositive(transaction.type) ? "↗" : "↘"}
             </Text>
           </View>
@@ -302,7 +322,7 @@ function TransactionDay({
             <Text style={styles.transactionTitle}>{typeLabels[transaction.type]}</Text>
             <Text style={styles.transactionDescription}>{transaction.description || "Không có ghi chú"}</Text>
           </View>
-          <Text style={[styles.transactionAmount, { color: isPositive(transaction.type) ? "#1eaa57" : "#e6535d" }]}>
+          <Text style={[styles.transactionAmount, { color: isPositive(transaction.type) ? theme.goodText : theme.dangerText }]}>
             {isPositive(transaction.type) ? "+" : "-"}
             {formatMoney(transaction.amount, currency)}
           </Text>
@@ -313,6 +333,8 @@ function TransactionDay({
 }
 
 function EmptyState() {
+  const styles = useTransactionStyles();
+
   return (
     <View style={styles.empty}>
       <Text style={styles.emptyTitle}>Chưa có giao dịch</Text>
@@ -322,6 +344,8 @@ function EmptyState() {
 }
 
 function Donut({ value, color, label }: { value: number; color: string; label: string }) {
+  const styles = useTransactionStyles();
+
   return (
     <View style={styles.donutItem}>
       <View style={[styles.donut, { borderColor: color }]}>
@@ -332,8 +356,9 @@ function Donut({ value, color, label }: { value: number; color: string; label: s
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { backgroundColor: "#f7f8fa", flex: 1 },
+function createStyles(theme: AppTheme) {
+  return StyleSheet.create({
+  screen: { backgroundColor: theme.screen, flex: 1 },
   content: { padding: 16, paddingBottom: 96 },
   header: {
     alignItems: "center",
@@ -342,35 +367,35 @@ const styles = StyleSheet.create({
     marginBottom: 18,
     marginTop: 12,
   },
-  eyebrow: { color: "#737984", fontSize: 12 },
-  title: { color: "#171a21", fontSize: 27, fontWeight: "800", marginTop: 3 },
+  eyebrow: { color: theme.textMuted, fontSize: 12 },
+  title: { color: theme.text, fontSize: 27, fontWeight: "800", marginTop: 3 },
   searchButton: {
     alignItems: "center",
-    backgroundColor: "#fff",
-    borderColor: "#e5e8ed",
+    backgroundColor: theme.card,
+    borderColor: theme.border,
     borderRadius: 20,
     borderWidth: 1,
     height: 40,
     justifyContent: "center",
     width: 40,
   },
-  searchIcon: { color: "#252a33", fontSize: 25 },
+  searchIcon: { color: theme.text, fontSize: 25 },
   selector: {
     alignItems: "center",
-    backgroundColor: "#fff",
-    borderColor: "#e5e8ed",
+    backgroundColor: theme.card,
+    borderColor: theme.border,
     borderRadius: 12,
     borderWidth: 1,
     flexDirection: "row",
     justifyContent: "space-between",
     padding: 14,
   },
-  selectorLabel: { color: "#737984", fontSize: 11 },
-  selectorValue: { color: "#252a33", fontSize: 16, fontWeight: "700", marginTop: 3 },
-  chevron: { color: "#252a33", fontSize: 22 },
+  selectorLabel: { color: theme.textMuted, fontSize: 11 },
+  selectorValue: { color: theme.text, fontSize: 16, fontWeight: "700", marginTop: 3 },
+  chevron: { color: theme.text, fontSize: 22 },
   pickerMenu: {
-    backgroundColor: "#fff",
-    borderColor: "#e5e8ed",
+    backgroundColor: theme.card,
+    borderColor: theme.border,
     borderRadius: 10,
     borderWidth: 1,
     marginTop: 5,
@@ -378,38 +403,38 @@ const styles = StyleSheet.create({
   },
   pickerOption: {
     alignItems: "center",
-    borderBottomColor: "#edf0f3",
+    borderBottomColor: theme.border,
     borderBottomWidth: StyleSheet.hairlineWidth,
     flexDirection: "row",
     justifyContent: "space-between",
     padding: 13,
   },
-  pickerOptionText: { color: "#252a33", fontSize: 14 },
-  check: { color: "#1eaa57", fontSize: 18, fontWeight: "700" },
+  pickerOptionText: { color: theme.text, fontSize: 14 },
+  check: { color: theme.primary, fontSize: 18, fontWeight: "700" },
   periodTabs: { gap: 8, paddingVertical: 16 },
-  periodTab: { backgroundColor: "#eef1f4", borderRadius: 18, paddingHorizontal: 16, paddingVertical: 9 },
-  periodTabActive: { backgroundColor: "#1eaa57" },
-  periodTabText: { color: "#737984", fontSize: 13, fontWeight: "600" },
-  periodTabTextActive: { color: "#fff" },
-  summaryCard: { backgroundColor: "#fff", borderColor: "#e5e8ed", borderRadius: 15, borderWidth: 1, padding: 16 },
-  cardTitle: { color: "#737984", fontSize: 13 },
-  availableBalance: { color: "#737984", fontSize: 12, marginTop: 15 },
-  availableValue: { color: "#171a21", fontSize: 28, fontWeight: "800", marginTop: 3 },
-  summaryGrid: { borderTopColor: "#edf0f3", borderTopWidth: 1, flexDirection: "row", marginTop: 16, paddingTop: 13 },
+  periodTab: { backgroundColor: theme.cardAlt, borderRadius: 18, paddingHorizontal: 16, paddingVertical: 9 },
+  periodTabActive: { backgroundColor: theme.primary },
+  periodTabText: { color: theme.textSubtle, fontSize: 13, fontWeight: "600" },
+  periodTabTextActive: { color: theme.textInverse },
+  summaryCard: { backgroundColor: theme.card, borderColor: theme.border, borderRadius: 15, borderWidth: 1, padding: 16 },
+  cardTitle: { color: theme.textMuted, fontSize: 13 },
+  availableBalance: { color: theme.textMuted, fontSize: 12, marginTop: 15 },
+  availableValue: { color: theme.text, fontSize: 28, fontWeight: "800", marginTop: 3 },
+  summaryGrid: { borderTopColor: theme.border, borderTopWidth: 1, flexDirection: "row", marginTop: 16, paddingTop: 13 },
   summaryItem: { flex: 1 },
-  summaryLabel: { color: "#737984", fontSize: 11 },
+  summaryLabel: { color: theme.textMuted, fontSize: 11 },
   summaryValue: { fontSize: 13, fontWeight: "700", marginTop: 4 },
   reportButton: {
     alignItems: "center",
-    backgroundColor: "#e4f7eb",
+    backgroundColor: theme.goodBackground,
     borderRadius: 10,
     flexDirection: "row",
     justifyContent: "center",
     marginTop: 12,
     padding: 13,
   },
-  reportButtonText: { color: "#168b45", fontSize: 14, fontWeight: "700" },
-  reportArrow: { color: "#168b45", fontSize: 22, marginLeft: 8 },
+  reportButtonText: { color: theme.goodText, fontSize: 14, fontWeight: "700" },
+  reportArrow: { color: theme.goodText, fontSize: 22, marginLeft: 8 },
   sectionHeader: {
     alignItems: "center",
     flexDirection: "row",
@@ -417,12 +442,12 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     marginTop: 20,
   },
-  sectionTitle: { color: "#252a33", fontSize: 17, fontWeight: "800" },
-  sectionMeta: { color: "#737984", fontSize: 12 },
+  sectionTitle: { color: theme.text, fontSize: 17, fontWeight: "800" },
+  sectionMeta: { color: theme.textMuted, fontSize: 12 },
   loader: { margin: 30 },
   dayGroup: {
-    backgroundColor: "#fff",
-    borderColor: "#e5e8ed",
+    backgroundColor: theme.card,
+    borderColor: theme.border,
     borderRadius: 14,
     borderWidth: 1,
     marginBottom: 10,
@@ -431,17 +456,17 @@ const styles = StyleSheet.create({
   },
   dayHeader: {
     alignItems: "center",
-    borderBottomColor: "#edf0f3",
+    borderBottomColor: theme.border,
     borderBottomWidth: 1,
     flexDirection: "row",
     justifyContent: "space-between",
     paddingVertical: 13,
   },
-  dayTitle: { color: "#252a33", fontSize: 13, fontWeight: "700" },
+  dayTitle: { color: theme.text, fontSize: 13, fontWeight: "700" },
   dayTotal: { fontSize: 13, fontWeight: "700" },
   transactionRow: {
     alignItems: "center",
-    borderBottomColor: "#edf0f3",
+    borderBottomColor: theme.border,
     borderBottomWidth: StyleSheet.hairlineWidth,
     flexDirection: "row",
     paddingVertical: 12,
@@ -455,25 +480,25 @@ const styles = StyleSheet.create({
     width: 36,
   },
   transactionCopy: { flex: 1 },
-  transactionTitle: { color: "#252a33", fontSize: 14, fontWeight: "700" },
-  transactionDescription: { color: "#858d99", fontSize: 11, marginTop: 3 },
+  transactionTitle: { color: theme.text, fontSize: 14, fontWeight: "700" },
+  transactionDescription: { color: theme.textSubtle, fontSize: 11, marginTop: 3 },
   transactionAmount: { fontSize: 13, fontWeight: "700", marginLeft: 8 },
   netCard: {
-    backgroundColor: "#fff",
-    borderColor: "#e5e8ed",
+    backgroundColor: theme.card,
+    borderColor: theme.border,
     borderRadius: 14,
     borderWidth: 1,
     marginTop: 10,
     padding: 15,
   },
   netValue: { fontSize: 15, fontWeight: "800" },
-  helperText: { color: "#737984", fontSize: 12 },
-  progressTrack: { backgroundColor: "#edf0f3", borderRadius: 5, height: 9, marginTop: 12, overflow: "hidden" },
-  progressFill: { backgroundColor: "#1eaa57", borderRadius: 5, height: "100%" },
-  progressLabel: { color: "#737984", fontSize: 11, marginTop: 6 },
+  helperText: { color: theme.textMuted, fontSize: 12 },
+  progressTrack: { backgroundColor: theme.progressTrack, borderRadius: 5, height: 9, marginTop: 12, overflow: "hidden" },
+  progressFill: { backgroundColor: theme.primary, borderRadius: 5, height: "100%" },
+  progressLabel: { color: theme.textMuted, fontSize: 11, marginTop: 6 },
   breakdownCard: {
-    backgroundColor: "#fff",
-    borderColor: "#e5e8ed",
+    backgroundColor: theme.card,
+    borderColor: theme.border,
     borderRadius: 14,
     borderWidth: 1,
     marginTop: 12,
@@ -482,11 +507,11 @@ const styles = StyleSheet.create({
   breakdownRow: { flexDirection: "row", justifyContent: "space-around", paddingTop: 15 },
   donutItem: { alignItems: "center" },
   donut: { alignItems: "center", borderRadius: 52, borderWidth: 14, height: 90, justifyContent: "center", width: 90 },
-  donutValue: { color: "#252a33", fontSize: 13, fontWeight: "800" },
-  donutLabel: { color: "#737984", fontSize: 12, marginTop: 8 },
+  donutValue: { color: theme.text, fontSize: 13, fontWeight: "800" },
+  donutLabel: { color: theme.textMuted, fontSize: 12, marginTop: 8 },
   otherCard: {
-    backgroundColor: "#fff",
-    borderColor: "#e5e8ed",
+    backgroundColor: theme.card,
+    borderColor: theme.border,
     borderRadius: 14,
     borderWidth: 1,
     gap: 12,
@@ -495,12 +520,13 @@ const styles = StyleSheet.create({
   },
   empty: {
     alignItems: "center",
-    backgroundColor: "#fff",
-    borderColor: "#e5e8ed",
+    backgroundColor: theme.card,
+    borderColor: theme.border,
     borderRadius: 14,
     borderWidth: 1,
     padding: 28,
   },
-  emptyTitle: { color: "#252a33", fontSize: 16, fontWeight: "700" },
-  emptyText: { color: "#858d99", fontSize: 12, marginTop: 6 },
-});
+  emptyTitle: { color: theme.text, fontSize: 16, fontWeight: "700" },
+  emptyText: { color: theme.textSubtle, fontSize: 12, marginTop: 6 },
+  });
+}

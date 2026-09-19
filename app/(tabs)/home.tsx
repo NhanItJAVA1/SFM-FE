@@ -5,6 +5,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { categoriesApi, Category } from "@/api/categoriesApi";
 import { FinancialAccount, financialAccountApi, getFinancialAccountBalance } from "@/api/financialAccountApi";
+import { useAppTheme } from "@/hooks/use-app-theme";
 import {
   CategorySpendingResponse,
   Transaction,
@@ -13,14 +14,19 @@ import {
   TransactionType,
 } from "@/api/transactionsApi";
 import { getAuthUser } from "@/stores/authSession";
+import type { AppTheme } from "@/theme/appTheme";
 
 const accountTypeMeta: Record<FinancialAccount["type"], { color: string; icon: string; label: string }> = {
   Bank: { color: "#2778d7", icon: "▤", label: "Bank" },
   Cash: { color: "#22a66f", icon: "●", label: "Cash" },
-  CreditCard: { color: "#e45c86", icon: "◧", label: "Credit" },
-  EWallet: { color: "#7c61d9", icon: "◈", label: "E-Wallet" },
   Savings: { color: "#d9962b", icon: "◎", label: "Saving" },
 };
+
+function useHomeStyles() {
+  const theme = useAppTheme();
+
+  return useMemo(() => createStyles(theme), [theme]);
+}
 
 function formatMoney(amount: number, currency = "VND") {
   return new Intl.NumberFormat("vi-VN", { currency, maximumFractionDigits: 0, style: "currency" }).format(amount);
@@ -82,6 +88,8 @@ function getCategoryFallback(type: TransactionType) {
 }
 
 export default function HomeScreen() {
+  const theme = useAppTheme();
+  const styles = useHomeStyles();
   const user = getAuthUser();
   const [accounts, setAccounts] = useState<FinancialAccount[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -211,7 +219,7 @@ export default function HomeScreen() {
       <ScrollView
         contentContainerStyle={styles.content}
         refreshControl={
-          <RefreshControl refreshing={isRefreshing} onRefresh={() => loadHomeData(true)} tintColor="#206b4f" />
+          <RefreshControl refreshing={isRefreshing} onRefresh={() => loadHomeData(true)} tintColor={theme.primary} />
         }
         showsVerticalScrollIndicator={false}
       >
@@ -292,7 +300,7 @@ export default function HomeScreen() {
 
         {isLoading ? (
           <View style={styles.loadingCard}>
-            <ActivityIndicator color="#206b4f" />
+            <ActivityIndicator color={theme.primary} />
             <Text style={styles.loadingText}>Đang tải dữ liệu tổng quan...</Text>
           </View>
         ) : (
@@ -387,6 +395,8 @@ export default function HomeScreen() {
 }
 
 function MetricPill({ label, tone, value }: { label: string; tone: "good" | "warn"; value: string }) {
+  const styles = useHomeStyles();
+
   return (
     <View style={[styles.metricPill, tone === "good" ? styles.metricGood : styles.metricWarn]}>
       <Text style={styles.metricLabel}>{label}</Text>
@@ -405,6 +415,7 @@ function HeroAccountRow({
   currency: string;
   isBalanceVisible: boolean;
 }) {
+  const styles = useHomeStyles();
   const meta = accountTypeMeta[account.type] || { color: "#8fa49a", icon: "●", label: "Ví" };
 
   return (
@@ -434,6 +445,7 @@ function CategoryRow({
   currency: string;
   index: number;
 }) {
+  const styles = useHomeStyles();
   const colors = ["#3557a4", "#c05b3e", "#1b8f5a", "#7c61d9"];
   const color = colors[index % colors.length];
 
@@ -467,6 +479,7 @@ function TransactionRow({
   currency: string;
   transaction: Transaction;
 }) {
+  const styles = useHomeStyles();
   const positive = isIncome(transaction.type);
   const signedAmount = getSignedAmount(transaction);
   const title = category?.name ?? getCategoryFallback(transaction.type);
@@ -495,6 +508,8 @@ function TransactionRow({
 }
 
 function SectionHeading({ action, onAction, title }: { action: string; onAction?: () => void; title: string }) {
+  const styles = useHomeStyles();
+
   return (
     <View style={styles.sectionHeading}>
       <Text style={styles.sectionTitle}>{title}</Text>
@@ -506,6 +521,8 @@ function SectionHeading({ action, onAction, title }: { action: string; onAction?
 }
 
 function EmptyState({ description, title }: { description: string; title: string }) {
+  const styles = useHomeStyles();
+
   return (
     <View style={styles.emptyState}>
       <Text style={styles.emptyTitle}>{title}</Text>
@@ -514,8 +531,9 @@ function EmptyState({ description, title }: { description: string; title: string
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { backgroundColor: "#f3f5f2", flex: 1 },
+function createStyles(theme: AppTheme) {
+  return StyleSheet.create({
+  screen: { backgroundColor: theme.screen, flex: 1 },
   content: { paddingBottom: 112, paddingHorizontal: 16 },
   header: {
     alignItems: "center",
@@ -525,51 +543,53 @@ const styles = StyleSheet.create({
     paddingTop: 14,
   },
   headerCopy: { flex: 1, paddingRight: 12 },
-  greeting: { color: "#6d746f", fontSize: 13, fontWeight: "600" },
-  userName: { color: "#16201b", fontSize: 24, fontWeight: "900", marginTop: 3 },
+  greeting: { color: theme.textMuted, fontSize: 13, fontWeight: "600" },
+  userName: { color: theme.text, fontSize: 24, fontWeight: "900", marginTop: 3 },
   iconButton: {
     alignItems: "center",
-    backgroundColor: "#ffffff",
-    borderColor: "#dfe5df",
+    backgroundColor: theme.card,
+    borderColor: theme.border,
     borderRadius: 20,
     borderWidth: 1,
     height: 40,
     justifyContent: "center",
     width: 40,
   },
-  iconButtonText: { color: "#206b4f", fontSize: 22, fontWeight: "800", lineHeight: 24 },
+  iconButtonText: { color: theme.primary, fontSize: 22, fontWeight: "800", lineHeight: 24 },
   heroCard: {
-    backgroundColor: "#16201b",
+    backgroundColor: theme.card,
+    borderColor: theme.border,
     borderRadius: 8,
+    borderWidth: 1,
     padding: 18,
     shadowColor: "#000",
     shadowOpacity: 0.14,
     shadowRadius: 14,
   },
   heroTopRow: { alignItems: "center", flexDirection: "row", justifyContent: "space-between" },
-  heroLabel: { color: "#d9e7df", fontSize: 14, fontWeight: "800" },
-  heroCaption: { color: "#8fa49a", fontSize: 12, marginTop: 3 },
+  heroLabel: { color: theme.text, fontSize: 14, fontWeight: "800" },
+  heroCaption: { color: theme.textMuted, fontSize: 12, marginTop: 3 },
   eyeButton: { alignItems: "center", height: 34, justifyContent: "center", width: 34 },
-  eyeText: { color: "#cde9d8", fontSize: 18 },
-  heroBalance: { color: "#ffffff", fontSize: 34, fontWeight: "900", letterSpacing: 0, marginTop: 16 },
+  eyeText: { color: theme.primary, fontSize: 18 },
+  heroBalance: { color: theme.text, fontSize: 34, fontWeight: "900", letterSpacing: 0, marginTop: 16 },
   heroStats: { flexDirection: "row", gap: 10, marginTop: 18 },
   metricPill: { borderRadius: 8, flex: 1, minHeight: 64, padding: 12 },
-  metricGood: { backgroundColor: "#dff5e8" },
-  metricWarn: { backgroundColor: "#ffe7e9" },
-  metricLabel: { color: "#58635d", fontSize: 11, fontWeight: "800" },
-  metricValue: { color: "#16201b", fontSize: 14, fontWeight: "900", marginTop: 6 },
+  metricGood: { backgroundColor: theme.goodBackground },
+  metricWarn: { backgroundColor: theme.warningBackground },
+  metricLabel: { color: theme.textMuted, fontSize: 11, fontWeight: "800" },
+  metricValue: { color: theme.text, fontSize: 14, fontWeight: "900", marginTop: 6 },
   errorCard: {
-    backgroundColor: "#fff1f2",
-    borderColor: "#f2bdc4",
+    backgroundColor: theme.warningBackground,
+    borderColor: theme.warning,
     borderRadius: 8,
     borderWidth: 1,
     marginTop: 14,
     padding: 14,
   },
-  errorTitle: { color: "#a83443", fontSize: 14, fontWeight: "900" },
-  errorText: { color: "#8d4a52", fontSize: 13, lineHeight: 18, marginTop: 4 },
-  loadingCard: { alignItems: "center", backgroundColor: "#fff", borderRadius: 8, gap: 10, marginTop: 16, padding: 28 },
-  loadingText: { color: "#6d746f", fontSize: 13, fontWeight: "700" },
+  errorTitle: { color: theme.warning, fontSize: 14, fontWeight: "900" },
+  errorText: { color: theme.textMuted, fontSize: 13, lineHeight: 18, marginTop: 4 },
+  loadingCard: { alignItems: "center", backgroundColor: theme.card, borderRadius: 8, gap: 10, marginTop: 16, padding: 28 },
+  loadingText: { color: theme.textMuted, fontSize: 13, fontWeight: "700" },
   sectionHeading: {
     alignItems: "center",
     flexDirection: "row",
@@ -577,20 +597,20 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     marginTop: 22,
   },
-  sectionTitle: { color: "#27312c", fontSize: 17, fontWeight: "900" },
-  sectionAction: { color: "#206b4f", fontSize: 13, fontWeight: "900" },
+  sectionTitle: { color: theme.text, fontSize: 17, fontWeight: "900" },
+  sectionAction: { color: theme.primary, fontSize: 13, fontWeight: "900" },
   heroTitleRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
   },
   chevronText: {
-    color: "#cde9d8",
+    color: theme.primary,
     fontSize: 13,
     fontWeight: "800",
   },
   heroDivider: {
-    backgroundColor: "rgba(255, 255, 255, 0.15)",
+    backgroundColor: theme.border,
     height: 1,
     marginVertical: 14,
   },
@@ -604,12 +624,12 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   heroAccountsTitle: {
-    color: "#d9e7df",
+    color: theme.text,
     fontSize: 13,
     fontWeight: "800",
   },
   heroAccountsAction: {
-    color: "#8fa49a",
+    color: theme.textMuted,
     fontSize: 12,
     fontWeight: "700",
   },
@@ -619,7 +639,7 @@ const styles = StyleSheet.create({
   heroAccountRow: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(255, 255, 255, 0.05)",
+    backgroundColor: theme.cardAlt,
     borderRadius: 6,
     paddingVertical: 10,
     paddingHorizontal: 12,
@@ -637,23 +657,23 @@ const styles = StyleSheet.create({
     fontWeight: "900",
   },
   heroAccountName: {
-    color: "#ffffff",
+    color: theme.text,
     fontSize: 14,
     fontWeight: "700",
     flex: 1,
     marginRight: 8,
   },
   heroAccountBalance: {
-    color: "#ffffff",
+    color: theme.text,
     fontSize: 14,
     fontWeight: "800",
   },
-  reportCard: { backgroundColor: "#ffffff", borderColor: "#dfe5df", borderRadius: 8, borderWidth: 1, padding: 16 },
+  reportCard: { backgroundColor: theme.card, borderColor: theme.border, borderRadius: 8, borderWidth: 1, padding: 16 },
   reportHeader: { alignItems: "flex-start", flexDirection: "row", gap: 10, justifyContent: "space-between" },
-  reportLabel: { color: "#6d746f", fontSize: 12, fontWeight: "800" },
+  reportLabel: { color: theme.textMuted, fontSize: 12, fontWeight: "800" },
   reportValue: { fontSize: 26, fontWeight: "900", marginTop: 4 },
-  trendBadge: { backgroundColor: "#edf1f7", borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7 },
-  trendText: { color: "#3557a4", fontSize: 12, fontWeight: "900" },
+  trendBadge: { backgroundColor: theme.cardAlt, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7 },
+  trendText: { color: theme.primary, fontSize: 12, fontWeight: "900" },
   chartWrapper: {
     flexDirection: "row",
     marginTop: 20,
@@ -675,24 +695,24 @@ const styles = StyleSheet.create({
   },
   barAmountText: {
     fontSize: 8,
-    color: "#7c8580",
+    color: theme.textSubtle,
     marginBottom: 2,
     textAlign: "center",
   },
   dailyBar: {
-    backgroundColor: "#d7505f",
+    backgroundColor: theme.dangerText,
     borderRadius: 2,
     width: "100%",
     minHeight: 2,
   },
   xAxisLabel: {
-    color: "#7c8580",
+    color: theme.textSubtle,
     fontSize: 8,
     fontWeight: "700",
     marginTop: 4,
   },
   chartFooter: {
-    color: "#7c8580",
+    color: theme.textSubtle,
     fontSize: 11,
     fontWeight: "700",
     textAlign: "center",
@@ -700,24 +720,24 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   reportSummaryRow: {
-    borderTopColor: "#edf1ec",
+    borderTopColor: theme.border,
     borderTopWidth: 1,
     flexDirection: "row",
     marginTop: 16,
     paddingTop: 14,
   },
   reportSummaryItem: { flex: 1 },
-  reportSummaryLabel: { color: "#7c8580", fontSize: 11, fontWeight: "800" },
+  reportSummaryLabel: { color: theme.textSubtle, fontSize: 11, fontWeight: "800" },
   reportSummaryValue: { fontSize: 15, fontWeight: "900", marginTop: 5 },
   categoryCard: {
-    backgroundColor: "#ffffff",
-    borderColor: "#dfe5df",
+    backgroundColor: theme.card,
+    borderColor: theme.border,
     borderRadius: 8,
     borderWidth: 1,
     overflow: "hidden",
   },
   categoryRow: { alignItems: "center", flexDirection: "row", minHeight: 68, paddingHorizontal: 14 },
-  rowDivider: { borderTopColor: "#edf1ec", borderTopWidth: 1 },
+  rowDivider: { borderTopColor: theme.border, borderTopWidth: 1 },
   categoryIcon: {
     alignItems: "center",
     borderRadius: 19,
@@ -728,19 +748,19 @@ const styles = StyleSheet.create({
   },
   categoryIconText: { fontSize: 17, fontWeight: "900" },
   categoryMain: { flex: 1 },
-  categoryName: { color: "#27312c", fontSize: 14, fontWeight: "900" },
-  categoryMeta: { color: "#7c8580", fontSize: 11, fontWeight: "700", marginTop: 3 },
-  categoryAmount: { color: "#27312c", fontSize: 13, fontWeight: "900", marginLeft: 10 },
+  categoryName: { color: theme.text, fontSize: 14, fontWeight: "900" },
+  categoryMeta: { color: theme.textSubtle, fontSize: 11, fontWeight: "700", marginTop: 3 },
+  categoryAmount: { color: theme.text, fontSize: 13, fontWeight: "900", marginLeft: 10 },
   transactionCard: {
-    backgroundColor: "#ffffff",
-    borderColor: "#dfe5df",
+    backgroundColor: theme.card,
+    borderColor: theme.border,
     borderRadius: 8,
     borderWidth: 1,
     overflow: "hidden",
   },
   transactionRow: {
     alignItems: "center",
-    borderBottomColor: "#edf1ec",
+    borderBottomColor: theme.border,
     borderBottomWidth: StyleSheet.hairlineWidth,
     flexDirection: "row",
     minHeight: 72,
@@ -754,16 +774,17 @@ const styles = StyleSheet.create({
     marginRight: 12,
     width: 38,
   },
-  incomeIcon: { backgroundColor: "#e0f4e7" },
-  expenseIcon: { backgroundColor: "#ffe8ea" },
+  incomeIcon: { backgroundColor: theme.goodBackground },
+  expenseIcon: { backgroundColor: theme.warningBackground },
   transactionIconText: { fontSize: 18, fontWeight: "900" },
   transactionMain: { flex: 1 },
-  transactionTitle: { color: "#27312c", fontSize: 14, fontWeight: "900" },
-  transactionMeta: { color: "#7c8580", fontSize: 11, fontWeight: "700", marginTop: 4 },
+  transactionTitle: { color: theme.text, fontSize: 14, fontWeight: "900" },
+  transactionMeta: { color: theme.textSubtle, fontSize: 11, fontWeight: "700", marginTop: 4 },
   transactionAmount: { fontSize: 13, fontWeight: "900", marginLeft: 10 },
-  positiveText: { color: "#1b8f5a" },
-  negativeText: { color: "#d7505f" },
+  positiveText: { color: theme.goodText },
+  negativeText: { color: theme.dangerText },
   emptyState: { alignItems: "center", flex: 1, padding: 22 },
-  emptyTitle: { color: "#27312c", fontSize: 15, fontWeight: "900", textAlign: "center" },
-  emptyText: { color: "#7c8580", fontSize: 12, lineHeight: 18, marginTop: 5, textAlign: "center" },
-});
+  emptyTitle: { color: theme.text, fontSize: 15, fontWeight: "900", textAlign: "center" },
+  emptyText: { color: theme.textSubtle, fontSize: 12, lineHeight: 18, marginTop: 5, textAlign: "center" },
+  });
+}
