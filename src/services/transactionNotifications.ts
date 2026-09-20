@@ -1,10 +1,10 @@
-import Constants from 'expo-constants';
-import { Platform } from 'react-native';
+import Constants from "expo-constants";
+import { Platform } from "react-native";
 
-import type { CreateTransactionFromScanResponse, TransactionNotification } from '@/api/transactionsApi';
+import type { CreateTransactionFromScanResponse, TransactionNotification } from "@/api/transactionsApi";
 
-const defaultNotificationTitle = 'Cảnh báo ngân sách';
-const defaultNotificationBody = 'Một ngân sách vừa đạt ngưỡng cảnh báo.';
+const defaultNotificationTitle = "Cảnh báo ngân sách";
+const defaultNotificationBody = "Một ngân sách vừa đạt ngưỡng cảnh báo.";
 
 export async function presentTransactionNotifications(response: CreateTransactionFromScanResponse | null | undefined) {
   const notifications = getTransactionNotifications(response);
@@ -36,7 +36,7 @@ function getTransactionNotifications(response: CreateTransactionFromScanResponse
 
 async function loadNotifications() {
   try {
-    const Notifications = await import('expo-notifications');
+    const Notifications = await import("expo-notifications");
 
     Notifications.setNotificationHandler({
       handleNotification: async () => ({
@@ -54,26 +54,26 @@ async function loadNotifications() {
 }
 
 function isExpoGoAndroid() {
-  return Platform.OS === 'android' && Constants.appOwnership === 'expo';
+  return Platform.OS === "android" && Constants.appOwnership === "expo";
 }
 
 async function ensureNotificationPermission(Notifications: NonNullable<Awaited<ReturnType<typeof loadNotifications>>>) {
-  if (Platform.OS === 'android') {
-    await Notifications.setNotificationChannelAsync('budget-alerts', {
+  if (Platform.OS === "android") {
+    await Notifications.setNotificationChannelAsync("budget-alerts", {
       importance: Notifications.AndroidImportance.HIGH,
-      name: 'Cảnh báo ngân sách',
+      name: "Cảnh báo ngân sách",
     });
   }
 
   const currentPermission = await Notifications.getPermissionsAsync();
   let finalStatus = currentPermission.status;
 
-  if (finalStatus !== 'granted') {
+  if (finalStatus !== "granted") {
     const requestedPermission = await Notifications.requestPermissionsAsync();
     finalStatus = requestedPermission.status;
   }
 
-  return finalStatus === 'granted';
+  return finalStatus === "granted";
 }
 
 function scheduleTransactionNotification(
@@ -89,7 +89,7 @@ function scheduleTransactionNotification(
       data: {
         budgetId: notification.budgetId,
         level: notification.level,
-        type: notification.type ?? 'BudgetAlert',
+        type: notification.type ?? "BudgetAlert",
       },
       title,
     },
@@ -97,13 +97,13 @@ function scheduleTransactionNotification(
   });
 }
 
-function getTitleByLevel(level: TransactionNotification['level']) {
-  if (level === 'Critical') {
-    return 'Ngân sách đã vượt ngưỡng';
+function getTitleByLevel(level: TransactionNotification["level"]) {
+  if (level === "Critical") {
+    return "Ngân sách đã vượt ngưỡng";
   }
 
-  if (level === 'Warning') {
-    return 'Ngân sách sắp vượt ngưỡng';
+  if (level === "Warning") {
+    return "Ngân sách sắp vượt ngưỡng";
   }
 
   return defaultNotificationTitle;

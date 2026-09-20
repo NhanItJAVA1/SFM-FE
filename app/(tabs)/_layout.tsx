@@ -63,11 +63,17 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
-        name="scan-bill"
+        name="create"
         options={{
           title: "",
           tabBarIcon: ({ focused }) => <TabIcon name="plus" focused={focused} theme={theme} />,
           tabBarLabel: () => null,
+        }}
+      />
+      <Tabs.Screen
+        name="scan-bill"
+        options={{
+          href: null,
           tabBarStyle: { display: "none" },
         }}
       />
@@ -85,7 +91,6 @@ export default function TabsLayout() {
           tabBarIcon: ({ focused }) => <TabIcon name="user" focused={focused} theme={theme} />,
         }}
       />
-      <Tabs.Screen name="create" options={{ href: null }} />
       <Tabs.Screen name="profile" options={{ href: null }} />
       <Tabs.Screen name="settings" options={{ href: null }} />
     </Tabs>
