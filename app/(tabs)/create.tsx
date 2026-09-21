@@ -1,12 +1,10 @@
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { router, useFocusEffect } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Keyboard,
-  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
@@ -17,7 +15,7 @@ import {
   View,
 } from 'react-native';
 
-import { categoriesApi, Category, CategoryType } from '@/api/categoriesApi';
+import { categoriesApi, Category } from '@/api/categoriesApi';
 import { FinancialAccount, financialAccountApi } from '@/api/financialAccountApi';
 import {
   transactionsApi,
@@ -68,15 +66,10 @@ export default function CreateScreen() {
   const [isTypePickerVisible, setIsTypePickerVisible] = useState(false);
   const [isDatePickerVisible, setIsDatePickerVisible] = useState(false);
   
-  const [isLoadingAccounts, setIsLoadingAccounts] = useState(false);
-  const [isLoadingCategories, setIsLoadingCategories] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
-      setIsLoadingAccounts(true);
-      setIsLoadingCategories(true);
-      
       const [accountsRes, categoriesRes] = await Promise.all([
         financialAccountApi.list(),
         categoriesApi.list(),
@@ -90,9 +83,6 @@ export default function CreateScreen() {
       }
     } catch (error) {
       console.error('Failed to load data', error);
-    } finally {
-      setIsLoadingAccounts(false);
-      setIsLoadingCategories(false);
     }
   }, [selectedAccountId]);
 
@@ -160,7 +150,7 @@ export default function CreateScreen() {
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.background }]}>
+    <View style={[styles.container, { backgroundColor: theme.screen }]}>
       <View style={styles.header}>
         <Text style={[styles.headerTitle, { color: theme.text }]}>Tạo giao dịch</Text>
         <Pressable 

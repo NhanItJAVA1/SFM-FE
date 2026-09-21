@@ -1,5 +1,5 @@
 import { router, useFocusEffect } from "expo-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -65,7 +65,7 @@ export default function TransactionsScreen() {
       }
       const [accountResponse, transactionResponse] = await Promise.all([
         financialAccountApi.list(),
-        transactionsApi.list(),
+        transactionsApi.list({ accountId: selectedAccountId }),
       ]);
       setAccounts(accountResponse.data);
       setTransactions(transactionResponse.data);
@@ -75,7 +75,7 @@ export default function TransactionsScreen() {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, []);
+  }, [selectedAccountId]);
 
   useFocusEffect(
     useCallback(() => {

@@ -90,6 +90,11 @@ export type CategorySpendingParams = {
   compareYear?: number;
 };
 
+export type TransactionListParams = {
+  accountId?: number | null;
+  filter?: "NotDeleted" | "Deleted" | "All";
+};
+
 export type TransactionType = "Income" | "Expense" | "TransferIn" | "TransferOut";
 
 export type Transaction = {
@@ -118,12 +123,17 @@ export type CreateTransactionPayload = {
   isExcluded?: boolean;
 };
 
-function buildQuery(params: CategorySpendingParams) {
+function buildQuery(params: Record<string, number | string | null | undefined>) {
   const searchParams = new URLSearchParams();
 
   Object.entries(params).forEach(([key, value]) => {
     if (typeof value === "number") {
       searchParams.set(key, String(value));
+      return;
+    }
+
+    if (typeof value === "string" && value.trim()) {
+      searchParams.set(key, value);
     }
   });
 
@@ -173,8 +183,8 @@ export const transactionsApi = {
     axiosClient.post<CreateTransactionFromScanResponse>('/transactions', payload),
   categorySpending: (params: CategorySpendingParams = {}) =>
     axiosClient.get<CategorySpendingResponse>(`/transactions/category-spending${buildQuery(params)}`),
-  list: (filter: "NotDeleted" | "Deleted" | "All" = "NotDeleted") =>
-    axiosClient.get<Transaction[]>(`/transactions?filter=${filter}`),
+  list: (params: TransactionListParams = {}) =>
+    axiosClient.get<Transaction[]>(`/transactions${buildQuery({ filter: params.filter ?? "NotDeleted", accountId: params.accountId })}`),
   create: (payload: CreateTransactionPayload) =>
     axiosClient.post<CreateTransactionFromScanResponse>('/transactions', payload),
 };
