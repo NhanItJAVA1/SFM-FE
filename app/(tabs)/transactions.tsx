@@ -1,11 +1,11 @@
-import { router } from "expo-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { router, useFocusEffect } from "expo-router";
+import { useCallback, useMemo, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { FinancialAccount, financialAccountApi } from "@/api/financialAccountApi";
 import { useAppTheme } from "@/hooks/use-app-theme";
-import { Transaction, TransactionType, transactionApi } from "@/api/transactionsApi";
+import { Transaction, TransactionType, transactionsApi } from "@/api/transactionsApi";
 import type { AppTheme } from "@/theme/appTheme";
 
 type Period = "previous" | "current" | "future";
@@ -65,7 +65,7 @@ export default function TransactionsScreen() {
       }
       const [accountResponse, transactionResponse] = await Promise.all([
         financialAccountApi.list(),
-        transactionApi.list(),
+        transactionsApi.list({ accountId: selectedAccountId }),
       ]);
       setAccounts(accountResponse.data);
       setTransactions(transactionResponse.data);
@@ -75,12 +75,13 @@ export default function TransactionsScreen() {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, []);
+  }, [selectedAccountId]);
 
-  useEffect(() => {
-    const timeoutId = setTimeout(() => loadData(), 0);
-    return () => clearTimeout(timeoutId);
-  }, [loadData]);
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+    }, [loadData])
+  );
 
   const filteredTransactions = useMemo(() => {
     const { start, end } = getPeriodRange(period);

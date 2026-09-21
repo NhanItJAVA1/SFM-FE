@@ -90,12 +90,50 @@ export type CategorySpendingParams = {
   compareYear?: number;
 };
 
-function buildQuery(params: CategorySpendingParams) {
+export type TransactionListParams = {
+  accountId?: number | null;
+  filter?: "NotDeleted" | "Deleted" | "All";
+};
+
+export type TransactionType = "Income" | "Expense" | "TransferIn" | "TransferOut";
+
+export type Transaction = {
+  id: number;
+  userId: number;
+  accountId: number;
+  categoryId: number | null;
+  type: TransactionType;
+  amount: number;
+  description: string | null;
+  transactionDate: string;
+  location: string | null;
+  isExcluded: boolean;
+  createdAt: string;
+  updatedAt: string | null;
+};
+
+export type CreateTransactionPayload = {
+  accountId: number;
+  categoryId?: number | null;
+  type: TransactionType;
+  amount: number;
+  description?: string | null;
+  transactionDate?: string | null;
+  location?: string | null;
+  isExcluded?: boolean;
+};
+
+function buildQuery(params: Record<string, number | string | null | undefined>) {
   const searchParams = new URLSearchParams();
 
   Object.entries(params).forEach(([key, value]) => {
     if (typeof value === "number") {
       searchParams.set(key, String(value));
+      return;
+    }
+
+    if (typeof value === "string" && value.trim()) {
+      searchParams.set(key, value);
     }
   });
 
@@ -145,26 +183,8 @@ export const transactionsApi = {
     axiosClient.post<CreateTransactionFromScanResponse>('/transactions', payload),
   categorySpending: (params: CategorySpendingParams = {}) =>
     axiosClient.get<CategorySpendingResponse>(`/transactions/category-spending${buildQuery(params)}`),
-};
-
-export type TransactionType = "Income" | "Expense" | "TransferIn" | "TransferOut";
-
-export type Transaction = {
-  id: number;
-  userId: number;
-  accountId: number;
-  categoryId: number | null;
-  type: TransactionType;
-  amount: number;
-  description: string | null;
-  transactionDate: string;
-  location: string | null;
-  isExcluded: boolean;
-  createdAt: string;
-  updatedAt: string | null;
-};
-
-export const transactionApi = {
-  list: (filter: "NotDeleted" | "Deleted" | "All" = "NotDeleted") =>
-    axiosClient.get<Transaction[]>(`/transactions?filter=${filter}`),
+  list: (params: TransactionListParams = {}) =>
+    axiosClient.get<Transaction[]>(`/transactions${buildQuery({ filter: params.filter ?? "NotDeleted", accountId: params.accountId })}`),
+  create: (payload: CreateTransactionPayload) =>
+    axiosClient.post<CreateTransactionFromScanResponse>('/transactions', payload),
 };
