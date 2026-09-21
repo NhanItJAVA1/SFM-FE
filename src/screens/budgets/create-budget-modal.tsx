@@ -12,8 +12,9 @@ import {
 } from 'react-native';
 
 import type { Category } from '@/api/categoriesApi';
+import { useAppTheme } from '@/hooks/use-app-theme';
 
-import { styles } from './budgets.styles';
+import { useBudgetStyles } from './budgets.styles';
 import type { BudgetFormState } from './types';
 
 export function CreateBudgetModal({
@@ -33,6 +34,9 @@ export function CreateBudgetModal({
   onSubmit: () => void;
   visible: boolean;
 }) {
+  const theme = useAppTheme();
+  const styles = useBudgetStyles();
+
   function updateForm(nextForm: Partial<BudgetFormState>) {
     onChangeForm({ ...form, ...nextForm });
   }
@@ -55,7 +59,7 @@ export function CreateBudgetModal({
             <Text style={styles.label}>Tên ngân sách</Text>
             <TextInput
               placeholder="Ăn uống tháng này"
-              placeholderTextColor="#686b73"
+              placeholderTextColor={theme.inputPlaceholder}
               style={styles.input}
               value={form.name}
               onChangeText={(name) => updateForm({ name })}
@@ -96,7 +100,7 @@ export function CreateBudgetModal({
             <TextInput
               keyboardType="decimal-pad"
               placeholder="5000000"
-              placeholderTextColor="#686b73"
+              placeholderTextColor={theme.inputPlaceholder}
               style={styles.input}
               value={form.amount}
               onChangeText={(amount) => updateForm({ amount })}
@@ -108,7 +112,7 @@ export function CreateBudgetModal({
               <Text style={styles.label}>Bắt đầu</Text>
               <TextInput
                 placeholder="YYYY-MM-DD"
-                placeholderTextColor="#686b73"
+                placeholderTextColor={theme.inputPlaceholder}
                 style={styles.input}
                 value={form.startDate}
                 onChangeText={(startDate) => updateForm({ startDate })}
@@ -118,7 +122,7 @@ export function CreateBudgetModal({
               <Text style={styles.label}>Kết thúc</Text>
               <TextInput
                 placeholder="YYYY-MM-DD"
-                placeholderTextColor="#686b73"
+                placeholderTextColor={theme.inputPlaceholder}
                 style={styles.input}
                 value={form.endDate}
                 onChangeText={(endDate) => updateForm({ endDate })}
@@ -132,7 +136,7 @@ export function CreateBudgetModal({
               <TextInput
                 keyboardType="number-pad"
                 placeholder="80"
-                placeholderTextColor="#686b73"
+                placeholderTextColor={theme.inputPlaceholder}
                 style={styles.input}
                 value={form.alertThreshold}
                 onChangeText={(alertThreshold) => updateForm({ alertThreshold })}
@@ -144,8 +148,8 @@ export function CreateBudgetModal({
                 <Text style={styles.helperText}>Tạo lại theo kỳ</Text>
               </View>
               <Switch
-                thumbColor="#fff"
-                trackColor={{ false: '#3a3d43', true: '#31c452' }}
+                thumbColor={theme.textInverse}
+                trackColor={{ false: theme.borderStrong, true: theme.primary }}
                 value={form.isRecurring}
                 onValueChange={(isRecurring) => updateForm({ isRecurring })}
               />
@@ -157,7 +161,7 @@ export function CreateBudgetModal({
             onPress={onSubmit}
             disabled={isSubmitting}
           >
-            {isSubmitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.createButtonText}>Tạo Ngân sách</Text>}
+            {isSubmitting ? <ActivityIndicator color={theme.textInverse} /> : <Text style={styles.createButtonText}>Tạo Ngân sách</Text>}
           </Pressable>
         </ScrollView>
       </KeyboardAvoidingView>

@@ -1,7 +1,14 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text } from 'react-native';
+
+import { FocusedScreenTransition } from '@/components/screen-transition';
 
 export default function SettingsScreen() {
-  return <View style={styles.container}><Text style={styles.title}>Settings</Text><Text>Configure your app preferences.</Text></View>;
+  return (
+    <FocusedScreenTransition style={styles.container}>
+      <Text style={styles.title}>Settings</Text>
+      <Text>Configure your app preferences.</Text>
+    </FocusedScreenTransition>
+  );
 }
 
 const styles = StyleSheet.create({

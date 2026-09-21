@@ -1,14 +1,17 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useFocusEffect } from 'expo-router';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Animated, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 
 import { budgetsApi } from '@/api/budgetsApi';
 import type { Budget } from '@/api/budgetsApi';
 import { categoriesApi } from '@/api/categoriesApi';
 import type { Category } from '@/api/categoriesApi';
+import { FocusedScreenTransition } from '@/components/screen-transition';
+import { useAppTheme } from '@/hooks/use-app-theme';
 import { BudgetCategoryItem } from '@/screens/budgets/budget-category-item';
 import { BudgetSummaryCard } from '@/screens/budgets/budget-summary-card';
 import { BudgetTransactionList } from '@/screens/budgets/budget-transaction-list';
-import { styles } from '@/screens/budgets/budgets.styles';
+import { useBudgetStyles } from '@/screens/budgets/budgets.styles';
 import { CreateBudgetModal } from '@/screens/budgets/create-budget-modal';
 import {
   buildBudgetPayload,
@@ -25,6 +28,8 @@ const TAB_INDEX: Record<BudgetsTab, number> = {
 };
 
 export default function BudgetsScreen() {
+  const theme = useAppTheme();
+  const styles = useBudgetStyles();
   const [budgets, setBudgets] = useState<BudgetWithProgress[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -37,6 +42,7 @@ export default function BudgetsScreen() {
   const [tabWidth, setTabWidth] = useState(0);
   const [form, setForm] = useState<BudgetFormState>(() => getDefaultBudgetFormState());
   const [tabTranslateX] = useState(() => new Animated.Value(0));
+  const hasLoadedBudgetsRef = useRef(false);
 
   const expenseCategories = useMemo(() => categories.filter((category) => category.type === 'Expense'), [categories]);
   const sortedBudgets = useMemo(() => sortBudgetsForCategoryTab(budgets), [budgets]);
@@ -53,11 +59,11 @@ export default function BudgetsScreen() {
     [selectedBudget],
   );
 
-  const loadBudgets = useCallback(async (mode: 'loading' | 'refreshing' = 'loading') => {
+  const loadBudgets = useCallback(async (mode: 'loading' | 'refreshing' | 'silent' = 'loading') => {
     try {
       if (mode === 'refreshing') {
         setIsRefreshing(true);
-      } else {
+      } else if (mode === 'loading') {
         setIsLoading(true);
       }
 
@@ -79,18 +85,17 @@ export default function BudgetsScreen() {
     } catch (error) {
       Alert.alert('Không tải được ngân sách', error instanceof Error ? error.message : 'Vui lòng thử lại sau.');
     } finally {
+      hasLoadedBudgetsRef.current = true;
       setIsLoading(false);
       setIsRefreshing(false);
     }
   }, []);
 
-  useEffect(() => {
-    const timeoutId = setTimeout(() => {
-      loadBudgets();
-    }, 0);
-
-    return () => clearTimeout(timeoutId);
-  }, [loadBudgets]);
+  useFocusEffect(
+    useCallback(() => {
+      loadBudgets(hasLoadedBudgetsRef.current ? 'silent' : 'loading');
+    }, [loadBudgets]),
+  );
 
   const changeTab = useCallback(
     (nextTab: BudgetsTab) => {
@@ -169,7 +174,7 @@ export default function BudgetsScreen() {
   }
 
   return (
-    <View style={styles.screen}>
+    <FocusedScreenTransition style={styles.screen}>
       <View style={styles.header}>
         <Text style={styles.title}>Ngân sách Đang áp dụng</Text>
         {budgets.length > 0 ? (
@@ -198,7 +203,7 @@ export default function BudgetsScreen() {
 
       {isLoading ? (
         <View style={styles.loadingState}>
-          <ActivityIndicator color="#31c452" />
+          <ActivityIndicator color={theme.primary} />
         </View>
       ) : budgets.length === 0 ? (
         <View style={styles.emptyState}>
@@ -230,7 +235,7 @@ export default function BudgetsScreen() {
                     <RefreshControl
                       refreshing={isRefreshing}
                       onRefresh={() => loadBudgets('refreshing')}
-                      tintColor="#fff"
+                      tintColor={theme.text}
                     />
                   }
                 >
@@ -254,7 +259,7 @@ export default function BudgetsScreen() {
                   <RefreshControl
                     refreshing={isRefreshing}
                     onRefresh={() => loadBudgets('refreshing')}
-                    tintColor="#fff"
+                    tintColor={theme.text}
                   />
                 }
               >
@@ -284,7 +289,7 @@ export default function BudgetsScreen() {
         onSubmit={handleCreateBudget}
         visible={isCreateVisible}
       />
-    </View>
+    </FocusedScreenTransition>
   );
 }
 

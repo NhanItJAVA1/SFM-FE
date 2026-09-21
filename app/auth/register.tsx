@@ -1,8 +1,9 @@
 import { Link, router } from 'expo-router';
 import { useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, TextInput } from 'react-native';
 
 import { authApi } from '@/api/authApi';
+import { FocusedScreenTransition } from '@/components/screen-transition';
 import { saveAuthSession } from '@/stores/persistedAuthSession';
 
 export default function RegisterScreen() {
@@ -29,7 +30,7 @@ export default function RegisterScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <FocusedScreenTransition style={styles.container}>
       <Text style={styles.title}>Create user</Text>
       <Text style={styles.subtitle}>Set up your SFM user profile.</Text>
       <TextInput
@@ -62,7 +63,7 @@ export default function RegisterScreen() {
         {isSubmitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Register</Text>}
       </Pressable>
       <Link href="/auth/login" style={styles.link}>Already have a user profile?</Link>
-    </View>
+    </FocusedScreenTransition>
   );
 }
 

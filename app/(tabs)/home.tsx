@@ -1,387 +1,810 @@
 import { router } from "expo-router";
-import { useState } from "react";
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-const wallets = [
-  { name: "ACB Credit Platinum", balance: "16,043,000 đ", icon: "▤", color: "#55c8bc" },
-  { name: "Mua MacBook Pro", balance: "11,270,000 đ", icon: "▣", color: "#b86b3e" },
-  { name: "Tiền mặt", balance: "10,000,000 đ", icon: "◈", color: "#1c9a76" },
-];
+import { categoriesApi, Category } from "@/api/categoriesApi";
+import { FinancialAccount, financialAccountApi, getFinancialAccountBalance } from "@/api/financialAccountApi";
+import { CategorySpendingResponse, Transaction, transactionsApi, TransactionType } from "@/api/transactionsApi";
+import { FocusedScreenTransition } from "@/components/screen-transition";
+import { useAppTheme } from "@/hooks/use-app-theme";
+import { getAuthUser } from "@/stores/authSession";
+import type { AppTheme } from "@/theme/appTheme";
 
-const recentTransactions = [
-  { title: "Tiền chuyển đến", date: "28 tháng 8 2026", amount: "5,323,000 đ", icon: "↓", color: "#3eacd0" },
-  { title: "Khám sức khoẻ", date: "28 tháng 8 2026", amount: "150,000 đ", icon: "♧", color: "#30c0b1" },
-  { title: "Sức khoẻ", date: "28 tháng 8 2026", amount: "85,000 đ", icon: "✚", color: "#f26b70" },
-];
+const accountTypeMeta: Record<FinancialAccount["type"], { color: string; icon: string; label: string }> = {
+  Bank: { color: "#2778d7", icon: "▤", label: "Bank" },
+  Cash: { color: "#22a66f", icon: "●", label: "Cash" },
+  Savings: { color: "#d9962b", icon: "◎", label: "Saving" },
+};
 
-const spendingByPeriod = {
-  week: [
-    { title: "Hoá đơn & Tiện ích", amount: "3,089,000 đ", percentage: "34%", icon: "$", color: "#e2e2e2" },
-    { title: "Mua sắm", amount: "2,560,000 đ", percentage: "28%", icon: "▥", color: "#3caeaa" },
-    { title: "Ăn uống", amount: "1,450,000 đ", percentage: "16%", icon: "♨", color: "#e7a24d" },
-  ],
-  month: [
-    { title: "Hoá đơn & Tiện ích", amount: "12,089,000 đ", percentage: "30%", icon: "$", color: "#e2e2e2" },
-    { title: "Giải trí", amount: "5,719,000 đ", percentage: "14%", icon: "⌁", color: "#39a9d2" },
-    { title: "Mua sắm", amount: "5,560,000 đ", percentage: "14%", icon: "▥", color: "#3caeaa" },
-  ],
-} as const;
+const maxChartBarHeight = 58;
+const minChartBarHeight = 6;
 
-export default function HomeScreen() {
-  const [isBalanceVisible, setIsBalanceVisible] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [spendingPeriod, setSpendingPeriod] = useState<"week" | "month">("month");
+function useHomeStyles() {
+  const theme = useAppTheme();
 
-  function handleRefresh() {
-    setIsRefreshing(true);
-    setTimeout(() => setIsRefreshing(false), 700);
+  return useMemo(() => createStyles(theme), [theme]);
+}
+
+function formatMoney(amount: number, currency = "VND") {
+  return new Intl.NumberFormat("vi-VN", { currency, maximumFractionDigits: 0, style: "currency" }).format(amount);
+}
+
+function formatShortMoney(amount: number) {
+  return new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 1, notation: "compact" }).format(amount);
+}
+
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat("vi-VN", { day: "2-digit", month: "short" }).format(new Date(value));
+}
+
+function getMonthRange(date = new Date()) {
+  const start = new Date(date.getFullYear(), date.getMonth(), 1);
+  const end = new Date(date.getFullYear(), date.getMonth() + 1, 1);
+
+  return { end, start };
+}
+
+function isInRange(dateValue: string, start: Date, end: Date) {
+  const date = new Date(dateValue);
+
+  return date >= start && date < end;
+}
+
+function isIncome(type: TransactionType) {
+  return type === "Income" || type === "TransferIn";
+}
+
+function getSignedAmount(transaction: Transaction) {
+  return isIncome(transaction.type) ? transaction.amount : -transaction.amount;
+}
+
+function getGreeting() {
+  const hour = new Date().getHours();
+
+  if (hour < 11) {
+    return "Chào buổi sáng,";
   }
 
+  if (hour < 18) {
+    return "Chào buổi chiều,";
+  }
+
+  return "Chào buổi tối,";
+}
+
+function getCategoryFallback(type: TransactionType) {
+  if (type === "Income") {
+    return "Thu nhập";
+  }
+
+  if (type === "TransferIn" || type === "TransferOut") {
+    return "Chuyển khoản";
+  }
+
+  return "Chi tiêu";
+}
+
+export default function HomeScreen() {
+  const theme = useAppTheme();
+  const styles = useHomeStyles();
+  const user = getAuthUser();
+  const [accounts, setAccounts] = useState<FinancialAccount[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [spendingStats, setSpendingStats] = useState<CategorySpendingResponse | null>(null);
+  const [isBalanceVisible, setIsBalanceVisible] = useState(true);
+  const [isAccountsVisible, setIsAccountsVisible] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const loadHomeData = useCallback(async (refresh = false) => {
+    try {
+      if (refresh) {
+        setIsRefreshing(true);
+      } else {
+        setIsLoading(true);
+      }
+      setErrorMessage(null);
+
+      const [accountResponse, transactionResponse, categoryResponse, spendingResponse] = await Promise.all([
+        financialAccountApi.list(),
+        transactionsApi.list(),
+        categoriesApi.list(),
+        transactionsApi.categorySpending(),
+      ]);
+
+      setAccounts(accountResponse.data);
+      setTransactions(transactionResponse.data);
+      setCategories(categoryResponse.data);
+      setSpendingStats(spendingResponse.data);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Vui lòng thử lại sau.";
+      setErrorMessage(message);
+      Alert.alert("Không tải được tổng quan", message);
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const timeoutId = setTimeout(() => loadHomeData(), 0);
+
+    return () => clearTimeout(timeoutId);
+  }, [loadHomeData]);
+
+  const currency = accounts[0]?.currency ?? "VND";
+  const accountMap = useMemo(() => new Map(accounts.map((account) => [account.id, account])), [accounts]);
+  const categoryMap = useMemo(() => new Map(categories.map((category) => [category.id, category])), [categories]);
+  const { end: monthEnd, start: monthStart } = useMemo(() => getMonthRange(), []);
+
+  const activeAccounts = useMemo(() => accounts.filter((account) => account.isActive), [accounts]);
+  const totalBalance = useMemo(
+    () => activeAccounts.reduce((total, account) => total + getFinancialAccountBalance(account), 0),
+    [activeAccounts],
+  );
+
+  const monthTransactions = useMemo(
+    () =>
+      transactions
+        .filter(
+          (transaction) => !transaction.isExcluded && isInRange(transaction.transactionDate, monthStart, monthEnd),
+        )
+        .sort((left, right) => new Date(right.transactionDate).getTime() - new Date(left.transactionDate).getTime()),
+    [monthEnd, monthStart, transactions],
+  );
+
+  const monthlyIncome = useMemo(
+    () =>
+      monthTransactions
+        .filter((transaction) => isIncome(transaction.type))
+        .reduce((total, transaction) => total + transaction.amount, 0),
+    [monthTransactions],
+  );
+  const fallbackExpense = useMemo(
+    () =>
+      monthTransactions
+        .filter((transaction) => !isIncome(transaction.type))
+        .reduce((total, transaction) => total + transaction.amount, 0),
+    [monthTransactions],
+  );
+  const monthlyExpense = spendingStats?.totalAmount ?? fallbackExpense;
+  const recentTransactions = monthTransactions.slice(0, 5);
+  const topCategories = useMemo(
+    () =>
+      (spendingStats?.categories ?? [])
+        .filter((category) => category.amount > 0)
+        .sort((left, right) => right.amount - left.amount)
+        .slice(0, 4),
+    [spendingStats],
+  );
+
+  // Tính toán dữ liệu chi tiêu theo ngày
+  const dailySpending = useMemo(() => {
+    const daysInMonth = new Date(monthEnd.getFullYear(), monthEnd.getMonth(), 0).getDate();
+    const spendingMap = new Map<number, number>();
+
+    monthTransactions
+      .filter((t) => !isIncome(t.type))
+      .forEach((t) => {
+        const day = new Date(t.transactionDate).getDate();
+        spendingMap.set(day, (spendingMap.get(day) || 0) + t.amount);
+      });
+
+    return Array.from({ length: daysInMonth }, (_, i) => spendingMap.get(i + 1) || 0);
+  }, [monthTransactions, monthEnd]);
+
+  // Lọc dữ liệu các ngày có giao dịch (tối đa 15 ngày)
+  const activeDaysData = useMemo(() => {
+    const data = dailySpending.map((amount, i) => ({ day: i + 1, amount })).filter((item) => item.amount > 0);
+
+    // Nếu quá 15 ngày, lấy 15 ngày gần cuối
+    if (data.length > 15) {
+      return data.slice(-15);
+    }
+    return data;
+  }, [dailySpending]);
+  const maxDailySpending = useMemo(() => Math.max(...activeDaysData.map((item) => item.amount), 1), [activeDaysData]);
+
+  const displayName = user?.displayName ?? user?.username ?? "bạn";
+
   return (
-    <SafeAreaView style={styles.screen} edges={["top"]}>
-      <ScrollView
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} tintColor="#35c759" />}
-      >
+    <FocusedScreenTransition>
+      <SafeAreaView style={styles.screen} edges={["top"]}>
+        <ScrollView
+          contentContainerStyle={styles.content}
+          refreshControl={
+            <RefreshControl refreshing={isRefreshing} onRefresh={() => loadHomeData(true)} tintColor={theme.primary} />
+          }
+          showsVerticalScrollIndicator={false}
+        >
         <View style={styles.header}>
-          <View>
-            <Text style={styles.greeting}>Chào buổi sáng,</Text>
-            <Text style={styles.userName}>Nguyễn Văn A</Text>
+          <View style={styles.headerCopy}>
+            <Text style={styles.greeting}>{getGreeting()}</Text>
+            <Text numberOfLines={1} style={styles.userName}>
+              {displayName}
+            </Text>
           </View>
-          <View style={styles.headerActions}>
-            <Pressable style={styles.headerButton} accessibilityLabel="Tìm kiếm">
-              <Text style={styles.headerIcon}>⌕</Text>
-            </Pressable>
-            <Pressable style={styles.headerButton} accessibilityLabel="Thông báo">
-              <Text style={styles.headerIcon}>♧</Text>
-              <View style={styles.notificationDot} />
-            </Pressable>
-          </View>
+          <Pressable
+            style={styles.iconButton}
+            onPress={() => loadHomeData(true)}
+            accessibilityLabel="Làm mới tổng quan"
+          >
+            <Text style={styles.iconButtonText}>↻</Text>
+          </Pressable>
         </View>
 
-        <View style={styles.balanceSection}>
-          <View style={styles.balanceLabelRow}>
-            <Text style={styles.balanceLabel}>Tổng số dư</Text>
-            <Pressable onPress={() => setIsBalanceVisible((visible) => !visible)} hitSlop={10}>
-              <Text style={styles.eyeIcon}>{isBalanceVisible ? "◉" : "◌"}</Text>
-            </Pressable>
-          </View>
-          <Text style={styles.balance}>{isBalanceVisible ? "5,227,000 đ" : "••••••••"}</Text>
-          <Text style={styles.balanceCaption}>Cập nhật vừa xong</Text>
-        </View>
-
-        <SectionHeading title="Ví của tôi" action="Xem tất cả" onAction={() => router.push("/account")} />
-        <View style={styles.walletCard}>
-          {wallets.map((wallet, index) => (
-            <Pressable key={wallet.name} style={[styles.walletRow, index < wallets.length - 1 && styles.rowDivider]}>
-              <View style={[styles.walletIcon, { backgroundColor: wallet.color }]}>
-                <Text style={styles.walletIconText}>{wallet.icon}</Text>
+        <View style={styles.heroCard}>
+          <View style={styles.heroTopRow}>
+            <Pressable style={{ flex: 1 }} onPress={() => setIsAccountsVisible((visible) => !visible)}>
+              <View style={styles.heroTitleRow}>
+                <Text style={styles.heroLabel}>Tổng số dư</Text>
+                <Text style={styles.chevronText}>{isAccountsVisible ? " ▾" : " ▸"}</Text>
               </View>
-              <Text numberOfLines={1} style={styles.walletName}>
-                {wallet.name}
+              <Text style={styles.heroCaption}>
+                {activeAccounts.length} ví · {isAccountsVisible ? "Nhấn để thu gọn" : "Nhấn để xem chi tiết"}
               </Text>
-              <Text style={styles.walletBalance}>{wallet.balance}</Text>
             </Pressable>
-          ))}
-        </View>
-
-        <SectionHeading title="Báo cáo tháng này" action="Xem báo cáo" />
-        <View style={styles.reportCard}>
-          <View style={styles.reportSummary}>
-            <View style={styles.summaryItem}>
-              <Text style={styles.summaryLabel}>Tổng đã chi</Text>
-              <Text style={styles.expenseValue}>40,840,000</Text>
-            </View>
-            <View style={styles.summaryItem}>
-              <Text style={styles.summaryLabel}>Tổng thu</Text>
-              <Text style={styles.incomeValue}>49,950,000</Text>
-            </View>
-          </View>
-          <View style={styles.chartArea}>
-            <View style={styles.chartLabels}>
-              <Text style={styles.chartTooltip}>
-                28/08/2026: <Text style={styles.tooltipValue}>40,840,000</Text>
-                {"\n"}Trung bình 3 tháng trước: 43,996,000
-              </Text>
-            </View>
-            <View style={styles.chartLines}>
-              <View style={styles.chartLine} />
-              <View style={styles.chartLine} />
-              <View style={styles.chartLine} />
-              <View style={styles.chartLine} />
-              <View style={styles.chartPath} />
-              <View style={styles.chartPoint} />
-            </View>
-            <View style={styles.chartAxis}>
-              <Text>01/08</Text>
-              <Text>50 M</Text>
-              <Text>31/08</Text>
-            </View>
-          </View>
-          <View style={styles.legendRow}>
-            <Text style={styles.legendExpense}>● Tháng này</Text>
-            <Text style={styles.legendAverage}>● Trung bình 3 tháng trước</Text>
-            <Text style={styles.infoMark}>?</Text>
-          </View>
-          <View style={styles.reportFooter}>
-            <Text style={styles.arrow}>‹</Text>
-            <Text style={styles.reportLink}>Báo cáo xu hướng</Text>
-            <Text style={styles.arrow}>›</Text>
-          </View>
-        </View>
-
-        <SectionHeading title="Chi tiêu nhiều nhất" action="Xem chi tiết" />
-        <View style={styles.spendingCard}>
-          <View style={styles.periodToggle}>
-            <Pressable
-              onPress={() => setSpendingPeriod("week")}
-              style={[styles.periodOption, spendingPeriod === "week" && styles.periodOptionSelected]}
-            >
-              <Text style={[styles.periodText, spendingPeriod === "week" && styles.periodTextSelected]}>Tuần</Text>
-            </Pressable>
-            <Pressable
-              onPress={() => setSpendingPeriod("month")}
-              style={[styles.periodOption, spendingPeriod === "month" && styles.periodOptionSelected]}
-            >
-              <Text style={[styles.periodText, spendingPeriod === "month" && styles.periodTextSelected]}>Tháng</Text>
+            <Pressable style={styles.eyeButton} onPress={() => setIsBalanceVisible((visible) => !visible)} hitSlop={10}>
+              <Text style={styles.eyeText}>{isBalanceVisible ? "◉" : "○"}</Text>
             </Pressable>
           </View>
-          {spendingByPeriod[spendingPeriod].map((category) => (
-            <View key={category.title} style={styles.spendingRow}>
-              <View style={[styles.spendingIcon, { backgroundColor: category.color }]}>
-                <Text style={styles.spendingIconText}>{category.icon}</Text>
+          <Pressable onPress={() => setIsAccountsVisible((visible) => !visible)}>
+            <Text style={styles.heroBalance}>
+              {isBalanceVisible ? formatMoney(totalBalance, currency) : "••••••••••"}
+            </Text>
+          </Pressable>
+          <View style={styles.heroStats}>
+            <MetricPill label="Thu tháng này" tone="good" value={formatMoney(monthlyIncome, currency)} />
+            <MetricPill label="Chi tháng này" tone="warn" value={formatMoney(monthlyExpense, currency)} />
+          </View>
+
+          {isAccountsVisible && (
+            <View style={styles.heroAccountsList}>
+              <View style={styles.heroDivider} />
+              <View style={styles.heroAccountsHeader}>
+                <Text style={styles.heroAccountsTitle}>Danh sách tài khoản</Text>
+                <Pressable onPress={() => router.push("/account")} hitSlop={8}>
+                  <Text style={styles.heroAccountsAction}>Quản lý ví ➔</Text>
+                </Pressable>
               </View>
-              <View style={styles.spendingMain}>
-                <Text style={styles.spendingTitle}>{category.title}</Text>
-                <Text style={styles.spendingAmount}>{category.amount}</Text>
+              <View style={styles.heroAccountsGrid}>
+                {activeAccounts.length === 0 ? (
+                  <EmptyState title="Chưa có ví" description="Tạo ví đầu tiên để bắt đầu theo dõi số dư." />
+                ) : (
+                  activeAccounts.map((account) => (
+                    <HeroAccountRow
+                      key={account.id}
+                      account={account}
+                      currency={currency}
+                      isBalanceVisible={isBalanceVisible}
+                    />
+                  ))
+                )}
               </View>
-              <Text style={styles.spendingPercentage}>{category.percentage}</Text>
             </View>
-          ))}
+          )}
         </View>
 
-        <SectionHeading title="Giao dịch gần đây" action="Xem tất cả" />
-        <View style={styles.transactionCard}>
-          {recentTransactions.map((transaction, index) => (
-            <View
-              key={transaction.title}
-              style={[styles.transactionRow, index < recentTransactions.length - 1 && styles.rowDivider]}
-            >
-              <View style={[styles.transactionIcon, { backgroundColor: `${transaction.color}22` }]}>
-                <Text style={[styles.transactionIconText, { color: transaction.color }]}>{transaction.icon}</Text>
+        {errorMessage ? (
+          <View style={styles.errorCard}>
+            <Text style={styles.errorTitle}>Dữ liệu chưa sẵn sàng</Text>
+            <Text style={styles.errorText}>{errorMessage}</Text>
+          </View>
+        ) : null}
+
+        {isLoading ? (
+          <View style={styles.loadingCard}>
+            <ActivityIndicator color={theme.primary} />
+            <Text style={styles.loadingText}>Đang tải dữ liệu tổng quan...</Text>
+          </View>
+        ) : (
+          <>
+            <SectionHeading
+              title="Báo cáo tháng này"
+              action="Xem sổ"
+              onAction={() => router.push("/(tabs)/transactions")}
+            />
+            <View style={styles.reportCard}>
+              <View style={styles.reportHeader}>
+                <View>
+                  <Text style={styles.reportLabel}>Tổng chi tiêu</Text>
+                  <Text style={[styles.reportValue, styles.negativeText]}>{formatMoney(monthlyExpense, currency)}</Text>
+                </View>
+                <View>
+                  <Text style={styles.reportLabel}>Tổng thu nhập</Text>
+                  <Text style={[styles.reportValue, styles.positiveText]}>{formatMoney(monthlyIncome, currency)}</Text>
+                </View>
               </View>
-              <View style={styles.transactionMain}>
-                <Text style={styles.transactionTitle}>{transaction.title}</Text>
-                <Text style={styles.transactionDate}>{transaction.date}</Text>
+
+              {/* Biểu đồ cột chi tiêu theo ngày */}
+              <View style={styles.chartWrapper}>
+                {activeDaysData.length === 0 ? (
+                  <View style={styles.chartEmptyState}>
+                    <Text style={styles.chartEmptyText}>Chưa có chi tiêu trong tháng</Text>
+                  </View>
+                ) : (
+                  <View style={styles.dailyChartContainer}>
+                    {activeDaysData.map((item) => (
+                      <View key={item.day} style={styles.dailyBarWrapper}>
+                        <Text style={styles.barAmountText}>{formatShortMoney(item.amount)}</Text>
+                        <View
+                          style={[
+                            styles.dailyBar,
+                            {
+                              height: Math.max(minChartBarHeight, (item.amount / maxDailySpending) * maxChartBarHeight),
+                            },
+                          ]}
+                        />
+                        <Text style={styles.xAxisLabel}>{item.day}</Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
               </View>
-              <Text
-                style={[
-                  styles.transactionAmount,
-                  { color: transaction.title === "Tiền chuyển đến" ? "#36afd2" : "#f2666d" },
-                ]}
-              >
-                {transaction.amount}
-              </Text>
+              <Text style={styles.chartFooter}>Ngày trong tháng</Text>
             </View>
-          ))}
-        </View>
-      </ScrollView>
-    </SafeAreaView>
+
+            <SectionHeading
+              title="Chi tiêu nhiều nhất"
+              action="Chi tiết"
+              onAction={() => router.push("/(tabs)/user")}
+            />
+            <View style={styles.categoryCard}>
+              {topCategories.length === 0 ? (
+                <EmptyState title="Chưa có chi tiêu" description="Các danh mục phát sinh trong tháng sẽ hiện ở đây." />
+              ) : (
+                topCategories.map((category, index) => (
+                  <CategoryRow
+                    key={category.categoryId ?? category.categoryName}
+                    category={category}
+                    index={index}
+                    currency={currency}
+                  />
+                ))
+              )}
+            </View>
+
+            <SectionHeading
+              title="Giao dịch gần đây"
+              action="Xem tất cả"
+              onAction={() => router.push("/(tabs)/transactions")}
+            />
+            <View style={styles.transactionCard}>
+              {recentTransactions.length === 0 ? (
+                <EmptyState title="Chưa có giao dịch" description="Giao dịch mới nhất trong tháng sẽ hiện ở đây." />
+              ) : (
+                recentTransactions.map((transaction) => (
+                  <TransactionRow
+                    key={transaction.id}
+                    account={accountMap.get(transaction.accountId)}
+                    category={transaction.categoryId ? categoryMap.get(transaction.categoryId) : undefined}
+                    currency={currency}
+                    transaction={transaction}
+                  />
+                ))
+              )}
+            </View>
+          </>
+        )}
+        </ScrollView>
+      </SafeAreaView>
+    </FocusedScreenTransition>
   );
 }
 
-function SectionHeading({ title, action, onAction }: { title: string; action: string; onAction?: () => void }) {
+function MetricPill({ label, tone, value }: { label: string; tone: "good" | "warn"; value: string }) {
+  const styles = useHomeStyles();
+
+  return (
+    <View style={[styles.metricPill, tone === "good" ? styles.metricGood : styles.metricWarn]}>
+      <Text style={styles.metricLabel}>{label}</Text>
+      <Text style={styles.metricValue}>{value}</Text>
+    </View>
+  );
+}
+
+// Tài khoản trong Tổng số dư
+function HeroAccountRow({
+  account,
+  currency,
+  isBalanceVisible,
+}: {
+  account: FinancialAccount;
+  currency: string;
+  isBalanceVisible: boolean;
+}) {
+  const styles = useHomeStyles();
+  const meta = accountTypeMeta[account.type] || { color: "#8fa49a", icon: "●", label: "Ví" };
+
+  return (
+    <Pressable style={styles.heroAccountRow} onPress={() => router.push("/account")}>
+      <View style={[styles.heroAccountIcon, { backgroundColor: `${meta.color}33` }]}>
+        <Text style={[styles.heroAccountIconText, { color: meta.color }]}>{meta.icon}</Text>
+      </View>
+      <Text numberOfLines={1} style={styles.heroAccountName}>
+        {account.name}
+      </Text>
+      <Text style={styles.heroAccountBalance}>
+        {isBalanceVisible ? formatMoney(getFinancialAccountBalance(account), account.currency || currency) : "••••••••"}
+      </Text>
+    </Pressable>
+  );
+}
+
+// Chi tiêu nhiều nhất
+function CategoryRow({
+  category,
+  currency,
+  index,
+}: {
+  category: CategorySpendingResponse["categories"][number];
+  currency: string;
+  index: number;
+}) {
+  const styles = useHomeStyles();
+  const colors = ["#3557a4", "#c05b3e", "#1b8f5a", "#7c61d9"];
+  const color = colors[index % colors.length];
+
+  return (
+    <View style={[styles.categoryRow, index > 0 && styles.rowDivider]}>
+      <View style={[styles.categoryIcon, { backgroundColor: `${color}18` }]}>
+        <Text style={[styles.categoryIconText, { color }]}>{category.icon?.charAt(0).toUpperCase() ?? "?"}</Text>
+      </View>
+      <View style={styles.categoryMain}>
+        <Text numberOfLines={1} style={styles.categoryName}>
+          {category.categoryName}
+        </Text>
+        <Text style={styles.categoryMeta}>
+          {category.transactionCount} giao dịch · {category.percentage.toFixed(1)}%
+        </Text>
+      </View>
+      <Text style={styles.categoryAmount}>{formatMoney(category.amount, currency)}</Text>
+    </View>
+  );
+}
+
+// Giao dịch gần đây
+function TransactionRow({
+  account,
+  category,
+  currency,
+  transaction,
+}: {
+  account?: FinancialAccount;
+  category?: Category;
+  currency: string;
+  transaction: Transaction;
+}) {
+  const styles = useHomeStyles();
+  const positive = isIncome(transaction.type);
+  const signedAmount = getSignedAmount(transaction);
+  const title = category?.name ?? getCategoryFallback(transaction.type);
+
+  return (
+    <View style={styles.transactionRow}>
+      <View style={[styles.transactionIcon, positive ? styles.incomeIcon : styles.expenseIcon]}>
+        <Text style={[styles.transactionIconText, positive ? styles.positiveText : styles.negativeText]}>
+          {positive ? "↗" : "↘"}
+        </Text>
+      </View>
+      <View style={styles.transactionMain}>
+        <Text numberOfLines={1} style={styles.transactionTitle}>
+          {transaction.description || title}
+        </Text>
+        <Text numberOfLines={1} style={styles.transactionMeta}>
+          {formatDate(transaction.transactionDate)} · {account?.name ?? "Không rõ ví"}
+        </Text>
+      </View>
+      <Text style={[styles.transactionAmount, positive ? styles.positiveText : styles.negativeText]}>
+        {signedAmount > 0 ? "+" : "-"}
+        {formatMoney(Math.abs(signedAmount), account?.currency ?? currency)}
+      </Text>
+    </View>
+  );
+}
+
+function SectionHeading({ action, onAction, title }: { action: string; onAction?: () => void; title: string }) {
+  const styles = useHomeStyles();
+
   return (
     <View style={styles.sectionHeading}>
       <Text style={styles.sectionTitle}>{title}</Text>
-      <Pressable onPress={onAction}>
+      <Pressable onPress={onAction} hitSlop={8}>
         <Text style={styles.sectionAction}>{action}</Text>
       </Pressable>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { backgroundColor: "#f7f8fa", flex: 1 },
-  content: { paddingBottom: 28, paddingHorizontal: 15 },
-  header: { alignItems: "center", flexDirection: "row", justifyContent: "space-between", paddingTop: 14 },
-  greeting: { color: "#737984", fontSize: 13 },
-  userName: { color: "#171a21", fontSize: 18, fontWeight: "700", marginTop: 3 },
-  headerActions: { flexDirection: "row", gap: 9 },
-  headerButton: {
-    alignItems: "center",
-    backgroundColor: "#ffffff",
-    borderRadius: 20,
-    height: 38,
-    justifyContent: "center",
-    position: "relative",
-    width: 38,
-  },
-  headerIcon: { color: "#252a33", fontSize: 24, lineHeight: 25 },
-  notificationDot: {
-    backgroundColor: "#f25f63",
-    borderColor: "#ffffff",
-    borderRadius: 4,
-    borderWidth: 2,
-    height: 9,
-    position: "absolute",
-    right: 8,
-    top: 7,
-    width: 9,
-  },
-  balanceSection: { paddingBottom: 22, paddingTop: 26 },
-  balanceLabelRow: { alignItems: "center", flexDirection: "row", gap: 8 },
-  balanceLabel: { color: "#737984", fontSize: 14 },
-  eyeIcon: { color: "#252a33", fontSize: 16 },
-  balance: { color: "#15181e", fontSize: 32, fontWeight: "800", letterSpacing: 0, marginTop: 5 },
-  balanceCaption: { color: "#8b929e", fontSize: 12, marginTop: 5 },
-  sectionHeading: {
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 10,
-    marginTop: 4,
-  },
-  sectionTitle: { color: "#606873", fontSize: 15, fontWeight: "600" },
-  sectionAction: { color: "#39c568", fontSize: 14, fontWeight: "700" },
-  walletCard: {
-    backgroundColor: "#ffffff",
-    borderColor: "#e5e8ed",
-    borderRadius: 15,
-    borderWidth: 1,
-    overflow: "hidden",
-  },
-  walletRow: { alignItems: "center", minHeight: 56, paddingHorizontal: 14 },
-  rowDivider: { borderBottomColor: "#e7e9ed", borderBottomWidth: StyleSheet.hairlineWidth },
-  walletIcon: {
-    alignItems: "center",
-    borderRadius: 18,
-    height: 36,
-    justifyContent: "center",
-    marginRight: 12,
-    width: 36,
-  },
-  walletIconText: { color: "#eef1f0", fontSize: 19, fontWeight: "700" },
-  walletName: { color: "#252a33", flex: 1, fontSize: 14, fontWeight: "600" },
-  walletBalance: { color: "#252a33", fontSize: 14, fontWeight: "700", marginLeft: 8 },
-  reportCard: { backgroundColor: "#ffffff", borderColor: "#e5e8ed", borderRadius: 15, borderWidth: 1, padding: 14 },
-  reportSummary: { borderBottomColor: "#e1e4e9", borderBottomWidth: 1, flexDirection: "row", paddingBottom: 11 },
-  summaryItem: { alignItems: "center", flex: 1 },
-  summaryLabel: { color: "#737984", fontSize: 13 },
-  expenseValue: { color: "#f2646c", fontSize: 17, fontWeight: "700", marginTop: 2 },
-  incomeValue: { color: "#28aeda", fontSize: 17, fontWeight: "700", marginTop: 2 },
-  chartArea: { height: 135, marginTop: 9, position: "relative" },
-  chartLabels: { alignItems: "flex-end", height: 47 },
-  chartTooltip: {
-    backgroundColor: "#eef1f4",
-    borderRadius: 4,
-    color: "#626a75",
-    fontSize: 10,
-    lineHeight: 15,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    textAlign: "right",
-  },
-  tooltipValue: { color: "#f26c70", fontSize: 14, fontWeight: "800" },
-  chartLines: { bottom: 22, left: 0, position: "absolute", right: 0, top: 49 },
-  chartLine: { borderTopColor: "#dfe3e8", borderTopWidth: 1, borderStyle: "dashed", height: 25 },
-  chartPath: {
-    backgroundColor: "#a16b6c66",
-    borderColor: "#f2676d",
-    borderTopLeftRadius: 60,
-    borderTopWidth: 2,
-    bottom: 0,
-    height: 62,
-    left: 3,
-    position: "absolute",
-    right: 45,
-    transform: [{ skewY: "-10deg" }],
-  },
-  chartPoint: {
-    backgroundColor: "#f2676d",
-    borderColor: "#fbd5d7",
-    borderRadius: 6,
-    borderWidth: 2,
-    bottom: 29,
-    height: 11,
-    position: "absolute",
-    right: 42,
-    width: 11,
-  },
-  chartAxis: {
-    bottom: 0,
-    color: "#85858b",
-    flexDirection: "row",
-    fontSize: 10,
-    justifyContent: "space-between",
-    position: "absolute",
-    width: "100%",
-  },
-  legendRow: { alignItems: "center", flexDirection: "row", gap: 9, marginTop: 5 },
-  legendExpense: { color: "#737984", fontSize: 11 },
-  legendAverage: { color: "#737984", fontSize: 11 },
-  infoMark: {
-    alignItems: "center",
-    borderColor: "#8e8e94",
-    borderRadius: 7,
-    borderWidth: 1,
-    color: "#8e8e94",
-    fontSize: 9,
-    height: 14,
-    textAlign: "center",
-    width: 14,
-  },
-  reportFooter: { alignItems: "center", flexDirection: "row", justifyContent: "space-between", marginTop: 12 },
-  arrow: { color: "#28bd63", fontSize: 25 },
-  reportLink: { color: "#32c46b", fontSize: 15, fontWeight: "600" },
-  spendingCard: { backgroundColor: "#ffffff", borderColor: "#e5e8ed", borderRadius: 15, borderWidth: 1, padding: 14 },
-  periodToggle: {
-    backgroundColor: "#eef1f4",
-    borderRadius: 7,
-    flexDirection: "row",
-    height: 34,
-    marginBottom: 13,
-    overflow: "hidden",
-  },
-  periodOption: { alignItems: "center", flex: 1, justifyContent: "center" },
-  periodOptionSelected: { backgroundColor: "#ffffff", borderRadius: 7 },
-  periodText: { color: "#737984", fontSize: 14 },
-  periodTextSelected: { color: "#252a33", fontWeight: "600" },
-  spendingRow: { alignItems: "center", minHeight: 56 },
-  spendingIcon: {
-    alignItems: "center",
-    borderRadius: 18,
-    height: 36,
-    justifyContent: "center",
-    marginRight: 13,
-    width: 36,
-  },
-  spendingIconText: { color: "#46464a", fontSize: 18, fontWeight: "800" },
-  spendingMain: { flex: 1 },
-  spendingTitle: { color: "#252a33", fontSize: 14, fontWeight: "600" },
-  spendingAmount: { color: "#858d99", fontSize: 11, marginTop: 3 },
-  spendingPercentage: { color: "#f2676d", fontSize: 16, fontWeight: "500" },
-  transactionCard: {
-    backgroundColor: "#ffffff",
-    borderColor: "#e5e8ed",
-    borderRadius: 15,
-    borderWidth: 1,
-    overflow: "hidden",
-  },
-  transactionRow: { alignItems: "center", minHeight: 68, paddingHorizontal: 14 },
-  transactionIcon: {
-    alignItems: "center",
-    borderRadius: 20,
-    height: 38,
-    justifyContent: "center",
-    marginRight: 12,
-    width: 38,
-  },
-  transactionIconText: { fontSize: 20, fontWeight: "700" },
-  transactionMain: { flex: 1 },
-  transactionTitle: { color: "#252a33", fontSize: 14, fontWeight: "600" },
-  transactionDate: { color: "#858d99", fontSize: 11, marginTop: 4 },
-  transactionAmount: { fontSize: 13, fontWeight: "700", marginLeft: 8 },
-});
+function EmptyState({ description, title }: { description: string; title: string }) {
+  const styles = useHomeStyles();
+
+  return (
+    <View style={styles.emptyState}>
+      <Text style={styles.emptyTitle}>{title}</Text>
+      <Text style={styles.emptyText}>{description}</Text>
+    </View>
+  );
+}
+
+function createStyles(theme: AppTheme) {
+  return StyleSheet.create({
+    screen: { backgroundColor: theme.screen, flex: 1 },
+    content: { paddingBottom: 112, paddingHorizontal: 16 },
+    header: {
+      alignItems: "center",
+      flexDirection: "row",
+      justifyContent: "space-between",
+      paddingBottom: 16,
+      paddingTop: 14,
+    },
+    headerCopy: { flex: 1, paddingRight: 12 },
+    greeting: { color: theme.textMuted, fontSize: 13, fontWeight: "600" },
+    userName: { color: theme.text, fontSize: 24, fontWeight: "900", marginTop: 3 },
+    iconButton: {
+      alignItems: "center",
+      backgroundColor: theme.card,
+      borderColor: theme.border,
+      borderRadius: 20,
+      borderWidth: 1,
+      height: 40,
+      justifyContent: "center",
+      width: 40,
+    },
+    iconButtonText: { color: theme.primary, fontSize: 22, fontWeight: "800", lineHeight: 24 },
+    heroCard: {
+      backgroundColor: theme.card,
+      borderColor: theme.border,
+      borderRadius: 8,
+      borderWidth: 1,
+      padding: 18,
+      shadowColor: "#000",
+      shadowOpacity: 0.14,
+      shadowRadius: 14,
+    },
+    heroTopRow: { alignItems: "center", flexDirection: "row", justifyContent: "space-between" },
+    heroLabel: { color: theme.text, fontSize: 14, fontWeight: "800" },
+    heroCaption: { color: theme.textMuted, fontSize: 12, marginTop: 3 },
+    eyeButton: { alignItems: "center", height: 34, justifyContent: "center", width: 34 },
+    eyeText: { color: theme.primary, fontSize: 18 },
+    heroBalance: { color: theme.text, fontSize: 34, fontWeight: "900", letterSpacing: 0, marginTop: 16 },
+    heroStats: { flexDirection: "row", gap: 10, marginTop: 18 },
+    metricPill: { borderRadius: 8, flex: 1, minHeight: 64, padding: 12 },
+    metricGood: { backgroundColor: theme.goodBackground },
+    metricWarn: { backgroundColor: theme.warningBackground },
+    metricLabel: { color: theme.textMuted, fontSize: 11, fontWeight: "800" },
+    metricValue: { color: theme.text, fontSize: 14, fontWeight: "900", marginTop: 6 },
+    errorCard: {
+      backgroundColor: theme.warningBackground,
+      borderColor: theme.warning,
+      borderRadius: 8,
+      borderWidth: 1,
+      marginTop: 14,
+      padding: 14,
+    },
+    errorTitle: { color: theme.warning, fontSize: 14, fontWeight: "900" },
+    errorText: { color: theme.textMuted, fontSize: 13, lineHeight: 18, marginTop: 4 },
+    loadingCard: {
+      alignItems: "center",
+      backgroundColor: theme.card,
+      borderRadius: 8,
+      gap: 10,
+      marginTop: 16,
+      padding: 28,
+    },
+    loadingText: { color: theme.textMuted, fontSize: 13, fontWeight: "700" },
+    sectionHeading: {
+      alignItems: "center",
+      flexDirection: "row",
+      justifyContent: "space-between",
+      marginBottom: 10,
+      marginTop: 22,
+    },
+    sectionTitle: { color: theme.text, fontSize: 17, fontWeight: "900" },
+    sectionAction: { color: theme.primary, fontSize: 13, fontWeight: "900" },
+    heroTitleRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+    },
+    chevronText: {
+      color: theme.primary,
+      fontSize: 13,
+      fontWeight: "800",
+    },
+    heroDivider: {
+      backgroundColor: theme.border,
+      height: 1,
+      marginVertical: 14,
+    },
+    heroAccountsList: {
+      marginTop: 4,
+    },
+    heroAccountsHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: 12,
+    },
+    heroAccountsTitle: {
+      color: theme.text,
+      fontSize: 13,
+      fontWeight: "800",
+    },
+    heroAccountsAction: {
+      color: theme.textMuted,
+      fontSize: 12,
+      fontWeight: "700",
+    },
+    heroAccountsGrid: {
+      gap: 8,
+    },
+    heroAccountRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: theme.cardAlt,
+      borderRadius: 6,
+      paddingVertical: 10,
+      paddingHorizontal: 12,
+    },
+    heroAccountIcon: {
+      alignItems: "center",
+      borderRadius: 15,
+      height: 30,
+      justifyContent: "center",
+      marginRight: 10,
+      width: 30,
+    },
+    heroAccountIconText: {
+      fontSize: 15,
+      fontWeight: "900",
+    },
+    heroAccountName: {
+      color: theme.text,
+      fontSize: 14,
+      fontWeight: "700",
+      flex: 1,
+      marginRight: 8,
+    },
+    heroAccountBalance: {
+      color: theme.text,
+      fontSize: 14,
+      fontWeight: "800",
+    },
+    reportCard: {
+      backgroundColor: theme.card,
+      borderColor: theme.border,
+      borderRadius: 8,
+      borderWidth: 1,
+      padding: 16,
+    },
+    reportHeader: { alignItems: "flex-start", flexDirection: "row", gap: 10, justifyContent: "space-between" },
+    reportLabel: { color: theme.textMuted, fontSize: 12, fontWeight: "800" },
+    reportValue: { fontSize: 26, fontWeight: "900", marginTop: 4 },
+    trendBadge: { backgroundColor: theme.cardAlt, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7 },
+    trendText: { color: theme.primary, fontSize: 12, fontWeight: "900" },
+    chartWrapper: {
+      flexDirection: "row",
+      marginTop: 20,
+      height: 100,
+      marginBottom: 20,
+    },
+    chartEmptyState: {
+      alignItems: "center",
+      backgroundColor: theme.cardAlt,
+      borderRadius: 8,
+      flex: 1,
+      justifyContent: "center",
+    },
+    chartEmptyText: { color: theme.textSubtle, fontSize: 12, fontWeight: "700" },
+    dailyChartContainer: {
+      flex: 1,
+      flexDirection: "row",
+      alignItems: "flex-end",
+      gap: 4,
+      paddingTop: 20,
+      paddingBottom: 4,
+    },
+    dailyBarWrapper: {
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "flex-end",
+    },
+    barAmountText: {
+      fontSize: 8,
+      color: theme.textSubtle,
+      marginBottom: 2,
+      textAlign: "center",
+    },
+    dailyBar: {
+      backgroundColor: theme.dangerText,
+      borderRadius: 2,
+      width: "100%",
+      minHeight: 2,
+    },
+    xAxisLabel: {
+      color: theme.textSubtle,
+      fontSize: 8,
+      fontWeight: "700",
+      marginTop: 4,
+    },
+    chartFooter: {
+      color: theme.textSubtle,
+      fontSize: 11,
+      fontWeight: "700",
+      textAlign: "center",
+      marginTop: 4,
+      marginBottom: 8,
+    },
+    reportSummaryRow: {
+      borderTopColor: theme.border,
+      borderTopWidth: 1,
+      flexDirection: "row",
+      marginTop: 16,
+      paddingTop: 14,
+    },
+    reportSummaryItem: { flex: 1 },
+    reportSummaryLabel: { color: theme.textSubtle, fontSize: 11, fontWeight: "800" },
+    reportSummaryValue: { fontSize: 15, fontWeight: "900", marginTop: 5 },
+    categoryCard: {
+      backgroundColor: theme.card,
+      borderColor: theme.border,
+      borderRadius: 8,
+      borderWidth: 1,
+      overflow: "hidden",
+    },
+    categoryRow: { alignItems: "center", flexDirection: "row", minHeight: 68, paddingHorizontal: 14 },
+    rowDivider: { borderTopColor: theme.border, borderTopWidth: 1 },
+    categoryIcon: {
+      alignItems: "center",
+      borderRadius: 19,
+      height: 38,
+      justifyContent: "center",
+      marginRight: 12,
+      width: 38,
+    },
+    categoryIconText: { fontSize: 17, fontWeight: "900" },
+    categoryMain: { flex: 1 },
+    categoryName: { color: theme.text, fontSize: 14, fontWeight: "900" },
+    categoryMeta: { color: theme.textSubtle, fontSize: 11, fontWeight: "700", marginTop: 3 },
+    categoryAmount: { color: theme.text, fontSize: 13, fontWeight: "900", marginLeft: 10 },
+    transactionCard: {
+      backgroundColor: theme.card,
+      borderColor: theme.border,
+      borderRadius: 8,
+      borderWidth: 1,
+      overflow: "hidden",
+    },
+    transactionRow: {
+      alignItems: "center",
+      borderBottomColor: theme.border,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      flexDirection: "row",
+      minHeight: 72,
+      paddingHorizontal: 14,
+    },
+    transactionIcon: {
+      alignItems: "center",
+      borderRadius: 19,
+      height: 38,
+      justifyContent: "center",
+      marginRight: 12,
+      width: 38,
+    },
+    incomeIcon: { backgroundColor: theme.goodBackground },
+    expenseIcon: { backgroundColor: theme.warningBackground },
+    transactionIconText: { fontSize: 18, fontWeight: "900" },
+    transactionMain: { flex: 1 },
+    transactionTitle: { color: theme.text, fontSize: 14, fontWeight: "900" },
+    transactionMeta: { color: theme.textSubtle, fontSize: 11, fontWeight: "700", marginTop: 4 },
+    transactionAmount: { fontSize: 13, fontWeight: "900", marginLeft: 10 },
+    positiveText: { color: theme.goodText },
+    negativeText: { color: theme.dangerText },
+    emptyState: { alignItems: "center", flex: 1, padding: 22 },
+    emptyTitle: { color: theme.text, fontSize: 15, fontWeight: "900", textAlign: "center" },
+    emptyText: { color: theme.textSubtle, fontSize: 12, lineHeight: 18, marginTop: 5, textAlign: "center" },
+  });
+}

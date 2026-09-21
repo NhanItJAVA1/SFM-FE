@@ -1,7 +1,14 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text } from 'react-native';
+
+import { FocusedScreenTransition } from '@/components/screen-transition';
 
 export default function ProfileScreen() {
-  return <View style={styles.container}><Text style={styles.title}>Profile</Text><Text>Manage your user information.</Text></View>;
+  return (
+    <FocusedScreenTransition style={styles.container}>
+      <Text style={styles.title}>Profile</Text>
+      <Text>Manage your user information.</Text>
+    </FocusedScreenTransition>
+  );
 }
 
 const styles = StyleSheet.create({
