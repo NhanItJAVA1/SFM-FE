@@ -6,6 +6,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { FinancialAccount, financialAccountApi } from "@/api/financialAccountApi";
 import { useAppTheme } from "@/hooks/use-app-theme";
 import { Transaction, TransactionType, transactionsApi } from "@/api/transactionsApi";
+import { requestSpendingStatsFromTransactions } from "@/stores/spendingStatsNavigation";
 import type { AppTheme } from "@/theme/appTheme";
 
 type Period = "previous" | "current" | "future";
@@ -117,6 +118,7 @@ export default function TransactionsScreen() {
   const selectedAccount = accounts.find((account) => account.id === selectedAccountId);
   const currency = selectedAccount?.currency ?? accounts[0]?.currency ?? "VND";
   const netRatio = summary.incoming ? Math.min(100, Math.max(0, (summary.net / summary.incoming) * 100)) : 0;
+  const currentMonth = new Date().getMonth() + 1;
 
   return (
     <SafeAreaView style={styles.screen} edges={["top"]}>
@@ -132,8 +134,15 @@ export default function TransactionsScreen() {
             <Text style={styles.eyebrow}>Quản lý tài chính</Text>
             <Text style={styles.title}>Sổ giao dịch</Text>
           </View>
-          <Pressable style={styles.searchButton}>
-            <Text style={styles.searchIcon}>⌕</Text>
+          <Pressable
+            style={styles.monthOverviewButton}
+            onPress={() => {
+              requestSpendingStatsFromTransactions();
+              router.push("/(tabs)/user");
+            }}
+          >
+            <Text style={styles.monthOverviewText}>Tổng Quan Tháng {currentMonth}</Text>
+            <Text style={styles.monthOverviewArrow}>›</Text>
           </Pressable>
         </View>
 
@@ -370,17 +379,20 @@ function createStyles(theme: AppTheme) {
   },
   eyebrow: { color: theme.textMuted, fontSize: 12 },
   title: { color: theme.text, fontSize: 27, fontWeight: "800", marginTop: 3 },
-  searchButton: {
+  monthOverviewButton: {
     alignItems: "center",
-    backgroundColor: theme.card,
-    borderColor: theme.border,
-    borderRadius: 20,
+    backgroundColor: theme.primaryPressed,
+    borderColor: theme.primary,
+    borderRadius: 18,
     borderWidth: 1,
-    height: 40,
+    flexDirection: "row",
+    gap: 6,
     justifyContent: "center",
-    width: 40,
+    minHeight: 38,
+    paddingHorizontal: 12,
   },
-  searchIcon: { color: theme.text, fontSize: 25 },
+  monthOverviewText: { color: theme.primary, fontSize: 12, fontWeight: "800" },
+  monthOverviewArrow: { color: theme.primary, fontSize: 19, fontWeight: "800", lineHeight: 19 },
   selector: {
     alignItems: "center",
     backgroundColor: theme.card,

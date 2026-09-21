@@ -169,12 +169,12 @@ export function SpendingDonutChart({ data, selectedKey, onSelect }: SpendingDonu
             />
             {renderedSegments.map((item) => {
               const isSelected = selectedKey === item.key;
+              const selectedScale = isSelected ? 1.045 : 1;
 
               return (
                 <G
                   key={item.key}
-                  origin={`${center}, ${center}`}
-                  scale={isSelected ? 1.045 : 1}
+                  transform={`translate(${center} ${center}) scale(${selectedScale}) translate(${-center} ${-center})`}
                 >
                   <Path
                     d={describeDonutSlice(item.startAngle, item.endAngle)}

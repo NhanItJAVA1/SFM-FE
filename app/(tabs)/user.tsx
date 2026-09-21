@@ -23,6 +23,15 @@ import { useAppTheme } from '@/hooks/use-app-theme';
 import { useThemeMode } from '@/hooks/use-theme-mode';
 import { getAuthRefreshToken, getAuthUser } from '@/stores/authSession';
 import { clearAuthSession, updatePersistedAuthUser } from '@/stores/persistedAuthSession';
+import {
+  clearSpendingStatsFromTransactions,
+  consumePendingSpendingStatsRequest,
+  getSpendingStatsReturnPath,
+  hasPendingSpendingStatsRequest,
+  isSpendingStatsFromTransactionsActive,
+  subscribeSpendingStatsRequest,
+} from '@/stores/spendingStatsNavigation';
+import { subscribeUserTabPress } from '@/stores/userTabPress';
 import type { AppTheme } from '@/theme/appTheme';
 
 type UserView = 'menu' | 'manage' | 'editProfile' | 'spendingStats';
@@ -123,6 +132,8 @@ export default function UserScreen() {
   const [spendingStats, setSpendingStats] = useState<CategorySpendingResponse | null>(null);
   const [isLoadingStats, setIsLoadingStats] = useState(false);
   const [selectedCategoryKey, setSelectedCategoryKey] = useState<string | null>(null);
+  const [statsOpenedFromTransactions, setStatsOpenedFromTransactions] = useState(false);
+  const [statsReturnPath, setStatsReturnPath] = useState<string | null>(null);
 
   const isCurrentStatsPeriod = statsMonth === defaultMonth && statsYear === defaultYear;
   const canGoNextStatsPeriod = !isCurrentStatsPeriod;
@@ -142,6 +153,55 @@ export default function UserScreen() {
         percentage: category.percentage,
       }));
   }, [spendingStats]);
+
+  useEffect(() => {
+    return subscribeUserTabPress(() => {
+      if (
+        statsOpenedFromTransactions ||
+        statsReturnPath ||
+        hasPendingSpendingStatsRequest() ||
+        isSpendingStatsFromTransactionsActive()
+      ) {
+        return;
+      }
+
+      setStatsReturnPath(null);
+      setStatsOpenedFromTransactions(false);
+      setView('menu');
+    });
+  }, [statsOpenedFromTransactions, statsReturnPath]);
+
+  const openSpendingStatsFromTransactions = useCallback(() => {
+    setStatsReturnPath(getSpendingStatsReturnPath() ?? '/(tabs)/transactions');
+    setStatsOpenedFromTransactions(true);
+    setStatsMonth(defaultMonth);
+    setStatsYear(defaultYear);
+    setView('spendingStats');
+  }, [defaultMonth, defaultYear]);
+
+  useEffect(() => {
+    const pendingRequest = consumePendingSpendingStatsRequest();
+    let pendingTimeoutId: ReturnType<typeof setTimeout> | null = null;
+
+    if (pendingRequest?.source === 'transactions') {
+      pendingTimeoutId = setTimeout(openSpendingStatsFromTransactions, 0);
+    }
+
+    const unsubscribe = subscribeSpendingStatsRequest((request) => {
+      if (request.source === 'transactions') {
+        consumePendingSpendingStatsRequest();
+        setTimeout(openSpendingStatsFromTransactions, 0);
+      }
+    });
+
+    return () => {
+      if (pendingTimeoutId) {
+        clearTimeout(pendingTimeoutId);
+      }
+
+      unsubscribe();
+    };
+  }, [openSpendingStatsFromTransactions]);
 
   const loadSpendingStats = useCallback(async () => {
     try {
@@ -188,6 +248,22 @@ export default function UserScreen() {
 
   function handleSelectCategory(key: string) {
     setSelectedCategoryKey(key);
+  }
+
+  function closeSpendingStats() {
+    const returnPath = statsReturnPath ?? getSpendingStatsReturnPath();
+
+    if (statsOpenedFromTransactions || returnPath) {
+      setStatsOpenedFromTransactions(false);
+      setStatsReturnPath(null);
+      clearSpendingStatsFromTransactions();
+      router.navigate('/(tabs)/transactions');
+      return;
+    }
+
+    setStatsReturnPath(null);
+    clearSpendingStatsFromTransactions();
+    setView('menu');
   }
 
   function openEditProfile() {
@@ -415,8 +491,8 @@ export default function UserScreen() {
     return (
       <View style={styles.screen}>
         <View style={styles.walletHeader}>
-          <Pressable onPress={() => setView('menu')} hitSlop={12}>
-            <Text style={styles.backText}>‹ Người dùng</Text>
+          <Pressable onPress={closeSpendingStats} hitSlop={12}>
+            <Text style={styles.backText}>{statsReturnPath ? '‹ Sổ giao dịch' : '‹ Người dùng'}</Text>
           </Pressable>
           <Text style={styles.topTitle}>Thống kê chi tiêu</Text>
           <View style={styles.topSpacer} />
@@ -599,7 +675,15 @@ export default function UserScreen() {
           <Text style={styles.chevron}>›</Text>
         </Pressable>
         <View style={styles.menuDivider} />
-        <Pressable style={styles.menuRow} onPress={() => setView('spendingStats')}>
+        <Pressable
+          style={styles.menuRow}
+          onPress={() => {
+            clearSpendingStatsFromTransactions();
+            setStatsReturnPath(null);
+            setStatsOpenedFromTransactions(false);
+            setView('spendingStats');
+          }}
+        >
           <Text style={styles.menuIcon}>◷</Text>
           <Text style={styles.menuText}>Thống kê chi tiêu</Text>
           <Text style={styles.chevron}>›</Text>

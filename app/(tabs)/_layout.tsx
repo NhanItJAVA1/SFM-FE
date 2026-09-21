@@ -4,6 +4,7 @@ import { Animated, Easing, Pressable, StyleSheet, Text, View } from "react-nativ
 
 import { useAppTheme } from "@/hooks/use-app-theme";
 import { getAuthAccessToken } from "@/stores/authSession";
+import { emitUserTabPress } from "@/stores/userTabPress";
 import type { AppTheme } from "@/theme/appTheme";
 
 type TabIconName = "home" | "ledger" | "plus" | "budget" | "user";
@@ -147,6 +148,9 @@ export default function TabsLayout() {
       />
       <Tabs.Screen
         name="user"
+        listeners={{
+          tabPress: emitUserTabPress,
+        }}
         options={{
           title: "Cá nhân",
           tabBarIcon: ({ focused }) => <TabIcon name="user" focused={focused} theme={theme} />,
