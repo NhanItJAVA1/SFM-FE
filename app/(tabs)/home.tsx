@@ -6,6 +6,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { categoriesApi, Category } from "@/api/categoriesApi";
 import { FinancialAccount, financialAccountApi, getFinancialAccountBalance } from "@/api/financialAccountApi";
 import { CategorySpendingResponse, Transaction, transactionsApi, TransactionType } from "@/api/transactionsApi";
+import { FocusedScreenTransition } from "@/components/screen-transition";
 import { useAppTheme } from "@/hooks/use-app-theme";
 import { getAuthUser } from "@/stores/authSession";
 import type { AppTheme } from "@/theme/appTheme";
@@ -210,14 +211,15 @@ export default function HomeScreen() {
   const displayName = user?.displayName ?? user?.username ?? "bạn";
 
   return (
-    <SafeAreaView style={styles.screen} edges={["top"]}>
-      <ScrollView
-        contentContainerStyle={styles.content}
-        refreshControl={
-          <RefreshControl refreshing={isRefreshing} onRefresh={() => loadHomeData(true)} tintColor={theme.primary} />
-        }
-        showsVerticalScrollIndicator={false}
-      >
+    <FocusedScreenTransition>
+      <SafeAreaView style={styles.screen} edges={["top"]}>
+        <ScrollView
+          contentContainerStyle={styles.content}
+          refreshControl={
+            <RefreshControl refreshing={isRefreshing} onRefresh={() => loadHomeData(true)} tintColor={theme.primary} />
+          }
+          showsVerticalScrollIndicator={false}
+        >
         <View style={styles.header}>
           <View style={styles.headerCopy}>
             <Text style={styles.greeting}>{getGreeting()}</Text>
@@ -387,8 +389,9 @@ export default function HomeScreen() {
             </View>
           </>
         )}
-      </ScrollView>
-    </SafeAreaView>
+        </ScrollView>
+      </SafeAreaView>
+    </FocusedScreenTransition>
   );
 }
 

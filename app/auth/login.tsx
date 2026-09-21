@@ -2,9 +2,10 @@ import * as Google from "expo-auth-session/providers/google";
 import { Link, router } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, Text, TextInput } from "react-native";
 
 import { authApi } from "@/api/authApi";
+import { FocusedScreenTransition } from "@/components/screen-transition";
 import { getAuthAccessToken } from "@/stores/authSession";
 import { saveAuthSession } from "@/stores/persistedAuthSession";
 
@@ -102,7 +103,7 @@ export default function LoginScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <FocusedScreenTransition style={styles.container}>
       <Text style={styles.title}>Welcome back</Text>
       <Text style={styles.subtitle}>Sign in to continue to SFM.</Text>
       <TextInput
@@ -140,7 +141,7 @@ export default function LoginScreen() {
       <Link href="/auth/register" style={styles.link}>
         Create a user profile
       </Link>
-    </View>
+    </FocusedScreenTransition>
   );
 }
 

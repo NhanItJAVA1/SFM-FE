@@ -4,6 +4,7 @@ import { Animated, Easing, Pressable, StyleSheet, Text, View } from "react-nativ
 
 import { useAppTheme } from "@/hooks/use-app-theme";
 import { getAuthAccessToken } from "@/stores/authSession";
+import { clearSpendingStatsFromTransactions } from "@/stores/spendingStatsNavigation";
 import { emitUserTabPress } from "@/stores/userTabPress";
 import type { AppTheme } from "@/theme/appTheme";
 
@@ -111,6 +112,9 @@ export default function TabsLayout() {
     >
       <Tabs.Screen
         name="home"
+        listeners={{
+          tabPress: clearSpendingStatsFromTransactions,
+        }}
         options={{
           title: "Tổng quan",
           tabBarIcon: ({ focused }) => <TabIcon name="home" focused={focused} theme={theme} />,
@@ -118,6 +122,9 @@ export default function TabsLayout() {
       />
       <Tabs.Screen
         name="transactions"
+        listeners={{
+          tabPress: clearSpendingStatsFromTransactions,
+        }}
         options={{
           title: "Sổ giao dịch",
           tabBarIcon: ({ focused }) => <TabIcon name="ledger" focused={focused} theme={theme} />,
@@ -125,6 +132,9 @@ export default function TabsLayout() {
       />
       <Tabs.Screen
         name="create"
+        listeners={{
+          tabPress: clearSpendingStatsFromTransactions,
+        }}
         options={{
           title: "",
           tabBarButton: (props) => <CreateTabButton {...props} />,
@@ -141,6 +151,9 @@ export default function TabsLayout() {
       />
       <Tabs.Screen
         name="budgets"
+        listeners={{
+          tabPress: clearSpendingStatsFromTransactions,
+        }}
         options={{
           title: "Ngân sách",
           tabBarIcon: ({ focused }) => <TabIcon name="budget" focused={focused} theme={theme} />,
@@ -149,7 +162,10 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="user"
         listeners={{
-          tabPress: emitUserTabPress,
+          tabPress: () => {
+            clearSpendingStatsFromTransactions();
+            emitUserTabPress();
+          },
         }}
         options={{
           title: "Cá nhân",

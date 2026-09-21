@@ -5,6 +5,7 @@ import { useMemo, useRef, useState } from "react";
 import { Alert, Image, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { TransactionDraft, transactionsApi } from "@/api/transactionsApi";
+import { FocusedScreenTransition } from "@/components/screen-transition";
 import { TransactionDraftReview } from "@/components/transaction-draft-review";
 import { useAppTheme } from "@/hooks/use-app-theme";
 import type { AppTheme } from "@/theme/appTheme";
@@ -83,12 +84,12 @@ export default function ScanBillScreen() {
   }
 
   if (!permission) {
-    return <View style={styles.screen} />;
+    return <FocusedScreenTransition style={styles.screen} variant="fade" />;
   }
 
   if (!permission.granted) {
     return (
-      <View style={styles.permissionScreen}>
+      <FocusedScreenTransition style={styles.permissionScreen}>
         <Text style={styles.permissionTitle}>Cần quyền camera</Text>
         <Text style={styles.permissionText}>SFM cần camera để chụp hóa đơn và gửi về hệ thống.</Text>
         <Pressable style={styles.primaryButton} onPress={requestPermission}>
@@ -97,7 +98,7 @@ export default function ScanBillScreen() {
         <Pressable style={styles.secondaryButton} onPress={() => router.back()}>
           <Text style={styles.secondaryButtonText}>Quay lại</Text>
         </Pressable>
-      </View>
+      </FocusedScreenTransition>
     );
   }
 
@@ -116,7 +117,7 @@ export default function ScanBillScreen() {
 
   if (photo) {
     return (
-      <View style={styles.screen}>
+      <FocusedScreenTransition style={styles.screen} triggerKey="scan-preview" variant="fade">
         <Image source={{ uri: photo.uri }} style={styles.previewImage} />
         <View style={styles.previewOverlay}>
           <View style={styles.topBar}>
@@ -136,12 +137,12 @@ export default function ScanBillScreen() {
           </Pressable>
         </View>
         <ScanBillLoadingOverlay visible={isUploading} />
-      </View>
+      </FocusedScreenTransition>
     );
   }
 
   return (
-    <View style={styles.screen}>
+    <FocusedScreenTransition style={styles.screen} triggerKey="scan-camera" variant="fade">
       <CameraView ref={cameraRef} style={styles.camera} facing="back" mode="picture" />
       <View style={styles.cameraOverlay}>
         <View style={styles.topBar}>
@@ -173,7 +174,7 @@ export default function ScanBillScreen() {
           <View style={styles.shutterInner} />
         </Pressable>
       </View>
-    </View>
+    </FocusedScreenTransition>
   );
 }
 

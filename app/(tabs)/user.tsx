@@ -17,6 +17,7 @@ import {
 import { authApi } from '@/api/authApi';
 import { CategorySpendingItem, CategorySpendingResponse, transactionsApi } from '@/api/transactionsApi';
 import { usersApi } from '@/api/usersApi';
+import { FocusedScreenTransition } from '@/components/screen-transition';
 import { SpendingDonutChart, SpendingDonutSegment } from '@/components/spending-donut-chart';
 import { ThemeModeIconFrame, useThemeModeTransition } from '@/components/theme-mode-transition';
 import { useAppTheme } from '@/hooks/use-app-theme';
@@ -153,14 +154,10 @@ export default function UserScreen() {
 
   useEffect(() => {
     return subscribeUserTabPress(() => {
-      if (statsReturnPath || getSpendingStatsReturnPath()) {
-        return;
-      }
-
       setStatsReturnPath(null);
       setView('menu');
     });
-  }, [statsReturnPath]);
+  }, []);
 
   const openSpendingStatsFromTransactions = useCallback(() => {
     setStatsReturnPath(getSpendingStatsReturnPath() ?? '/(tabs)/transactions');
@@ -372,7 +369,7 @@ export default function UserScreen() {
 
   if (view === 'manage') {
     return (
-      <View style={styles.screen}>
+      <FocusedScreenTransition style={styles.screen} triggerKey={view} variant="slide-left">
         <View style={styles.walletHeader}>
           <Pressable onPress={() => setView('menu')} hitSlop={12}>
             <Text style={styles.backText}>‹ Người dùng</Text>
@@ -409,13 +406,13 @@ export default function UserScreen() {
             {isLoggingOut ? <ActivityIndicator color={theme.textInverse} /> : <Text style={styles.logoutButtonText}>Đăng xuất</Text>}
           </Pressable>
         </View>
-      </View>
+      </FocusedScreenTransition>
     );
   }
 
   if (view === 'editProfile') {
     return (
-      <View style={styles.screen}>
+      <FocusedScreenTransition style={styles.screen} triggerKey={view} variant="slide-left">
         <View style={styles.walletHeader}>
           <Pressable onPress={() => setView('menu')} hitSlop={12}>
             <Text style={styles.backText}>‹ Cá nhân</Text>
@@ -470,13 +467,13 @@ export default function UserScreen() {
             )}
           </Pressable>
         </ScrollView>
-      </View>
+      </FocusedScreenTransition>
     );
   }
 
   if (view === 'spendingStats') {
     return (
-      <View style={styles.screen}>
+      <FocusedScreenTransition style={styles.screen} triggerKey={`${view}-${statsReturnPath ?? 'user'}`} variant="slide-left">
         <View style={styles.walletHeader}>
           <Pressable onPress={closeSpendingStats} hitSlop={12}>
             <Text style={styles.backText}>{statsReturnPath ? '‹ Sổ giao dịch' : '‹ Người dùng'}</Text>
@@ -597,12 +594,12 @@ export default function UserScreen() {
             )}
           </View>
         </ScrollView>
-      </View>
+      </FocusedScreenTransition>
     );
   }
 
   return (
-    <View style={styles.screen}>
+    <FocusedScreenTransition style={styles.screen} triggerKey={view} variant="slide-right">
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <View style={styles.headerRow}>
         <View style={styles.headerSide}>
@@ -683,7 +680,7 @@ export default function UserScreen() {
       </View>
     </ScrollView>
     {transitionOverlay}
-    </View>
+    </FocusedScreenTransition>
   );
 }
 

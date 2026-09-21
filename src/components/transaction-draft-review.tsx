@@ -25,6 +25,7 @@ import {
   TransactionDraftItem,
   transactionsApi,
 } from '@/api/transactionsApi';
+import { ScreenTransition } from '@/components/screen-transition';
 import { useAppTheme } from '@/hooks/use-app-theme';
 import { useThemeMode } from '@/hooks/use-theme-mode';
 import { presentTransactionNotifications } from '@/services/transactionNotifications';
@@ -381,7 +382,7 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
   }
 
   return (
-    <View style={styles.screen}>
+    <ScreenTransition style={styles.screen} triggerKey="transaction-draft-review">
       <View style={styles.header}>
         <Pressable onPress={onRetake} hitSlop={12}>
           <Text style={styles.headerAction}>Quét lại</Text>
@@ -928,7 +929,7 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
           {isSaving ? <ActivityIndicator color={theme.textInverse} /> : <Text style={styles.primaryButtonText}>Lưu</Text>}
         </Pressable>
       </View>
-    </View>
+    </ScreenTransition>
   );
 }
 

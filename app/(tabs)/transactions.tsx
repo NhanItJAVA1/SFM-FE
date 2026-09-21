@@ -4,6 +4,7 @@ import { ActivityIndicator, Alert, Pressable, RefreshControl, ScrollView, StyleS
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { FinancialAccount, financialAccountApi } from "@/api/financialAccountApi";
+import { FocusedScreenTransition } from "@/components/screen-transition";
 import { useAppTheme } from "@/hooks/use-app-theme";
 import { Transaction, TransactionType, transactionsApi } from "@/api/transactionsApi";
 import { requestSpendingStatsFromTransactions } from "@/stores/spendingStatsNavigation";
@@ -121,14 +122,15 @@ export default function TransactionsScreen() {
   const currentMonth = new Date().getMonth() + 1;
 
   return (
-    <SafeAreaView style={styles.screen} edges={["top"]}>
-      <ScrollView
-        contentContainerStyle={styles.content}
-        refreshControl={
-          <RefreshControl refreshing={isRefreshing} onRefresh={() => loadData(true)} tintColor={theme.primary} />
-        }
-        showsVerticalScrollIndicator={false}
-      >
+    <FocusedScreenTransition>
+      <SafeAreaView style={styles.screen} edges={["top"]}>
+        <ScrollView
+          contentContainerStyle={styles.content}
+          refreshControl={
+            <RefreshControl refreshing={isRefreshing} onRefresh={() => loadData(true)} tintColor={theme.primary} />
+          }
+          showsVerticalScrollIndicator={false}
+        >
         <View style={styles.header}>
           <View>
             <Text style={styles.eyebrow}>Quản lý tài chính</Text>
@@ -253,8 +255,9 @@ export default function TransactionsScreen() {
           <SummaryItem label="Cho vay" value={0} color={theme.warning} currency={currency} />
           <SummaryItem label="Khác" value={0} color={theme.textSubtle} currency={currency} />
         </View>
-      </ScrollView>
-    </SafeAreaView>
+        </ScrollView>
+      </SafeAreaView>
+    </FocusedScreenTransition>
   );
 }
 

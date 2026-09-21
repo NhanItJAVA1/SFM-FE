@@ -17,6 +17,7 @@ import {
 
 import { categoriesApi, Category } from '@/api/categoriesApi';
 import { FinancialAccount, financialAccountApi } from '@/api/financialAccountApi';
+import { FocusedScreenTransition } from '@/components/screen-transition';
 import {
   transactionsApi,
   TransactionType,
@@ -162,7 +163,7 @@ export default function CreateScreen() {
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.screen }]}>
+    <FocusedScreenTransition style={[styles.container, { backgroundColor: theme.screen }]}>
       <View style={styles.header}>
         <Text style={[styles.headerTitle, { color: theme.text }]}>Tạo giao dịch</Text>
         <Pressable 
@@ -390,7 +391,7 @@ export default function CreateScreen() {
           </Pressable>
         </Pressable>
       </Modal>
-    </View>
+    </FocusedScreenTransition>
   );
 }
 

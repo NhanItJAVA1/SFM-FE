@@ -6,6 +6,7 @@ import { budgetsApi } from '@/api/budgetsApi';
 import type { Budget } from '@/api/budgetsApi';
 import { categoriesApi } from '@/api/categoriesApi';
 import type { Category } from '@/api/categoriesApi';
+import { FocusedScreenTransition } from '@/components/screen-transition';
 import { useAppTheme } from '@/hooks/use-app-theme';
 import { BudgetCategoryItem } from '@/screens/budgets/budget-category-item';
 import { BudgetSummaryCard } from '@/screens/budgets/budget-summary-card';
@@ -173,7 +174,7 @@ export default function BudgetsScreen() {
   }
 
   return (
-    <View style={styles.screen}>
+    <FocusedScreenTransition style={styles.screen}>
       <View style={styles.header}>
         <Text style={styles.title}>Ngân sách Đang áp dụng</Text>
         {budgets.length > 0 ? (
@@ -288,7 +289,7 @@ export default function BudgetsScreen() {
         onSubmit={handleCreateBudget}
         visible={isCreateVisible}
       />
-    </View>
+    </FocusedScreenTransition>
   );
 }
 

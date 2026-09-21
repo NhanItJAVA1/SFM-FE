@@ -1,21 +1,25 @@
 import { router } from "expo-router";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
+import { FocusedScreenTransition } from "@/components/screen-transition";
+
 export default function TransactionReportScreen() {
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-      <View style={styles.header}>
-        <Pressable onPress={() => router.back()}>
-          <Text style={styles.back}>‹</Text>
-        </Pressable>
-        <Text style={styles.title}>Báo cáo giao dịch</Text>
-        <View style={styles.spacer} />
-      </View>
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Báo cáo dòng tiền ròng</Text>
-        <Text style={styles.description}>Phân tích tỷ lệ thu, chi và phân bổ giao dịch theo nhóm hạng mục.</Text>
-      </View>
-    </ScrollView>
+    <FocusedScreenTransition style={styles.screen}>
+      <ScrollView contentContainerStyle={styles.content}>
+        <View style={styles.header}>
+          <Pressable onPress={() => router.back()}>
+            <Text style={styles.back}>‹</Text>
+          </Pressable>
+          <Text style={styles.title}>Báo cáo giao dịch</Text>
+          <View style={styles.spacer} />
+        </View>
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Báo cáo dòng tiền ròng</Text>
+          <Text style={styles.description}>Phân tích tỷ lệ thu, chi và phân bổ giao dịch theo nhóm hạng mục.</Text>
+        </View>
+      </ScrollView>
+    </FocusedScreenTransition>
   );
 }
 

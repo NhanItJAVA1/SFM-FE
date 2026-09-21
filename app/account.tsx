@@ -15,6 +15,7 @@ import {
 } from "react-native";
 
 import { AccountType, FinancialAccount, financialAccountApi } from "@/api/financialAccountApi";
+import { FocusedScreenTransition } from "@/components/screen-transition";
 import { useAppTheme } from "@/hooks/use-app-theme";
 import type { AppTheme } from "@/theme/appTheme";
 
@@ -188,7 +189,7 @@ export default function AccountScreen() {
   // Bước chọn loại ví trước khi mở form chi tiết.
   if (view === "add-options") {
     return (
-      <View style={styles.screen}>
+      <FocusedScreenTransition style={styles.screen} triggerKey={view} variant="slide-left">
         <View style={styles.walletHeader}>
           <Pressable onPress={() => setView("wallets")} hitSlop={12}>
             <Text style={styles.closeText}>×</Text>
@@ -214,14 +215,15 @@ export default function AccountScreen() {
             ))}
           </View>
         </View>
-      </View>
+      </FocusedScreenTransition>
     );
   }
 
   // Form nhập thông tin ví mới hoặc chỉnh sửa ví hiện tại.
   if (view === "create") {
     return (
-      <KeyboardAvoidingView behavior={Platform.select({ ios: "padding", default: undefined })} style={styles.screen}>
+      <FocusedScreenTransition style={styles.screen} triggerKey={view} variant="slide-left">
+        <KeyboardAvoidingView behavior={Platform.select({ ios: "padding", default: undefined })} style={styles.screen}>
         <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           <View style={styles.topBar}>
             <Pressable onPress={handleCloseForm} hitSlop={12}>
@@ -306,14 +308,15 @@ export default function AccountScreen() {
             </View>
           </View>
         </ScrollView>
-      </KeyboardAvoidingView>
+        </KeyboardAvoidingView>
+      </FocusedScreenTransition>
     );
   }
 
   // Màn hình mặc định: tổng số dư, danh sách ví và thao tác thêm ví.
   if (view === "wallets") {
     return (
-      <View style={styles.screen}>
+      <FocusedScreenTransition style={styles.screen} triggerKey={view} variant="slide-right">
         <View style={styles.walletHeader}>
           <Pressable onPress={() => router.back()} hitSlop={12}>
             <Text style={styles.backText}>‹</Text>
@@ -407,7 +410,7 @@ export default function AccountScreen() {
         <Pressable style={styles.floatingAddButton} onPress={() => setView("add-options")}>
           <Text style={styles.floatingAddText}>+</Text>
         </Pressable>
-      </View>
+      </FocusedScreenTransition>
     );
   }
 
