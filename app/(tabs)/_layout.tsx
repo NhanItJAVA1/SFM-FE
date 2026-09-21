@@ -1,5 +1,6 @@
-import { Redirect, Tabs } from "expo-router";
-import { StyleSheet, Text, View } from "react-native";
+import { Redirect, router, Tabs } from "expo-router";
+import { type ComponentProps, useRef, useState } from "react";
+import { Animated, Easing, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { useAppTheme } from "@/hooks/use-app-theme";
 import { getAuthAccessToken } from "@/stores/authSession";
@@ -25,6 +26,65 @@ function TabIcon({ name, focused, theme }: { name: TabIconName; focused: boolean
   }
 
   return <Text style={[styles.icon, { color: focused ? theme.text : theme.textSubtle }]}>{tabIcons[name]}</Text>;
+}
+
+type CreateTabButtonProps = Omit<ComponentProps<typeof Pressable>, "ref"> & {
+  ref?: unknown;
+};
+
+function CreateTabButton({
+  children,
+  onLongPress,
+  onPress,
+  onPressIn,
+  onPressOut,
+  ref: _ref,
+  ...props
+}: CreateTabButtonProps) {
+  const lastLongPressAt = useRef(0);
+  const [pressScale] = useState(() => new Animated.Value(1));
+
+  function animatePressScale(toValue: number) {
+    Animated.timing(pressScale, {
+      duration: 130,
+      easing: Easing.out(Easing.cubic),
+      toValue,
+      useNativeDriver: true,
+    }).start();
+  }
+
+  return (
+    <Pressable
+      {...props}
+      onPressIn={(event) => {
+        animatePressScale(1.14);
+        onPressIn?.(event);
+      }}
+      onLongPress={(event) => {
+        lastLongPressAt.current = Date.now();
+        animatePressScale(1.24);
+        onLongPress?.(event);
+        router.push("/(tabs)/scan-bill");
+      }}
+      onPress={(event) => {
+        if (Date.now() - lastLongPressAt.current < 700) {
+          return;
+        }
+
+        onPress?.(event);
+      }}
+      onPressOut={(event) => {
+        animatePressScale(1);
+        onPressOut?.(event);
+      }}
+    >
+      {(state) => (
+        <Animated.View style={{ transform: [{ scale: pressScale }] }}>
+          {typeof children === "function" ? children(state) : children}
+        </Animated.View>
+      )}
+    </Pressable>
+  );
 }
 
 export default function TabsLayout() {
@@ -66,6 +126,7 @@ export default function TabsLayout() {
         name="create"
         options={{
           title: "",
+          tabBarButton: (props) => <CreateTabButton {...props} />,
           tabBarIcon: ({ focused }) => <TabIcon name="plus" focused={focused} theme={theme} />,
           tabBarLabel: () => null,
         }}
