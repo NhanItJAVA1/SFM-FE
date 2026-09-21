@@ -184,7 +184,7 @@ export const transactionsApi = {
   categorySpending: (params: CategorySpendingParams = {}) =>
     axiosClient.get<CategorySpendingResponse>(`/transactions/category-spending${buildQuery(params)}`),
   list: (params: TransactionListParams = {}) =>
-    axiosClient.get<Transaction[]>(`/transactions${buildQuery({ filter: params.filter ?? "NotDeleted", accountId: params.accountId })}`),
+    axiosClient.get<Transaction[]>(`/transactions${buildQuery({ accountId: params.accountId, filter: params.filter })}`),
   create: (payload: CreateTransactionPayload) =>
     axiosClient.post<CreateTransactionFromScanResponse>('/transactions', payload),
 };

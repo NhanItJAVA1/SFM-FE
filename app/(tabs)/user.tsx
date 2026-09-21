@@ -18,11 +18,11 @@ import { authApi } from '@/api/authApi';
 import { CategorySpendingItem, CategorySpendingResponse, transactionsApi } from '@/api/transactionsApi';
 import { usersApi } from '@/api/usersApi';
 import { SpendingDonutChart, SpendingDonutSegment } from '@/components/spending-donut-chart';
+import { ThemeModeIconFrame, useThemeModeTransition } from '@/components/theme-mode-transition';
 import { useAppTheme } from '@/hooks/use-app-theme';
 import { useThemeMode } from '@/hooks/use-theme-mode';
 import { getAuthRefreshToken, getAuthUser } from '@/stores/authSession';
 import { clearAuthSession, updatePersistedAuthUser } from '@/stores/persistedAuthSession';
-import { getNextThemeMode, setThemeMode } from '@/stores/themePreference';
 import type { AppTheme } from '@/theme/appTheme';
 
 type UserView = 'menu' | 'manage' | 'editProfile' | 'spendingStats';
@@ -104,6 +104,10 @@ export default function UserScreen() {
   const themeMode = useThemeMode();
   const isDarkMode = themeMode === 'dark';
   const styles = useMemo(() => createStyles(theme), [theme]);
+  const { iconAnimatedStyle, toggleThemeMode, transitionOverlay } = useThemeModeTransition({
+    screenColor: theme.screen,
+    themeMode,
+  });
   const initial = (user?.displayName ?? user?.username ?? 'U').trim().charAt(0).toUpperCase() || 'U';
   const [view, setView] = useState<UserView>('menu');
   const [editDisplayName, setEditDisplayName] = useState(user?.displayName ?? '');
@@ -301,10 +305,6 @@ export default function UserScreen() {
       setIsLoggingOut(false);
       router.replace('/auth/login');
     }
-  }
-
-  async function handleToggleThemeMode() {
-    await setThemeMode(getNextThemeMode(themeMode));
   }
 
   if (view === 'manage') {
@@ -539,6 +539,7 @@ export default function UserScreen() {
   }
 
   return (
+    <View style={styles.screen}>
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <View style={styles.headerRow}>
         <View style={styles.headerSide}>
@@ -546,17 +547,19 @@ export default function UserScreen() {
         </View>
         <Text style={styles.pageTitle}>Cá nhân</Text>
         <View style={styles.headerActions}>
-          <Pressable style={styles.themeButton} onPress={handleToggleThemeMode} hitSlop={10}>
-            <SymbolView
-              name={{
-                ios: isDarkMode ? 'sun.max.fill' : 'moon.fill',
-                android: isDarkMode ? 'light_mode' : 'dark_mode',
-                web: isDarkMode ? 'light_mode' : 'dark_mode',
-              }}
-              size={21}
-              tintColor={theme.text}
-              fallback={<Text style={styles.themeFallbackIcon}>{isDarkMode ? '☀' : '☾'}</Text>}
-            />
+          <Pressable style={styles.themeButton} onPress={toggleThemeMode} hitSlop={10}>
+            <ThemeModeIconFrame style={iconAnimatedStyle}>
+              <SymbolView
+                name={{
+                  ios: isDarkMode ? 'sun.max.fill' : 'moon.fill',
+                  android: isDarkMode ? 'light_mode' : 'dark_mode',
+                  web: isDarkMode ? 'light_mode' : 'dark_mode',
+                }}
+                size={21}
+                tintColor={theme.text}
+                fallback={<Text style={styles.themeFallbackIcon}>{isDarkMode ? '☀' : '☾'}</Text>}
+              />
+            </ThemeModeIconFrame>
           </Pressable>
         </View>
       </View>
@@ -609,6 +612,8 @@ export default function UserScreen() {
         </Pressable>
       </View>
     </ScrollView>
+    {transitionOverlay}
+    </View>
   );
 }
 

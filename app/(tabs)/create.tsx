@@ -24,6 +24,7 @@ import {
 } from '@/api/transactionsApi';
 import { presentTransactionNotifications } from '@/services/transactionNotifications';
 import { useAppTheme } from '@/hooks/use-app-theme';
+import { useThemeMode } from '@/hooks/use-theme-mode';
 
 const transactionTypes: { label: string; value: TransactionType }[] = [
   { label: 'Chi tiêu', value: 'Expense' },
@@ -41,14 +42,18 @@ function formatAmount(amount: number) {
 }
 
 function formatDate(date: Date) {
-  return new Intl.DateTimeFormat('vi-VN', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(date);
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = date.getFullYear();
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+
+  return `${day}/${month}/${year} | ${hours}:${minutes}`;
 }
 
 export default function CreateScreen() {
   const theme = useAppTheme();
+  const themeMode = useThemeMode();
   const [accounts, setAccounts] = useState<FinancialAccount[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   
@@ -143,7 +148,14 @@ export default function CreateScreen() {
   const selectedCategory = categories.find(c => c.id === selectedCategoryId);
 
   const handleDateChange = (event: DateTimePickerEvent, date?: Date) => {
-    setIsDatePickerVisible(Platform.OS === 'ios');
+    if (Platform.OS === 'android') {
+      setIsDatePickerVisible(false);
+    }
+
+    if (event.type === 'dismissed') {
+      return;
+    }
+
     if (date) {
       setTransactionDate(date);
     }
@@ -154,7 +166,7 @@ export default function CreateScreen() {
       <View style={styles.header}>
         <Text style={[styles.headerTitle, { color: theme.text }]}>Tạo giao dịch</Text>
         <Pressable 
-          style={[styles.scanButton, { backgroundColor: theme.primary + '20' }]} 
+          style={[styles.scanButton, { backgroundColor: theme.primaryPressed }]} 
           onPress={() => router.push('/(tabs)/scan-bill')}
         >
           <SymbolView
@@ -180,7 +192,7 @@ export default function CreateScreen() {
             />
           </View>
 
-          <Pressable style={styles.row} onPress={() => setIsTypePickerVisible(true)}>
+          <Pressable style={[styles.row, { borderTopColor: theme.border }]} onPress={() => setIsTypePickerVisible(true)}>
             <View style={styles.rowLabelContainer}>
               <SymbolView name="tag" size={20} tintColor={theme.textSubtle} />
               <Text style={[styles.rowLabel, { color: theme.text }]}>Loại</Text>
@@ -190,7 +202,7 @@ export default function CreateScreen() {
             </Text>
           </Pressable>
 
-          <Pressable style={styles.row} onPress={() => setIsAccountPickerVisible(true)}>
+          <Pressable style={[styles.row, { borderTopColor: theme.border }]} onPress={() => setIsAccountPickerVisible(true)}>
             <View style={styles.rowLabelContainer}>
               <SymbolView name="creditcard" size={20} tintColor={theme.textSubtle} />
               <Text style={[styles.rowLabel, { color: theme.text }]}>Tài khoản</Text>
@@ -200,7 +212,7 @@ export default function CreateScreen() {
             </Text>
           </Pressable>
 
-          <Pressable style={styles.row} onPress={() => setIsCategoryPickerVisible(true)}>
+          <Pressable style={[styles.row, { borderTopColor: theme.border }]} onPress={() => setIsCategoryPickerVisible(true)}>
             <View style={styles.rowLabelContainer}>
               <SymbolView name="list.bullet" size={20} tintColor={theme.textSubtle} />
               <Text style={[styles.rowLabel, { color: theme.text }]}>Danh mục</Text>
@@ -210,7 +222,7 @@ export default function CreateScreen() {
             </Text>
           </Pressable>
 
-          <Pressable style={styles.row} onPress={() => setIsDatePickerVisible(true)}>
+          <Pressable style={[styles.row, { borderTopColor: theme.border }]} onPress={() => setIsDatePickerVisible(true)}>
             <View style={styles.rowLabelContainer}>
               <SymbolView name="calendar" size={20} tintColor={theme.textSubtle} />
               <Text style={[styles.rowLabel, { color: theme.text }]}>Ngày</Text>
@@ -234,7 +246,7 @@ export default function CreateScreen() {
             />
           </View>
 
-          <View style={[styles.inputGroup, { borderTopWidth: 1, borderTopColor: theme.tabBorder }]}>
+          <View style={[styles.inputGroup, { borderTopWidth: 1, borderTopColor: theme.border }]}>
             <Text style={[styles.inputLabel, { color: theme.textSubtle }]}>Địa điểm</Text>
             <TextInput
               style={[styles.textInput, { color: theme.text }]}
@@ -252,23 +264,23 @@ export default function CreateScreen() {
           disabled={isSaving}
         >
           {isSaving ? (
-            <ActivityIndicator color="#fff" />
+            <ActivityIndicator color={theme.textInverse} />
           ) : (
-            <Text style={styles.saveButtonText}>Lưu giao dịch</Text>
+            <Text style={[styles.saveButtonText, { color: theme.textInverse }]}>Lưu giao dịch</Text>
           )}
         </Pressable>
       </ScrollView>
 
       {/* Pickers */}
       <Modal visible={isAccountPickerVisible} transparent animationType="slide">
-        <Pressable style={styles.modalOverlay} onPress={() => setIsAccountPickerVisible(false)}>
+        <Pressable style={[styles.modalOverlay, { backgroundColor: theme.overlay }]} onPress={() => setIsAccountPickerVisible(false)}>
           <View style={[styles.modalContent, { backgroundColor: theme.card }]}>
             <Text style={[styles.modalTitle, { color: theme.text }]}>Chọn tài khoản</Text>
             <ScrollView>
               {accounts.map(account => (
                 <Pressable
                   key={account.id}
-                  style={[styles.pickerItem, selectedAccountId === account.id && { backgroundColor: theme.primary + '20' }]}
+                  style={[styles.pickerItem, selectedAccountId === account.id && { backgroundColor: theme.primaryPressed }]}
                   onPress={() => {
                     setSelectedAccountId(account.id);
                     setIsAccountPickerVisible(false);
@@ -286,12 +298,12 @@ export default function CreateScreen() {
       </Modal>
 
       <Modal visible={isCategoryPickerVisible} transparent animationType="slide">
-        <Pressable style={styles.modalOverlay} onPress={() => setIsCategoryPickerVisible(false)}>
+        <Pressable style={[styles.modalOverlay, { backgroundColor: theme.overlay }]} onPress={() => setIsCategoryPickerVisible(false)}>
           <View style={[styles.modalContent, { backgroundColor: theme.card }]}>
             <Text style={[styles.modalTitle, { color: theme.text }]}>Chọn danh mục</Text>
             <ScrollView>
               <Pressable
-                style={[styles.pickerItem, selectedCategoryId === null && { backgroundColor: theme.primary + '20' }]}
+                style={[styles.pickerItem, selectedCategoryId === null && { backgroundColor: theme.primaryPressed }]}
                 onPress={() => {
                   setSelectedCategoryId(null);
                   setIsCategoryPickerVisible(false);
@@ -302,7 +314,7 @@ export default function CreateScreen() {
               {categories.map(category => (
                 <Pressable
                   key={category.id}
-                  style={[styles.pickerItem, selectedCategoryId === category.id && { backgroundColor: theme.primary + '20' }]}
+                  style={[styles.pickerItem, selectedCategoryId === category.id && { backgroundColor: theme.primaryPressed }]}
                   onPress={() => {
                     setSelectedCategoryId(category.id);
                     setIsCategoryPickerVisible(false);
@@ -320,13 +332,13 @@ export default function CreateScreen() {
       </Modal>
 
       <Modal visible={isTypePickerVisible} transparent animationType="slide">
-        <Pressable style={styles.modalOverlay} onPress={() => setIsTypePickerVisible(false)}>
+        <Pressable style={[styles.modalOverlay, { backgroundColor: theme.overlay }]} onPress={() => setIsTypePickerVisible(false)}>
           <View style={[styles.modalContent, { backgroundColor: theme.card }]}>
             <Text style={[styles.modalTitle, { color: theme.text }]}>Chọn loại giao dịch</Text>
             {transactionTypes.map(t => (
               <Pressable
                 key={t.value}
-                style={[styles.pickerItem, type === t.value && { backgroundColor: theme.primary + '20' }]}
+                style={[styles.pickerItem, type === t.value && { backgroundColor: theme.primaryPressed }]}
                 onPress={() => {
                   setType(t.value);
                   setIsTypePickerVisible(false);
@@ -339,14 +351,45 @@ export default function CreateScreen() {
         </Pressable>
       </Modal>
 
-      {isDatePickerVisible && (
+      {isDatePickerVisible && Platform.OS === 'android' ? (
         <DateTimePicker
           value={transactionDate}
           mode="datetime"
-          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+          display="default"
           onChange={handleDateChange}
         />
-      )}
+      ) : null}
+
+      <Modal
+        visible={isDatePickerVisible && Platform.OS !== 'android'}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setIsDatePickerVisible(false)}
+      >
+        <Pressable style={[styles.modalOverlay, { backgroundColor: theme.overlay }]} onPress={() => setIsDatePickerVisible(false)}>
+          <Pressable style={[styles.datePickerContent, { backgroundColor: theme.card }]}>
+            <View style={styles.datePickerHeader}>
+              <Pressable onPress={() => setIsDatePickerVisible(false)} hitSlop={10}>
+                <Text style={[styles.datePickerAction, { color: theme.textSubtle }]}>Hủy</Text>
+              </Pressable>
+              <Text style={[styles.modalTitle, styles.datePickerTitle, { color: theme.text }]}>Chọn ngày</Text>
+              <Pressable onPress={() => setIsDatePickerVisible(false)} hitSlop={10}>
+                <Text style={[styles.datePickerAction, { color: theme.primary }]}>Xong</Text>
+              </Pressable>
+            </View>
+            <DateTimePicker
+              value={transactionDate}
+              mode="datetime"
+              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+              onChange={handleDateChange}
+              accentColor={theme.primary}
+              textColor={theme.text}
+              themeVariant={themeMode}
+              style={styles.datePicker}
+            />
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -383,7 +426,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 16,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(0,0,0,0.05)',
   },
   rowLabelContainer: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   rowLabel: { fontSize: 16, fontWeight: '500' },
@@ -395,10 +437,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  saveButtonText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
+  saveButtonText: { fontSize: 18, fontWeight: 'bold' },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'flex-end',
   },
   modalContent: {
@@ -408,6 +449,21 @@ const styles = StyleSheet.create({
     maxHeight: '80%',
   },
   modalTitle: { fontSize: 20, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' },
+  datePickerContent: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 20,
+    paddingBottom: 28,
+  },
+  datePickerHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  datePickerTitle: { marginBottom: 0 },
+  datePickerAction: { fontSize: 16, fontWeight: '700' },
+  datePicker: { alignSelf: 'stretch' },
   pickerItem: {
     paddingVertical: 16,
     paddingHorizontal: 20,

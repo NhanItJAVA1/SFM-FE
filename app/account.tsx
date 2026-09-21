@@ -331,6 +331,15 @@ export default function AccountScreen() {
             <RefreshControl refreshing={isRefreshing} onRefresh={() => loadAccounts("refreshing")} tintColor={theme.text} />
           }
         >
+          {openAccountMenu !== null ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Đóng menu ví"
+              style={styles.accountMenuDismissLayer}
+              onPress={() => setOpenAccountMenu(null)}
+            />
+          ) : null}
+
           <View style={styles.balanceSummary}>
             <Text style={styles.summaryLabel}>Tổng số dư</Text>
             <Text style={styles.summaryValue}>{formatMoney(totalBalance, accounts[0]?.currency ?? "VND")}</Text>
@@ -432,7 +441,7 @@ function createStyles(theme: AppTheme) {
   headerTools: { alignItems: "center", flexDirection: "row", gap: 22, width: 72 },
   filterIcon: { color: theme.text, fontSize: 21, transform: [{ rotate: "90deg" }] },
   searchIcon: { color: theme.text, fontSize: 27 },
-  walletList: { gap: 14, padding: 20, paddingBottom: 96 },
+  walletList: { gap: 14, padding: 20, paddingBottom: 96, position: "relative" },
   balanceSummary: { paddingBottom: 0, paddingTop: 0 },
   summaryLabel: { color: theme.textMuted, fontSize: 14, marginBottom: 4 },
   summaryValue: { color: theme.text, fontSize: 26, fontWeight: "700" },
@@ -445,6 +454,7 @@ function createStyles(theme: AppTheme) {
     flexDirection: "row",
     minHeight: 78,
     padding: 16,
+    position: "relative",
   },
   walletCardOpen: {
     borderColor: theme.primary,
@@ -494,6 +504,14 @@ function createStyles(theme: AppTheme) {
     shadowRadius: 8,
     top: 62,
     zIndex: 20,
+  },
+  accountMenuDismissLayer: {
+    bottom: 0,
+    left: 0,
+    position: "absolute",
+    right: 0,
+    top: 0,
+    zIndex: 5,
   },
   accountMenuItem: { minHeight: 42, justifyContent: "center", paddingHorizontal: 16 },
   accountMenuItemPressed: { backgroundColor: theme.primaryPressed },

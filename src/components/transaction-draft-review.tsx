@@ -1,7 +1,7 @@
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { router } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -25,7 +25,10 @@ import {
   TransactionDraftItem,
   transactionsApi,
 } from '@/api/transactionsApi';
+import { useAppTheme } from '@/hooks/use-app-theme';
+import { useThemeMode } from '@/hooks/use-theme-mode';
 import { presentTransactionNotifications } from '@/services/transactionNotifications';
+import type { AppTheme } from '@/theme/appTheme';
 
 type TransactionDraftReviewProps = {
   draft: TransactionDraft;
@@ -72,10 +75,13 @@ function formatDate(value: unknown) {
     return value;
   }
 
-  return new Intl.DateTimeFormat('vi-VN', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-  }).format(date);
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = date.getFullYear();
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+
+  return `${day}/${month}/${year} | ${hours}:${minutes}`;
 }
 
 function formatText(value: unknown) {
@@ -91,12 +97,20 @@ function formatText(value: unknown) {
 }
 
 function FieldRow({ label, value }: { label: string; value: unknown }) {
+  const styles = useDraftReviewStyles();
+
   return (
     <View style={styles.fieldRow}>
       <Text style={styles.fieldLabel}>{label}</Text>
       <Text style={styles.fieldValue}>{formatText(value)}</Text>
     </View>
   );
+}
+
+function useDraftReviewStyles() {
+  const theme = useAppTheme();
+
+  return useMemo(() => createStyles(theme), [theme]);
 }
 
 function getInitialEditableDraft(draft: TransactionDraft): EditableBillDraft {
@@ -152,6 +166,9 @@ function getCategoryIconLabel(category: Category) {
 }
 
 export function TransactionDraftReview({ draft, onRetake }: TransactionDraftReviewProps) {
+  const theme = useAppTheme();
+  const themeMode = useThemeMode();
+  const styles = useDraftReviewStyles();
   const [accounts, setAccounts] = useState<FinancialAccount[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [editableDraft, setEditableDraft] = useState<EditableBillDraft>(() => getInitialEditableDraft(draft));
@@ -180,8 +197,6 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
   const categoryOptions = categories;
   const selectedAccount = accounts.find((account) => account.id === selectedAccountId) ?? null;
   const selectedCategory = categories.find((category) => category.id === selectedCategoryId) ?? null;
-  const suggestedCategory =
-    typeof draft.categoryId === 'number' ? categories.find((category) => category.id === draft.categoryId) : null;
 
   const loadCategories = useCallback(async (showLoading = true) => {
     if (showLoading) {
@@ -284,7 +299,7 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
   }
 
   function handlePickDate(event: DateTimePickerEvent, pickedDate?: Date) {
-    if (Platform.OS !== 'ios') {
+    if (Platform.OS === 'android') {
       setIsDatePickerVisible(false);
     }
 
@@ -376,7 +391,7 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
           <SymbolView
             name={{ ios: 'pencil', android: 'edit', web: 'edit' }}
             size={22}
-            tintColor="#fff"
+            tintColor={theme.text}
             fallback={<Text style={styles.editIconFallback}>✎</Text>}
           />
         </Pressable>
@@ -384,23 +399,25 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
 
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.summaryGrid}>
-          <Pressable style={styles.summaryTile} onPress={() => setIsAccountPickerVisible(true)}>
-            <Text style={styles.summaryTileLabel}>Ví</Text>
-            <Text style={styles.summaryTileValue} numberOfLines={1}>
-              {selectedAccount?.name ?? (isLoadingAccounts ? 'Đang tải...' : 'Chọn ví')}
-            </Text>
-            <Text style={styles.summaryTileMeta} numberOfLines={1}>
+          <Pressable style={[styles.summaryTile, styles.summaryWalletTile]} onPress={() => setIsAccountPickerVisible(true)}>
+            <View style={styles.summaryTileLabelRow}>
+              <SymbolView name="creditcard" size={17} tintColor={theme.textMuted} />
+              <Text style={styles.summaryTileValue} numberOfLines={1}>
+                {selectedAccount?.name ?? (isLoadingAccounts ? 'Đang tải...' : 'Chọn ví')}
+              </Text>
+            </View>
+            <Text style={styles.walletBalanceText} numberOfLines={1}>
               {selectedAccount ? formatAmount(selectedAccount.initialBalance) : 'Bấm để chọn'}
             </Text>
           </Pressable>
 
-          <Pressable style={styles.summaryTile} onPress={() => setIsCategoryPickerVisible(true)}>
-            <Text style={styles.summaryTileLabel}>Category</Text>
+          <Pressable style={[styles.summaryTile, styles.summaryCategoryTile]} onPress={() => setIsCategoryPickerVisible(true)}>
+            <View style={styles.summaryTileLabelRow}>
+              <SymbolView name="list.bullet" size={17} tintColor={theme.textMuted} />
+              <Text style={styles.summaryTileLabel}>Danh mục</Text>
+            </View>
             <Text style={styles.summaryTileValue} numberOfLines={1}>
               {selectedCategory?.name ?? (selectedCategoryId === null ? 'Chưa phân loại' : 'Chọn danh mục')}
-            </Text>
-            <Text style={styles.summaryTileMeta} numberOfLines={1}>
-              {suggestedCategory ? `AI: ${suggestedCategory.name}` : 'Bấm để đổi'}
             </Text>
           </Pressable>
         </View>
@@ -408,13 +425,19 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
         <View style={styles.card}>
           <View style={styles.inlineGrid}>
             <Pressable style={styles.inlineTile} onPress={openAmountEditor}>
-              <Text style={styles.inlineTileLabel}>Tổng tiền</Text>
+              <View style={styles.inlineTileLabelRow}>
+                <SymbolView name="dollarsign.circle" size={17} tintColor={theme.textMuted} />
+                <Text style={styles.inlineTileLabel}>Tổng tiền</Text>
+              </View>
               <Text style={styles.inlineTileValue} numberOfLines={1}>
                 {formatAmount(editableDraft.amount)}
               </Text>
             </Pressable>
             <Pressable style={styles.inlineTile} onPress={() => setIsTypePickerVisible(true)}>
-              <Text style={styles.inlineTileLabel}>Loại giao dịch</Text>
+              <View style={styles.inlineTileLabelRow}>
+                <SymbolView name="tag" size={17} tintColor={theme.textMuted} />
+                <Text style={styles.inlineTileLabel}>Loại giao dịch</Text>
+              </View>
               <Text style={styles.inlineTileValue} numberOfLines={1}>
                 {getTransactionTypeLabel(editableDraft.type)}
               </Text>
@@ -422,13 +445,19 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
           </View>
           <View style={styles.inlineGrid}>
             <View style={styles.inlineTile}>
-              <Text style={styles.inlineTileLabel}>Địa điểm</Text>
+              <View style={styles.inlineTileLabelRow}>
+                <SymbolView name="mappin.and.ellipse" size={17} tintColor={theme.textMuted} />
+                <Text style={styles.inlineTileLabel}>Địa điểm</Text>
+              </View>
               <Text style={styles.inlineTileValue} numberOfLines={2}>
                 {formatText(editableDraft.location)}
               </Text>
             </View>
             <Pressable style={styles.inlineTile} onPress={() => setIsDatePickerVisible(true)}>
-              <Text style={styles.inlineTileLabel}>Ngày giao dịch</Text>
+              <View style={styles.inlineTileLabelRow}>
+                <SymbolView name="calendar" size={17} tintColor={theme.textMuted} />
+                <Text style={styles.inlineTileLabel}>Ngày giao dịch</Text>
+              </View>
               <Text style={styles.inlineTileValue} numberOfLines={2}>
                 {formatDate(editableDraft.transactionDate)}
               </Text>
@@ -527,7 +556,7 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
       {isDatePickerVisible && Platform.OS === 'android' ? (
         <DateTimePicker
           mode="date"
-          display="calendar"
+          display="default"
           value={getDatePickerValue(editableDraft.transactionDate)}
           onChange={handlePickDate}
         />
@@ -541,26 +570,25 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
       >
         <Pressable style={styles.modalOverlay} onPress={() => setIsDatePickerVisible(false)}>
           <Pressable style={styles.smallBottomSheet}>
-            <Text style={styles.sheetTitle}>Sửa ngày giao dịch</Text>
-            {Platform.OS === 'ios' ? (
-              <DateTimePicker
-                mode="date"
-                display="inline"
-                value={getDatePickerValue(editableDraft.transactionDate)}
-                onChange={handlePickDate}
-              />
-            ) : (
-              <TextInput
-                placeholder="YYYY-MM-DD hoặc ISO"
-                placeholderTextColor="#6f7682"
-                style={styles.categoryInput}
-                value={editableDraft.transactionDate}
-                onChangeText={(value) => setEditableDraft((currentDraft) => ({ ...currentDraft, transactionDate: value }))}
-              />
-            )}
-            <Pressable style={styles.createCategoryButton} onPress={() => setIsDatePickerVisible(false)}>
-              <Text style={styles.createCategoryButtonText}>Xong</Text>
-            </Pressable>
+            <View style={styles.datePickerHeader}>
+              <Pressable onPress={() => setIsDatePickerVisible(false)} hitSlop={10}>
+                <Text style={[styles.datePickerAction, { color: theme.textSubtle }]}>Hủy</Text>
+              </Pressable>
+              <Text style={[styles.sheetTitle, styles.datePickerTitle]}>Sửa ngày giao dịch</Text>
+              <Pressable onPress={() => setIsDatePickerVisible(false)} hitSlop={10}>
+                <Text style={[styles.datePickerAction, { color: theme.primary }]}>Xong</Text>
+              </Pressable>
+            </View>
+            <DateTimePicker
+              mode="date"
+              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+              value={getDatePickerValue(editableDraft.transactionDate)}
+              onChange={handlePickDate}
+              accentColor={theme.primary}
+              textColor={theme.text}
+              themeVariant={themeMode}
+              style={styles.datePicker}
+            />
           </Pressable>
         </Pressable>
       </Modal>
@@ -582,7 +610,7 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
                 autoFocus
                 keyboardType="decimal-pad"
                 placeholder="Tổng tiền"
-                placeholderTextColor="#6f7682"
+                placeholderTextColor={theme.inputPlaceholder}
                 returnKeyType="done"
                 style={styles.categoryInput}
                 value={amountInput}
@@ -670,7 +698,7 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
 
             {isLoadingCategories ? (
               <View style={styles.sheetLoading}>
-                <ActivityIndicator color="#31c452" />
+                <ActivityIndicator color={theme.primary} />
               </View>
             ) : (
               <ScrollView style={styles.sheetList} contentContainerStyle={styles.sheetListContent}>
@@ -721,10 +749,10 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
               >
                 <Pressable style={styles.inlineCreateDismissArea} onPress={Keyboard.dismiss}>
                   <Pressable style={styles.createCategoryModal} onPress={(event) => event.stopPropagation()}>
-                  <Text style={styles.createCategoryTitle}>Thêm category</Text>
+                  <Text style={styles.createCategoryTitle}>Thêm danh mục</Text>
                   <TextInput
                     placeholder="Tên category"
-                    placeholderTextColor="#6f7682"
+                    placeholderTextColor={theme.inputPlaceholder}
                     style={styles.categoryInput}
                     value={newCategoryName}
                     onChangeText={setNewCategoryName}
@@ -766,7 +794,7 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
                       disabled={isCreatingCategory}
                     >
                       {isCreatingCategory ? (
-                        <ActivityIndicator color="#fff" />
+                        <ActivityIndicator color={theme.textInverse} />
                       ) : (
                         <Text style={styles.createCategoryButtonText}>Thêm</Text>
                       )}
@@ -805,7 +833,7 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
               <TextInput
                 keyboardType="decimal-pad"
                 placeholder="Tổng tiền"
-                placeholderTextColor="#6f7682"
+                placeholderTextColor={theme.inputPlaceholder}
                 style={styles.categoryInput}
                 value={String(billEditDraft.amount ?? '')}
                 onChangeText={(value) =>
@@ -814,14 +842,14 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
               />
               <TextInput
                 placeholder="Mô tả"
-                placeholderTextColor="#6f7682"
+                placeholderTextColor={theme.inputPlaceholder}
                 style={styles.categoryInput}
                 value={billEditDraft.description}
                 onChangeText={(value) => setBillEditDraft((currentDraft) => ({ ...currentDraft, description: value }))}
               />
               <TextInput
                 placeholder="Ngày giao dịch"
-                placeholderTextColor="#6f7682"
+                placeholderTextColor={theme.inputPlaceholder}
                 style={styles.categoryInput}
                 value={billEditDraft.transactionDate}
                 onChangeText={(value) =>
@@ -830,7 +858,7 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
               />
               <TextInput
                 placeholder="Địa điểm"
-                placeholderTextColor="#6f7682"
+                placeholderTextColor={theme.inputPlaceholder}
                 style={styles.categoryInput}
                 value={billEditDraft.location}
                 onChangeText={(value) => setBillEditDraft((currentDraft) => ({ ...currentDraft, location: value }))}
@@ -846,7 +874,7 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
                   <View key={`${item.name ?? 'item'}-${index}`} style={styles.editItemBox}>
                     <TextInput
                       placeholder="Tên món"
-                      placeholderTextColor="#6f7682"
+                      placeholderTextColor={theme.inputPlaceholder}
                       style={styles.categoryInput}
                       value={item.name ?? ''}
                       onChangeText={(value) => updateBillItem(index, { name: value })}
@@ -855,7 +883,7 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
                       <TextInput
                         keyboardType="decimal-pad"
                         placeholder="SL"
-                        placeholderTextColor="#6f7682"
+                        placeholderTextColor={theme.inputPlaceholder}
                         style={styles.categoryInput}
                         value={item.quantity === null || item.quantity === undefined ? '' : String(item.quantity)}
                         onChangeText={(value) => updateBillItem(index, { quantity: parseOptionalNumber(value) })}
@@ -863,7 +891,7 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
                       <TextInput
                         keyboardType="decimal-pad"
                         placeholder="Đơn giá"
-                        placeholderTextColor="#6f7682"
+                        placeholderTextColor={theme.inputPlaceholder}
                         style={styles.categoryInput}
                         value={item.unitPrice === null || item.unitPrice === undefined ? '' : String(item.unitPrice)}
                         onChangeText={(value) => updateBillItem(index, { unitPrice: parseOptionalNumber(value) })}
@@ -871,7 +899,7 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
                       <TextInput
                         keyboardType="decimal-pad"
                         placeholder="Thành tiền"
-                        placeholderTextColor="#6f7682"
+                        placeholderTextColor={theme.inputPlaceholder}
                         style={styles.categoryInput}
                         value={item.amount === null || item.amount === undefined ? '' : String(item.amount)}
                         onChangeText={(value) => updateBillItem(index, { amount: parseOptionalNumber(value) })}
@@ -897,15 +925,16 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
           onPress={handleSave}
           disabled={isSaving || selectedAccountId === null || accounts.length === 0}
         >
-          {isSaving ? <ActivityIndicator color="#fff" /> : <Text style={styles.primaryButtonText}>Lưu</Text>}
+          {isSaving ? <ActivityIndicator color={theme.textInverse} /> : <Text style={styles.primaryButtonText}>Lưu</Text>}
         </Pressable>
       </View>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  screen: { backgroundColor: '#020204', flex: 1 },
+function createStyles(theme: AppTheme) {
+  return StyleSheet.create({
+  screen: { backgroundColor: theme.screen, flex: 1 },
   header: {
     alignItems: 'center',
     flexDirection: 'row',
@@ -914,36 +943,40 @@ const styles = StyleSheet.create({
     paddingTop: 56,
     paddingBottom: 14,
   },
-  headerAction: { color: '#31c452', fontSize: 17, fontWeight: '800' },
-  headerTitle: { color: '#fff', fontSize: 20, fontWeight: '800' },
+  headerAction: { color: theme.primary, fontSize: 17, fontWeight: '800' },
+  headerTitle: { color: theme.text, fontSize: 20, fontWeight: '800' },
   editIconButton: {
     alignItems: 'center',
-    backgroundColor: '#1e1e1f',
+    backgroundColor: theme.card,
     borderRadius: 18,
     height: 36,
     justifyContent: 'center',
     width: 36,
   },
-  editIconFallback: { color: '#fff', fontSize: 20, fontWeight: '900' },
+  editIconFallback: { color: theme.text, fontSize: 20, fontWeight: '900' },
   headerSpacer: { width: 58 },
   content: { gap: 14, padding: 20, paddingBottom: 130 },
   summaryGrid: { flexDirection: 'row', gap: 12 },
   summaryTile: {
-    backgroundColor: '#1e1e1f',
-    borderColor: '#303039',
+    backgroundColor: theme.card,
+    borderColor: theme.border,
     borderRadius: 8,
     borderWidth: 1,
     flex: 1,
     minHeight: 104,
     padding: 14,
   },
-  summaryTileLabel: { color: '#9698a1', fontSize: 13, fontWeight: '800', marginBottom: 10 },
-  summaryTileValue: { color: '#fff', fontSize: 17, fontWeight: '900' },
-  summaryTileMeta: { color: '#31c452', fontSize: 13, fontWeight: '800', marginTop: 8 },
-  card: { backgroundColor: '#1e1e1f', borderRadius: 8, overflow: 'hidden' },
+  summaryWalletTile: { flex: 1.35 },
+  summaryCategoryTile: { flex: 0.85 },
+  summaryTileLabel: { color: theme.textMuted, fontSize: 13, fontWeight: '800' },
+  summaryTileLabelRow: { alignItems: 'center', flexDirection: 'row', gap: 6, marginBottom: 10 },
+  summaryTileValue: { color: theme.text, fontSize: 17, fontWeight: '900' },
+  summaryTileMeta: { color: theme.primary, fontSize: 13, fontWeight: '800', marginTop: 8 },
+  walletBalanceText: { color: theme.primary, fontSize: 17, fontWeight: '900', marginTop: 10 },
+  card: { backgroundColor: theme.card, borderRadius: 8, overflow: 'hidden' },
   inlineGrid: { flexDirection: 'row', gap: 1 },
   inlineTile: {
-    borderBottomColor: '#303039',
+    borderBottomColor: theme.border,
     borderBottomWidth: 1,
     flex: 1,
     gap: 7,
@@ -951,20 +984,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 14,
   },
-  inlineTileLabel: { color: '#9698a1', fontSize: 13, fontWeight: '800' },
-  inlineTileValue: { color: '#fff', fontSize: 16, fontWeight: '900', lineHeight: 21 },
-  fieldRow: { borderBottomColor: '#303039', borderBottomWidth: 1, gap: 6, paddingHorizontal: 16, paddingVertical: 14 },
-  fieldLabel: { color: '#9698a1', fontSize: 13, fontWeight: '700' },
-  fieldValue: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  inlineTileLabelRow: { alignItems: 'center', flexDirection: 'row', gap: 6 },
+  inlineTileLabel: { color: theme.textMuted, fontSize: 13, fontWeight: '800' },
+  inlineTileValue: { color: theme.text, fontSize: 16, fontWeight: '900', lineHeight: 21 },
+  fieldRow: { borderBottomColor: theme.border, borderBottomWidth: 1, gap: 6, paddingHorizontal: 16, paddingVertical: 14 },
+  fieldLabel: { color: theme.textMuted, fontSize: 13, fontWeight: '700' },
+  fieldValue: { color: theme.text, fontSize: 16, fontWeight: '700' },
   categoryHeaderRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
-  aiHint: { color: '#31c452', fontSize: 12, fontWeight: '800' },
+  aiHint: { color: theme.primary, fontSize: 12, fontWeight: '800' },
   categoryGrid: { gap: 10, paddingTop: 8 },
   categoryInput: {
-    backgroundColor: '#1e1e1f',
-    borderColor: '#303039',
+    backgroundColor: theme.card,
+    borderColor: theme.border,
     borderRadius: 8,
     borderWidth: 1,
-    color: '#fff',
+    color: theme.text,
     fontSize: 15,
     minHeight: 46,
     paddingHorizontal: 12,
@@ -972,29 +1006,29 @@ const styles = StyleSheet.create({
   categoryTypeRow: { flexDirection: 'row', gap: 8 },
   categoryTypeOption: {
     alignItems: 'center',
-    backgroundColor: '#1e1e1f',
-    borderColor: '#303039',
+    backgroundColor: theme.card,
+    borderColor: theme.border,
     borderRadius: 8,
     borderWidth: 1,
     flex: 1,
     minHeight: 42,
     justifyContent: 'center',
   },
-  categoryTypeOptionSelected: { backgroundColor: '#17351f', borderColor: '#31c452' },
-  categoryTypeOptionText: { color: '#9698a1', fontSize: 14, fontWeight: '800' },
-  categoryTypeOptionTextSelected: { color: '#fff' },
+  categoryTypeOptionSelected: { backgroundColor: theme.primaryPressed, borderColor: theme.primary },
+  categoryTypeOptionText: { color: theme.textMuted, fontSize: 14, fontWeight: '800' },
+  categoryTypeOptionTextSelected: { color: theme.text },
   createCategoryButton: {
     alignItems: 'center',
-    backgroundColor: '#31c452',
+    backgroundColor: theme.primary,
     borderRadius: 8,
     flex: 1,
     minHeight: 46,
     justifyContent: 'center',
   },
-  createCategoryButtonText: { color: '#fff', fontSize: 15, fontWeight: '900' },
+  createCategoryButtonText: { color: theme.textInverse, fontSize: 15, fontWeight: '900' },
   categoryOption: {
     alignItems: 'center',
-    borderColor: '#303039',
+    borderColor: theme.border,
     borderRadius: 8,
     borderWidth: 1,
     flexDirection: 'row',
@@ -1003,42 +1037,42 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
   },
-  categoryOptionSelected: { backgroundColor: '#17351f', borderColor: '#31c452' },
-  categoryOptionText: { color: '#fff', flex: 1, fontSize: 15, fontWeight: '800' },
-  categoryIcon: { alignItems: 'center', backgroundColor: '#17351f', borderRadius: 19, height: 38, justifyContent: 'center', width: 38 },
-  categoryIconText: { color: '#31c452', fontSize: 17, fontWeight: '900' },
+  categoryOptionSelected: { backgroundColor: theme.primaryPressed, borderColor: theme.primary },
+  categoryOptionText: { color: theme.text, flex: 1, fontSize: 15, fontWeight: '800' },
+  categoryIcon: { alignItems: 'center', backgroundColor: theme.primaryPressed, borderRadius: 19, height: 38, justifyContent: 'center', width: 38 },
+  categoryIconText: { color: theme.primary, fontSize: 17, fontWeight: '900' },
   categoryInfo: { flex: 1, gap: 3 },
-  categoryName: { color: '#fff', fontSize: 16, fontWeight: '800' },
-  categoryMeta: { color: '#9698a1', fontSize: 13, fontWeight: '700' },
-  rawTitle: { color: '#fff', fontSize: 16, fontWeight: '800', paddingHorizontal: 16, paddingTop: 16 },
-  rawText: { color: '#c8cbd2', fontSize: 14, lineHeight: 21, padding: 16 },
-  emptyAccountText: { color: '#9698a1', fontSize: 14, lineHeight: 20, padding: 16, textAlign: 'center' },
-  accountRow: { alignItems: 'center', borderBottomColor: '#303039', borderBottomWidth: 1, flexDirection: 'row', gap: 12, paddingHorizontal: 16, paddingVertical: 14 },
-  accountRowSelected: { backgroundColor: '#17351f' },
-  accountDot: { alignItems: 'center', borderColor: '#31c452', borderRadius: 11, borderWidth: 2, height: 22, justifyContent: 'center', width: 22 },
-  accountDotInner: { backgroundColor: '#31c452', borderRadius: 6, height: 12, width: 12 },
+  categoryName: { color: theme.text, fontSize: 16, fontWeight: '800' },
+  categoryMeta: { color: theme.textMuted, fontSize: 13, fontWeight: '700' },
+  rawTitle: { color: theme.text, fontSize: 16, fontWeight: '800', paddingHorizontal: 16, paddingTop: 16 },
+  rawText: { color: theme.textSoft, fontSize: 14, lineHeight: 21, padding: 16 },
+  emptyAccountText: { color: theme.textMuted, fontSize: 14, lineHeight: 20, padding: 16, textAlign: 'center' },
+  accountRow: { alignItems: 'center', borderBottomColor: theme.border, borderBottomWidth: 1, flexDirection: 'row', gap: 12, paddingHorizontal: 16, paddingVertical: 14 },
+  accountRowSelected: { backgroundColor: theme.primaryPressed },
+  accountDot: { alignItems: 'center', borderColor: theme.primary, borderRadius: 11, borderWidth: 2, height: 22, justifyContent: 'center', width: 22 },
+  accountDotInner: { backgroundColor: theme.primary, borderRadius: 6, height: 12, width: 12 },
   accountInfo: { flex: 1, gap: 4 },
-  accountName: { color: '#fff', fontSize: 15, fontWeight: '800' },
-  accountMeta: { color: '#9698a1', fontSize: 13 },
-  itemsHeader: { alignItems: 'center', borderBottomColor: '#303039', borderBottomWidth: 1, flexDirection: 'row', justifyContent: 'space-between', padding: 16 },
-  itemsTitle: { color: '#fff', fontSize: 16, fontWeight: '800' },
-  itemsCount: { color: '#9698a1', fontSize: 13, fontWeight: '700' },
-  itemRow: { alignItems: 'center', borderBottomColor: '#303039', borderBottomWidth: 1, flexDirection: 'row', gap: 12, paddingHorizontal: 16, paddingVertical: 13 },
+  accountName: { color: theme.text, fontSize: 15, fontWeight: '800' },
+  accountMeta: { color: theme.textMuted, fontSize: 13 },
+  itemsHeader: { alignItems: 'center', borderBottomColor: theme.border, borderBottomWidth: 1, flexDirection: 'row', justifyContent: 'space-between', padding: 16 },
+  itemsTitle: { color: theme.text, fontSize: 16, fontWeight: '800' },
+  itemsCount: { color: theme.textMuted, fontSize: 13, fontWeight: '700' },
+  itemRow: { alignItems: 'center', borderBottomColor: theme.border, borderBottomWidth: 1, flexDirection: 'row', gap: 12, paddingHorizontal: 16, paddingVertical: 13 },
   itemInfo: { flex: 1, gap: 4 },
-  itemName: { color: '#fff', fontSize: 15, fontWeight: '700' },
-  itemMeta: { color: '#9698a1', fontSize: 13 },
-  itemAmount: { color: '#fff', fontSize: 15, fontWeight: '800' },
+  itemName: { color: theme.text, fontSize: 15, fontWeight: '700' },
+  itemMeta: { color: theme.textMuted, fontSize: 13 },
+  itemAmount: { color: theme.text, fontSize: 15, fontWeight: '800' },
   totalRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12 },
-  totalLabel: { color: '#9698a1', fontSize: 14, fontWeight: '700' },
-  totalValue: { color: '#fff', fontSize: 15, fontWeight: '800' },
-  note: { color: '#8f939d', fontSize: 13, lineHeight: 19, textAlign: 'center' },
+  totalLabel: { color: theme.textMuted, fontSize: 14, fontWeight: '700' },
+  totalValue: { color: theme.text, fontSize: 15, fontWeight: '800' },
+  note: { color: theme.textSubtle, fontSize: 13, lineHeight: 19, textAlign: 'center' },
   modalOverlay: {
-    backgroundColor: 'rgba(0, 0, 0, 0.58)',
+    backgroundColor: theme.overlay,
     flex: 1,
     justifyContent: 'flex-end',
   },
   keyboardModalOverlay: {
-    backgroundColor: 'rgba(0, 0, 0, 0.58)',
+    backgroundColor: theme.overlay,
     flex: 1,
     justifyContent: 'flex-end',
   },
@@ -1047,39 +1081,47 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   bottomSheet: {
-    backgroundColor: '#1e1e1f',
+    backgroundColor: theme.sheet,
     borderTopLeftRadius: 8,
     borderTopRightRadius: 8,
     maxHeight: '76%',
     paddingBottom: 20,
   },
   smallBottomSheet: {
-    backgroundColor: '#1e1e1f',
+    backgroundColor: theme.card,
     borderTopLeftRadius: 8,
     borderTopRightRadius: 8,
     gap: 14,
     padding: 18,
     paddingBottom: 28,
   },
+  datePickerHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  datePickerTitle: { flex: 1, marginHorizontal: 12, textAlign: 'center' },
+  datePickerAction: { fontSize: 16, fontWeight: '800' },
+  datePicker: { alignSelf: 'stretch' },
   sheetHeader: {
     alignItems: 'center',
-    borderBottomColor: '#303039',
+    borderBottomColor: theme.border,
     borderBottomWidth: 1,
     flexDirection: 'row',
     justifyContent: 'space-between',
     minHeight: 58,
     paddingHorizontal: 18,
   },
-  sheetTitle: { color: '#fff', fontSize: 18, fontWeight: '900' },
+  sheetTitle: { color: theme.text, fontSize: 18, fontWeight: '900' },
   sheetActions: { alignItems: 'center', flexDirection: 'row', gap: 18 },
-  sheetAdd: { color: '#31c452', fontSize: 32, fontWeight: '600', lineHeight: 34 },
-  sheetClose: { color: '#31c452', fontSize: 15, fontWeight: '900' },
+  sheetAdd: { color: theme.primary, fontSize: 32, fontWeight: '600', lineHeight: 34 },
+  sheetClose: { color: theme.primary, fontSize: 15, fontWeight: '900' },
   sheetList: { maxHeight: 460 },
   sheetListContent: { gap: 10, padding: 16 },
   sheetLoading: { alignItems: 'center', minHeight: 180, justifyContent: 'center' },
   pickerRow: {
     alignItems: 'center',
-    borderColor: '#303039',
+    borderColor: theme.border,
     borderRadius: 8,
     borderWidth: 1,
     flexDirection: 'row',
@@ -1088,10 +1130,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
   },
-  pickerRowSelected: { backgroundColor: '#17351f', borderColor: '#31c452' },
+  pickerRowSelected: { backgroundColor: theme.primaryPressed, borderColor: theme.primary },
   inlineCreateOverlay: {
     alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.72)',
+    backgroundColor: theme.overlayStrong,
     bottom: 0,
     justifyContent: 'center',
     left: 0,
@@ -1107,34 +1149,34 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   createCategoryModal: {
-    backgroundColor: '#1e1e1f',
-    borderColor: '#303039',
+    backgroundColor: theme.sheet,
+    borderColor: theme.border,
     borderRadius: 8,
     borderWidth: 1,
     gap: 14,
     padding: 18,
     width: '100%',
   },
-  createCategoryTitle: { color: '#fff', fontSize: 18, fontWeight: '900' },
+  createCategoryTitle: { color: theme.text, fontSize: 18, fontWeight: '900' },
   createCategoryActions: { flexDirection: 'row', gap: 10 },
   cancelCategoryButton: {
     alignItems: 'center',
-    backgroundColor: '#303039',
+    backgroundColor: theme.cardAlt,
     borderRadius: 8,
     flex: 1,
     justifyContent: 'center',
     minHeight: 46,
   },
-  cancelCategoryButtonText: { color: '#fff', fontSize: 15, fontWeight: '900' },
-  editorScreen: { backgroundColor: '#020204', flex: 1 },
+  cancelCategoryButtonText: { color: theme.text, fontSize: 15, fontWeight: '900' },
+  editorScreen: { backgroundColor: theme.screen, flex: 1 },
   editorContent: { gap: 14, padding: 20, paddingBottom: 36 },
-  editorCard: { backgroundColor: '#1e1e1f', borderRadius: 8, gap: 12, padding: 14 },
-  editorSectionTitle: { color: '#fff', fontSize: 16, fontWeight: '900' },
-  editItemBox: { borderColor: '#303039', borderRadius: 8, borderWidth: 1, gap: 10, padding: 12 },
+  editorCard: { backgroundColor: theme.card, borderRadius: 8, gap: 12, padding: 14 },
+  editorSectionTitle: { color: theme.text, fontSize: 16, fontWeight: '900' },
+  editItemBox: { borderColor: theme.border, borderRadius: 8, borderWidth: 1, gap: 10, padding: 12 },
   itemEditGrid: { gap: 8 },
   footer: {
-    backgroundColor: '#020204',
-    borderTopColor: '#1e1e1f',
+    backgroundColor: theme.screen,
+    borderTopColor: theme.tabBorder,
     borderTopWidth: 1,
     bottom: 0,
     flexDirection: 'row',
@@ -1146,21 +1188,22 @@ const styles = StyleSheet.create({
   },
   secondaryButton: {
     alignItems: 'center',
-    backgroundColor: '#1e1e1f',
+    backgroundColor: theme.card,
     borderRadius: 8,
     flex: 1,
     justifyContent: 'center',
     minHeight: 52,
   },
-  secondaryButtonText: { color: '#fff', fontSize: 16, fontWeight: '800' },
+  secondaryButtonText: { color: theme.text, fontSize: 16, fontWeight: '800' },
   primaryButton: {
     alignItems: 'center',
-    backgroundColor: '#31c452',
+    backgroundColor: theme.primary,
     borderRadius: 8,
     flex: 1,
     justifyContent: 'center',
     minHeight: 52,
   },
-  primaryButtonText: { color: '#fff', fontSize: 16, fontWeight: '800' },
+  primaryButtonText: { color: theme.textInverse, fontSize: 16, fontWeight: '800' },
   buttonDisabled: { opacity: 0.65 },
-});
+  });
+}
