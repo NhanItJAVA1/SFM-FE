@@ -27,8 +27,6 @@ import {
   clearSpendingStatsFromTransactions,
   consumePendingSpendingStatsRequest,
   getSpendingStatsReturnPath,
-  hasPendingSpendingStatsRequest,
-  isSpendingStatsFromTransactionsActive,
   subscribeSpendingStatsRequest,
 } from '@/stores/spendingStatsNavigation';
 import { subscribeUserTabPress } from '@/stores/userTabPress';
@@ -132,7 +130,6 @@ export default function UserScreen() {
   const [spendingStats, setSpendingStats] = useState<CategorySpendingResponse | null>(null);
   const [isLoadingStats, setIsLoadingStats] = useState(false);
   const [selectedCategoryKey, setSelectedCategoryKey] = useState<string | null>(null);
-  const [statsOpenedFromTransactions, setStatsOpenedFromTransactions] = useState(false);
   const [statsReturnPath, setStatsReturnPath] = useState<string | null>(null);
 
   const isCurrentStatsPeriod = statsMonth === defaultMonth && statsYear === defaultYear;
@@ -156,24 +153,17 @@ export default function UserScreen() {
 
   useEffect(() => {
     return subscribeUserTabPress(() => {
-      if (
-        statsOpenedFromTransactions ||
-        statsReturnPath ||
-        hasPendingSpendingStatsRequest() ||
-        isSpendingStatsFromTransactionsActive()
-      ) {
+      if (statsReturnPath || getSpendingStatsReturnPath()) {
         return;
       }
 
       setStatsReturnPath(null);
-      setStatsOpenedFromTransactions(false);
       setView('menu');
     });
-  }, [statsOpenedFromTransactions, statsReturnPath]);
+  }, [statsReturnPath]);
 
   const openSpendingStatsFromTransactions = useCallback(() => {
     setStatsReturnPath(getSpendingStatsReturnPath() ?? '/(tabs)/transactions');
-    setStatsOpenedFromTransactions(true);
     setStatsMonth(defaultMonth);
     setStatsYear(defaultYear);
     setView('spendingStats');
@@ -183,15 +173,13 @@ export default function UserScreen() {
     const pendingRequest = consumePendingSpendingStatsRequest();
     let pendingTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
-    if (pendingRequest?.source === 'transactions') {
+    if (pendingRequest) {
       pendingTimeoutId = setTimeout(openSpendingStatsFromTransactions, 0);
     }
 
-    const unsubscribe = subscribeSpendingStatsRequest((request) => {
-      if (request.source === 'transactions') {
-        consumePendingSpendingStatsRequest();
-        setTimeout(openSpendingStatsFromTransactions, 0);
-      }
+    const unsubscribe = subscribeSpendingStatsRequest(() => {
+      consumePendingSpendingStatsRequest();
+      setTimeout(openSpendingStatsFromTransactions, 0);
     });
 
     return () => {
@@ -253,8 +241,7 @@ export default function UserScreen() {
   function closeSpendingStats() {
     const returnPath = statsReturnPath ?? getSpendingStatsReturnPath();
 
-    if (statsOpenedFromTransactions || returnPath) {
-      setStatsOpenedFromTransactions(false);
+    if (returnPath) {
       setStatsReturnPath(null);
       clearSpendingStatsFromTransactions();
       router.navigate('/(tabs)/transactions');
@@ -680,7 +667,6 @@ export default function UserScreen() {
           onPress={() => {
             clearSpendingStatsFromTransactions();
             setStatsReturnPath(null);
-            setStatsOpenedFromTransactions(false);
             setView('spendingStats');
           }}
         >
