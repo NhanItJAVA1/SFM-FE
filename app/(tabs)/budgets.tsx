@@ -1,9 +1,8 @@
 import { useFocusEffect } from 'expo-router';
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Animated, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 
 import { budgetsApi } from '@/api/budgetsApi';
-import type { Budget } from '@/api/budgetsApi';
 import { categoriesApi } from '@/api/categoriesApi';
 import type { Category } from '@/api/categoriesApi';
 import { FocusedScreenTransition } from '@/components/screen-transition';
@@ -38,10 +37,12 @@ export default function BudgetsScreen() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState<BudgetsTab>('month');
   const [selectedBudgetId, setSelectedBudgetId] = useState<number | null>(null);
+  const [isLoadingSelectedBudgetDetail, setIsLoadingSelectedBudgetDetail] = useState(false);
   const [isCategoryScrollEnabled, setIsCategoryScrollEnabled] = useState(true);
   const [tabWidth, setTabWidth] = useState(0);
   const [form, setForm] = useState<BudgetFormState>(() => getDefaultBudgetFormState());
   const [tabTranslateX] = useState(() => new Animated.Value(0));
+  const [detailReloadKey, setDetailReloadKey] = useState(0);
   const hasLoadedBudgetsRef = useRef(false);
 
   const expenseCategories = useMemo(() => categories.filter((category) => category.type === 'Expense'), [categories]);
@@ -68,10 +69,15 @@ export default function BudgetsScreen() {
       }
 
       const [budgetResponse, categoryResponse] = await Promise.all([
-        budgetsApi.list(),
+        budgetsApi.progressSummary(),
         categoriesApi.list(),
       ]);
-      const budgetProgressEntries = await Promise.all(budgetResponse.data.map(loadBudgetProgress));
+      const budgetProgressEntries = budgetResponse.data.map<BudgetWithProgress>((progress) => ({
+        ...progress,
+        id: progress.id ?? progress.budgetId,
+        progress,
+        progressDetail: null,
+      }));
 
       setBudgets(budgetProgressEntries);
       setCategories(categoryResponse.data);
@@ -82,6 +88,7 @@ export default function BudgetsScreen() {
 
         return sortBudgetsForCategoryTab(budgetProgressEntries)[0]?.id ?? null;
       });
+      setDetailReloadKey((current) => current + 1);
     } catch (error) {
       Alert.alert('Không tải được ngân sách', error instanceof Error ? error.message : 'Vui lòng thử lại sau.');
     } finally {
@@ -91,11 +98,46 @@ export default function BudgetsScreen() {
     }
   }, []);
 
+  const loadSelectedBudgetDetail = useCallback(async (budgetId: number) => {
+    try {
+      setIsLoadingSelectedBudgetDetail(true);
+      const response = await budgetsApi.getProgressDetail(budgetId);
+
+      setBudgets((currentBudgets) =>
+        currentBudgets.map((budget) =>
+          budget.id === budgetId
+            ? {
+                ...budget,
+                progress: response.data,
+                progressDetail: response.data,
+              }
+            : budget,
+        ),
+      );
+    } catch (error) {
+      Alert.alert('Không tải được chi tiết ngân sách', error instanceof Error ? error.message : 'Vui lòng thử lại sau.');
+    } finally {
+      setIsLoadingSelectedBudgetDetail(false);
+    }
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
       loadBudgets(hasLoadedBudgetsRef.current ? 'silent' : 'loading');
     }, [loadBudgets]),
   );
+
+  useEffect(() => {
+    if (selectedBudgetId === null) {
+      return;
+    }
+
+    const timeoutId = setTimeout(() => {
+      void loadSelectedBudgetDetail(selectedBudgetId);
+    }, 0);
+
+    return () => clearTimeout(timeoutId);
+  }, [detailReloadKey, loadSelectedBudgetDetail, selectedBudgetId]);
 
   const changeTab = useCallback(
     (nextTab: BudgetsTab) => {
@@ -246,6 +288,12 @@ export default function BudgetsScreen() {
                     name={selectedBudget.name}
                     summary={selectedBudgetSummary}
                   />
+                  {isLoadingSelectedBudgetDetail ? (
+                    <View style={styles.detailLoadingState}>
+                      <ActivityIndicator color={theme.primary} size="small" />
+                      <Text style={styles.emptyTransactionText}>Đang tải chi tiết ngân sách...</Text>
+                    </View>
+                  ) : null}
                   <BudgetTransactionList dailySpendings={selectedBudget.progressDetail?.dailySpendings ?? []} />
                 </ScrollView>
               ) : null}
@@ -293,26 +341,3 @@ export default function BudgetsScreen() {
   );
 }
 
-async function loadBudgetProgress(budget: Budget): Promise<BudgetWithProgress> {
-  try {
-    const progressDetailResponse = await budgetsApi.getProgressDetail(budget.id);
-
-    return {
-      ...budget,
-      progress: progressDetailResponse.data,
-      progressDetail: progressDetailResponse.data,
-    };
-  } catch {
-    return loadBudgetProgressFallback(budget);
-  }
-}
-
-async function loadBudgetProgressFallback(budget: Budget): Promise<BudgetWithProgress> {
-  try {
-    const progressResponse = await budgetsApi.getProgress(budget.id);
-
-    return { ...budget, progress: progressResponse.data, progressDetail: null };
-  } catch {
-    return { ...budget, progress: null, progressDetail: null };
-  }
-}

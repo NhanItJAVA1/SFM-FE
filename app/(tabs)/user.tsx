@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 
 import { authApi } from '@/api/authApi';
+import { financialInsightsApi, FinancialInsightsResponse } from '@/api/financialInsightsApi';
 import { CategorySpendingItem, CategorySpendingResponse, transactionsApi } from '@/api/transactionsApi';
 import { usersApi } from '@/api/usersApi';
 import { FocusedScreenTransition } from '@/components/screen-transition';
@@ -90,6 +91,24 @@ function formatSignedMoney(current: number, compare: number) {
   return `${sign}${formatMoney(Math.abs(difference), 'VND')}`;
 }
 
+function getFinancialInsightIcon(type: string) {
+  const normalizedType = type.toLowerCase();
+
+  if (normalizedType.includes('increase')) {
+    return '↗';
+  }
+
+  if (normalizedType.includes('decrease')) {
+    return '↘';
+  }
+
+  if (normalizedType.includes('warning') || normalizedType.includes('risk')) {
+    return '!';
+  }
+
+  return 'i';
+}
+
 function getS3ErrorCode(detail: string) {
   return detail.match(/<Code>([^<]+)<\/Code>/)?.[1] ?? null;
 }
@@ -130,6 +149,10 @@ export default function UserScreen() {
   const [statsYear, setStatsYear] = useState(defaultYear);
   const [spendingStats, setSpendingStats] = useState<CategorySpendingResponse | null>(null);
   const [isLoadingStats, setIsLoadingStats] = useState(false);
+  const [financialInsights, setFinancialInsights] = useState<FinancialInsightsResponse | null>(null);
+  const [isLoadingFinancialInsights, setIsLoadingFinancialInsights] = useState(false);
+  const [financialInsightsError, setFinancialInsightsError] = useState<string | null>(null);
+  const [isFinancialInsightsVisible, setIsFinancialInsightsVisible] = useState(false);
   const [selectedCategoryKey, setSelectedCategoryKey] = useState<string | null>(null);
   const [statsReturnPath, setStatsReturnPath] = useState<string | null>(null);
 
@@ -163,6 +186,7 @@ export default function UserScreen() {
     setStatsReturnPath(getSpendingStatsReturnPath() ?? '/(tabs)/transactions');
     setStatsMonth(defaultMonth);
     setStatsYear(defaultYear);
+    setIsFinancialInsightsVisible(false);
     setView('spendingStats');
   }, [defaultMonth, defaultYear]);
 
@@ -203,6 +227,22 @@ export default function UserScreen() {
     }
   }, [defaultMonth, defaultYear, statsMonth, statsYear]);
 
+  const loadFinancialInsights = useCallback(async () => {
+    try {
+      setIsLoadingFinancialInsights(true);
+      setFinancialInsightsError(null);
+      const response = await financialInsightsApi.get({ month: statsMonth, year: statsYear });
+
+      setFinancialInsights(response.data);
+    } catch (error) {
+      console.warn('Không tải được financial insights', error);
+      setFinancialInsights(null);
+      setFinancialInsightsError(error instanceof Error ? error.message : 'Không tải được nhận xét AI.');
+    } finally {
+      setIsLoadingFinancialInsights(false);
+    }
+  }, [statsMonth, statsYear]);
+
   useEffect(() => {
     if (view === 'spendingStats') {
       const timeoutId = setTimeout(() => {
@@ -214,6 +254,18 @@ export default function UserScreen() {
 
     return undefined;
   }, [loadSpendingStats, view]);
+
+  useEffect(() => {
+    if (view !== 'spendingStats' || !isFinancialInsightsVisible) {
+      return undefined;
+    }
+
+    const timeoutId = setTimeout(() => {
+      loadFinancialInsights();
+    }, 0);
+
+    return () => clearTimeout(timeoutId);
+  }, [isFinancialInsightsVisible, loadFinancialInsights, view]);
 
   function goPreviousStatsPeriod() {
     const previous = getPreviousMonth(statsMonth, statsYear);
@@ -233,6 +285,10 @@ export default function UserScreen() {
 
   function handleSelectCategory(key: string) {
     setSelectedCategoryKey(key);
+  }
+
+  function toggleFinancialInsights() {
+    setIsFinancialInsightsVisible((isVisible) => !isVisible);
   }
 
   function closeSpendingStats() {
@@ -479,7 +535,20 @@ export default function UserScreen() {
             <Text style={styles.backText}>{statsReturnPath ? '‹ Sổ giao dịch' : '‹ Người dùng'}</Text>
           </Pressable>
           <Text style={styles.topTitle}>Thống kê chi tiêu</Text>
-          <View style={styles.topSpacer} />
+          <Pressable
+            style={[styles.insightToggleButton, isFinancialInsightsVisible && styles.insightToggleButtonActive]}
+            onPress={toggleFinancialInsights}
+            hitSlop={8}
+          >
+            <Text
+              style={[
+                styles.insightToggleText,
+                isFinancialInsightsVisible && styles.insightToggleTextActive,
+              ]}
+            >
+              AI
+            </Text>
+          </Pressable>
         </View>
 
         <ScrollView contentContainerStyle={styles.statsContent}>
@@ -505,6 +574,48 @@ export default function UserScreen() {
                 <Text style={styles.monthButtonText}>›</Text>
               </Pressable>
             </View>
+
+            {isFinancialInsightsVisible ? (
+              <View style={styles.insightCard}>
+                <View style={styles.insightHeaderRow}>
+                  <View style={styles.insightBadge}>
+                    <Text style={styles.insightBadgeText}>AI</Text>
+                  </View>
+                  <Text style={styles.insightTitle}>Nhận xét tháng này</Text>
+                </View>
+
+                {isLoadingFinancialInsights ? (
+                  <View style={styles.insightLoadingRow}>
+                    <ActivityIndicator color={theme.primary} size="small" />
+                    <Text style={styles.insightMutedText}>Đang đọc số liệu...</Text>
+                  </View>
+                ) : financialInsights ? (
+                  <>
+                    <Text style={styles.insightSummary}>{financialInsights.summary}</Text>
+                    {financialInsights.insights.map((insight) => (
+                      <View key={`${insight.type}-${insight.title}`} style={styles.insightItem}>
+                        <View style={styles.insightIcon}>
+                          <Text style={styles.insightIconText}>{getFinancialInsightIcon(insight.type)}</Text>
+                        </View>
+                        <View style={styles.insightCopy}>
+                          <Text style={styles.insightItemTitle}>{insight.title}</Text>
+                          <Text style={styles.insightItemMessage}>{insight.message}</Text>
+                        </View>
+                      </View>
+                    ))}
+                  </>
+                ) : (
+                  <View style={styles.insightErrorRow}>
+                    <Text style={styles.insightMutedText}>
+                      {financialInsightsError ?? 'Chưa có nhận xét cho kỳ này.'}
+                    </Text>
+                    <Pressable onPress={loadFinancialInsights} hitSlop={8}>
+                      <Text style={styles.insightRetryText}>Thử lại</Text>
+                    </Pressable>
+                  </View>
+                )}
+              </View>
+            ) : null}
 
             {isLoadingStats ? (
               <View style={styles.statsLoading}>
@@ -792,6 +903,22 @@ function createStyles(theme: AppTheme) {
     marginTop: 32,
   },
   topSpacer: { width: 82 },
+  insightToggleButton: {
+    alignItems: 'center',
+    backgroundColor: theme.card,
+    borderColor: theme.border,
+    borderRadius: 16,
+    borderWidth: 1,
+    height: 32,
+    justifyContent: 'center',
+    width: 82,
+  },
+  insightToggleButtonActive: {
+    backgroundColor: theme.primary,
+    borderColor: theme.primary,
+  },
+  insightToggleText: { color: theme.textMuted, fontSize: 13, fontWeight: '900' },
+  insightToggleTextActive: { color: theme.textInverse },
   addWalletButton: {
     alignItems: 'center',
     backgroundColor: theme.primary,
@@ -811,6 +938,43 @@ function createStyles(theme: AppTheme) {
   monthTitleWrap: { alignItems: 'center', flex: 1 },
   monthTitle: { color: theme.text, fontSize: 15, fontWeight: '800' },
   monthSubtitle: { color: theme.textMuted, fontSize: 11, fontWeight: '700', marginTop: 2 },
+  insightCard: {
+    backgroundColor: theme.card,
+    borderColor: theme.border,
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 12,
+    padding: 14,
+  },
+  insightHeaderRow: { alignItems: 'center', flexDirection: 'row', gap: 9 },
+  insightBadge: {
+    alignItems: 'center',
+    backgroundColor: theme.primaryPressed,
+    borderRadius: 11,
+    height: 22,
+    justifyContent: 'center',
+    width: 34,
+  },
+  insightBadgeText: { color: theme.primary, fontSize: 11, fontWeight: '900' },
+  insightTitle: { color: theme.text, fontSize: 15, fontWeight: '900' },
+  insightSummary: { color: theme.text, fontSize: 14, fontWeight: '700', lineHeight: 20 },
+  insightLoadingRow: { alignItems: 'center', flexDirection: 'row', gap: 10, minHeight: 34 },
+  insightErrorRow: { alignItems: 'center', flexDirection: 'row', gap: 10, justifyContent: 'space-between' },
+  insightMutedText: { color: theme.textMuted, flex: 1, fontSize: 13, fontWeight: '700', lineHeight: 19 },
+  insightRetryText: { color: theme.primary, fontSize: 13, fontWeight: '900' },
+  insightItem: { alignItems: 'flex-start', flexDirection: 'row', gap: 10 },
+  insightIcon: {
+    alignItems: 'center',
+    backgroundColor: theme.cardAlt,
+    borderRadius: 15,
+    height: 30,
+    justifyContent: 'center',
+    width: 30,
+  },
+  insightIconText: { color: theme.primary, fontSize: 15, fontWeight: '900' },
+  insightCopy: { flex: 1, gap: 2 },
+  insightItemTitle: { color: theme.text, fontSize: 13, fontWeight: '900' },
+  insightItemMessage: { color: theme.textMuted, fontSize: 13, fontWeight: '600', lineHeight: 19 },
   statsLoading: { alignItems: 'center', minHeight: 260, justifyContent: 'center' },
   statsSummaryRow: { flexDirection: 'row', gap: 8 },
   statsSummaryCard: {

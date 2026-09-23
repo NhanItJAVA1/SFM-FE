@@ -22,6 +22,7 @@ const outerRadius = 82;
 const innerRadius = 42;
 const gapAngle = 3.2;
 const cornerRadius = 7;
+const selectedRadiusOffset = 3.6;
 
 function polarToCartesian(angle: number, radius: number) {
   const angleInRadians = ((angle - 90) * Math.PI) / 180;
@@ -32,33 +33,39 @@ function polarToCartesian(angle: number, radius: number) {
   };
 }
 
-function describeDonutSlice(startAngle: number, endAngle: number) {
+function describeDonutSlice(startAngle: number, endAngle: number, radiusOffset = 0) {
+  const resolvedOuterRadius = outerRadius + radiusOffset;
+  const resolvedInnerRadius = Math.max(1, innerRadius - radiusOffset);
   const sweep = endAngle - startAngle;
-  const innerArcLength = (sweep * Math.PI * innerRadius) / 180;
-  const resolvedCornerRadius = Math.min(cornerRadius, (outerRadius - innerRadius) / 2 - 1, innerArcLength / 2);
-  const outerCornerAngle = (resolvedCornerRadius / outerRadius) * (180 / Math.PI);
-  const innerCornerAngle = (resolvedCornerRadius / innerRadius) * (180 / Math.PI);
-  const outerStart = polarToCartesian(startAngle + outerCornerAngle, outerRadius);
-  const outerEnd = polarToCartesian(endAngle - outerCornerAngle, outerRadius);
-  const outerEndCorner = polarToCartesian(endAngle, outerRadius);
-  const outerEndSide = polarToCartesian(endAngle, outerRadius - resolvedCornerRadius);
-  const innerEndSide = polarToCartesian(endAngle, innerRadius + resolvedCornerRadius);
-  const innerEndCorner = polarToCartesian(endAngle, innerRadius);
-  const innerEnd = polarToCartesian(endAngle - innerCornerAngle, innerRadius);
-  const innerStart = polarToCartesian(startAngle + innerCornerAngle, innerRadius);
-  const innerStartCorner = polarToCartesian(startAngle, innerRadius);
-  const innerStartSide = polarToCartesian(startAngle, innerRadius + resolvedCornerRadius);
-  const outerStartSide = polarToCartesian(startAngle, outerRadius - resolvedCornerRadius);
-  const outerStartCorner = polarToCartesian(startAngle, outerRadius);
+  const innerArcLength = (sweep * Math.PI * resolvedInnerRadius) / 180;
+  const resolvedCornerRadius = Math.min(
+    cornerRadius,
+    (resolvedOuterRadius - resolvedInnerRadius) / 2 - 1,
+    innerArcLength / 2,
+  );
+  const outerCornerAngle = (resolvedCornerRadius / resolvedOuterRadius) * (180 / Math.PI);
+  const innerCornerAngle = (resolvedCornerRadius / resolvedInnerRadius) * (180 / Math.PI);
+  const outerStart = polarToCartesian(startAngle + outerCornerAngle, resolvedOuterRadius);
+  const outerEnd = polarToCartesian(endAngle - outerCornerAngle, resolvedOuterRadius);
+  const outerEndCorner = polarToCartesian(endAngle, resolvedOuterRadius);
+  const outerEndSide = polarToCartesian(endAngle, resolvedOuterRadius - resolvedCornerRadius);
+  const innerEndSide = polarToCartesian(endAngle, resolvedInnerRadius + resolvedCornerRadius);
+  const innerEndCorner = polarToCartesian(endAngle, resolvedInnerRadius);
+  const innerEnd = polarToCartesian(endAngle - innerCornerAngle, resolvedInnerRadius);
+  const innerStart = polarToCartesian(startAngle + innerCornerAngle, resolvedInnerRadius);
+  const innerStartCorner = polarToCartesian(startAngle, resolvedInnerRadius);
+  const innerStartSide = polarToCartesian(startAngle, resolvedInnerRadius + resolvedCornerRadius);
+  const outerStartSide = polarToCartesian(startAngle, resolvedOuterRadius - resolvedCornerRadius);
+  const outerStartCorner = polarToCartesian(startAngle, resolvedOuterRadius);
   const largeArcFlag = endAngle - startAngle <= 180 ? '0' : '1';
 
   return [
     `M ${outerStart.x} ${outerStart.y}`,
-    `A ${outerRadius} ${outerRadius} 0 ${largeArcFlag} 1 ${outerEnd.x} ${outerEnd.y}`,
+    `A ${resolvedOuterRadius} ${resolvedOuterRadius} 0 ${largeArcFlag} 1 ${outerEnd.x} ${outerEnd.y}`,
     `Q ${outerEndCorner.x} ${outerEndCorner.y} ${outerEndSide.x} ${outerEndSide.y}`,
     `L ${innerEndSide.x} ${innerEndSide.y}`,
     `Q ${innerEndCorner.x} ${innerEndCorner.y} ${innerEnd.x} ${innerEnd.y}`,
-    `A ${innerRadius} ${innerRadius} 0 ${largeArcFlag} 0 ${innerStart.x} ${innerStart.y}`,
+    `A ${resolvedInnerRadius} ${resolvedInnerRadius} 0 ${largeArcFlag} 0 ${innerStart.x} ${innerStart.y}`,
     `Q ${innerStartCorner.x} ${innerStartCorner.y} ${innerStartSide.x} ${innerStartSide.y}`,
     `L ${outerStartSide.x} ${outerStartSide.y}`,
     `Q ${outerStartCorner.x} ${outerStartCorner.y} ${outerStart.x} ${outerStart.y}`,
@@ -169,20 +176,19 @@ export function SpendingDonutChart({ data, selectedKey, onSelect }: SpendingDonu
             />
             {renderedSegments.map((item) => {
               const isSelected = selectedKey === item.key;
-              const selectedScale = isSelected ? 1.045 : 1;
 
               return (
-                <G
+                <Path
                   key={item.key}
-                  transform={`translate(${center} ${center}) scale(${selectedScale}) translate(${-center} ${-center})`}
-                >
-                  <Path
-                    d={describeDonutSlice(item.startAngle, item.endAngle)}
-                    fill={item.color}
-                    onPress={() => onSelect(item.key)}
-                    opacity={isSelected ? 1 : 0.92}
-                  />
-                </G>
+                  d={describeDonutSlice(
+                    item.startAngle,
+                    item.endAngle,
+                    isSelected ? selectedRadiusOffset : 0,
+                  )}
+                  fill={item.color}
+                  onPress={() => onSelect(item.key)}
+                  opacity={isSelected ? 1 : 0.92}
+                />
               );
             })}
             <Circle
