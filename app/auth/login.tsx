@@ -20,6 +20,28 @@ const googleClientIdForPlatform = Platform.select({
   default: googleWebClientId,
 });
 
+function decodeJwtPayload(token: string) {
+  const [, payload] = token.split(".");
+
+  if (!payload) {
+    return null;
+  }
+
+  try {
+    if (typeof atob !== "function") {
+      return null;
+    }
+
+    const normalizedPayload = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const paddedPayload = normalizedPayload.padEnd(Math.ceil(normalizedPayload.length / 4) * 4, "=");
+    const decodedPayload = atob(paddedPayload);
+
+    return JSON.parse(decodedPayload) as { aud?: string; email?: string; exp?: number; iss?: string };
+  } catch {
+    return null;
+  }
+}
+
 export default function LoginScreen() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -58,15 +80,24 @@ export default function LoginScreen() {
       return;
     }
 
-    const token = googleResponse.params.id_token ?? googleResponse.params.access_token;
+    const idToken = googleResponse.params.id_token;
+    const tokenPayload = idToken ? decodeJwtPayload(idToken) : null;
+    console.log("Google token debug:", {
+      hasIdToken: Boolean(idToken),
+      hasAccessToken: Boolean(googleResponse.params.access_token),
+      tokenParts: idToken ? idToken.split(".").length : 0,
+      aud: tokenPayload?.aud,
+      iss: tokenPayload?.iss,
+      exp: tokenPayload?.exp,
+    });
 
-    if (!token) {
-      Alert.alert("Google sign in failed", "Google did not return a token.");
+    if (!idToken) {
+      Alert.alert("Google sign in failed", "Google did not return an ID token.");
       setTimeout(() => setIsGoogleSubmitting(false), 0);
       return;
     }
 
-    loginWithGoogleToken(token);
+    loginWithGoogleToken(idToken);
   }, [googleResponse]);
 
   async function handleLogin() {
