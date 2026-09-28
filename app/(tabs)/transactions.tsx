@@ -1,6 +1,6 @@
 import { router, useFocusEffect } from "expo-router";
-import { useCallback, useMemo, useState } from "react";
-import { ActivityIndicator, Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useCallback, useMemo, useRef, useState } from "react";
+import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { FinancialAccount, financialAccountApi } from "@/api/financialAccountApi";
@@ -57,12 +57,13 @@ export default function TransactionsScreen() {
   const [isAccountPickerOpen, setIsAccountPickerOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const hasLoadedDataRef = useRef(false);
 
-  const loadData = useCallback(async (refresh = false) => {
+  const loadData = useCallback(async ({ refresh = false, silent = false } = {}) => {
     try {
       if (refresh) {
         setIsRefreshing(true);
-      } else {
+      } else if (!silent) {
         setIsLoading(true);
       }
       const [accountResponse, transactionResponse] = await Promise.all([
@@ -71,17 +72,26 @@ export default function TransactionsScreen() {
       ]);
       setAccounts(accountResponse.data);
       setTransactions(transactionResponse.data);
+      hasLoadedDataRef.current = true;
     } catch (error) {
-      Alert.alert("Không tải được giao dịch", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
+      const message = error instanceof Error ? error.message : "Vui lòng thử lại sau.";
+
+      if (silent) {
+        console.warn("Không tải được giao dịch", error);
+      } else {
+        Alert.alert("Không tải được giao dịch", message);
+      }
     } finally {
-      setIsLoading(false);
+      if (!silent) {
+        setIsLoading(false);
+      }
       setIsRefreshing(false);
     }
   }, [selectedAccountId]);
 
   useFocusEffect(
     useCallback(() => {
-      loadData();
+      loadData({ silent: hasLoadedDataRef.current });
     }, [loadData])
   );
 
@@ -122,12 +132,12 @@ export default function TransactionsScreen() {
   const currentMonth = new Date().getMonth() + 1;
 
   return (
-    <FocusedScreenTransition>
+    <FocusedScreenTransition reanimateOnFocus={false}>
       <SafeAreaView style={styles.screen} edges={["top"]}>
         <ScrollView
           contentContainerStyle={styles.content}
           refreshControl={
-            <RefreshControl refreshing={isRefreshing} onRefresh={() => loadData(true)} tintColor={theme.primary} />
+            <RefreshControl refreshing={isRefreshing} onRefresh={() => loadData({ refresh: true })} tintColor={theme.primary} />
           }
           showsVerticalScrollIndicator={false}
         >
@@ -219,7 +229,7 @@ export default function TransactionsScreen() {
           <Text style={styles.sectionMeta}>{filteredTransactions.length} giao dịch</Text>
         </View>
         {isLoading ? (
-          <ActivityIndicator color={theme.primary} style={styles.loader} />
+          <TransactionSkeleton />
         ) : groupedTransactions.length === 0 ? (
           <EmptyState />
         ) : (
@@ -356,6 +366,26 @@ function EmptyState() {
   );
 }
 
+function TransactionSkeleton() {
+  const styles = useTransactionStyles();
+
+  return (
+    <View style={styles.skeletonGroup}>
+      <View style={styles.skeletonHeader} />
+      {[0, 1, 2, 3].map((item) => (
+        <View key={item} style={styles.skeletonRow}>
+          <View style={styles.skeletonIcon} />
+          <View style={styles.skeletonCopy}>
+            <View style={styles.skeletonLineWide} />
+            <View style={styles.skeletonLineShort} />
+          </View>
+          <View style={styles.skeletonAmount} />
+        </View>
+      ))}
+    </View>
+  );
+}
+
 function Donut({ value, color, label }: { value: number; color: string; label: string }) {
   const styles = useTransactionStyles();
 
@@ -460,7 +490,40 @@ function createStyles(theme: AppTheme) {
   },
   sectionTitle: { color: theme.text, fontSize: 17, fontWeight: "800" },
   sectionMeta: { color: theme.textMuted, fontSize: 12 },
-  loader: { margin: 30 },
+  skeletonGroup: {
+    backgroundColor: theme.card,
+    borderColor: theme.border,
+    borderRadius: 14,
+    borderWidth: 1,
+    marginBottom: 10,
+    overflow: "hidden",
+    paddingHorizontal: 14,
+  },
+  skeletonHeader: {
+    backgroundColor: theme.cardAlt,
+    borderRadius: 6,
+    height: 14,
+    marginVertical: 14,
+    width: "48%",
+  },
+  skeletonRow: {
+    alignItems: "center",
+    borderTopColor: theme.border,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    flexDirection: "row",
+    minHeight: 64,
+  },
+  skeletonIcon: {
+    backgroundColor: theme.cardAlt,
+    borderRadius: 18,
+    height: 36,
+    marginRight: 11,
+    width: 36,
+  },
+  skeletonCopy: { flex: 1, gap: 8 },
+  skeletonLineWide: { backgroundColor: theme.cardAlt, borderRadius: 5, height: 12, width: "68%" },
+  skeletonLineShort: { backgroundColor: theme.cardAlt, borderRadius: 5, height: 10, width: "42%" },
+  skeletonAmount: { backgroundColor: theme.cardAlt, borderRadius: 5, height: 12, width: 72 },
   dayGroup: {
     backgroundColor: theme.card,
     borderColor: theme.border,

@@ -1,4 +1,4 @@
-import { router } from 'expo-router';
+import { router, useNavigation } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { SymbolView } from 'expo-symbols';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -35,6 +35,11 @@ import { subscribeUserTabPress } from '@/stores/userTabPress';
 import type { AppTheme } from '@/theme/appTheme';
 
 type UserView = 'menu' | 'manage' | 'editProfile' | 'spendingStats';
+type SpendingStatsReturnPath = '/(tabs)/transactions';
+type TabsNavigation = {
+  jumpTo?: (screen: string) => void;
+  navigate: (screen: string) => void;
+};
 
 const chartColors = ['#8e7cf4', '#ffb14a', '#31c48d', '#f06292', '#60a5fa', '#facc15', '#9ca3af'];
 
@@ -127,6 +132,7 @@ function getSignedHeaders(uploadUrl: string) {
 
 export default function UserScreen() {
   const [user, setUser] = useState(() => getAuthUser());
+  const tabsNavigation = useNavigation<TabsNavigation>();
   const theme = useAppTheme();
   const themeMode = useThemeMode();
   const isDarkMode = themeMode === 'dark';
@@ -136,7 +142,6 @@ export default function UserScreen() {
     themeMode,
   });
   const initial = (user?.displayName ?? user?.username ?? 'U').trim().charAt(0).toUpperCase() || 'U';
-  const [view, setView] = useState<UserView>('menu');
   const [editDisplayName, setEditDisplayName] = useState(user?.displayName ?? '');
   const [editAvatarUrl, setEditAvatarUrl] = useState<string | null>(user?.avatarUrl ?? null);
   const [selectedAvatar, setSelectedAvatar] = useState<ImagePicker.ImagePickerAsset | null>(null);
@@ -145,6 +150,12 @@ export default function UserScreen() {
   const today = new Date();
   const defaultMonth = today.getMonth() + 1;
   const defaultYear = today.getFullYear();
+  const initialStatsReturnPath = useMemo(() => {
+    const pendingRequest = consumePendingSpendingStatsRequest();
+
+    return pendingRequest ? getSpendingStatsReturnPath() ?? '/(tabs)/transactions' : null;
+  }, []);
+  const [view, setView] = useState<UserView>(initialStatsReturnPath ? 'spendingStats' : 'menu');
   const [statsMonth, setStatsMonth] = useState(defaultMonth);
   const [statsYear, setStatsYear] = useState(defaultYear);
   const [spendingStats, setSpendingStats] = useState<CategorySpendingResponse | null>(null);
@@ -154,7 +165,7 @@ export default function UserScreen() {
   const [financialInsightsError, setFinancialInsightsError] = useState<string | null>(null);
   const [isFinancialInsightsVisible, setIsFinancialInsightsVisible] = useState(false);
   const [selectedCategoryKey, setSelectedCategoryKey] = useState<string | null>(null);
-  const [statsReturnPath, setStatsReturnPath] = useState<string | null>(null);
+  const [statsReturnPath, setStatsReturnPath] = useState<SpendingStatsReturnPath | null>(initialStatsReturnPath);
 
   const isCurrentStatsPeriod = statsMonth === defaultMonth && statsYear === defaultYear;
   const canGoNextStatsPeriod = !isCurrentStatsPeriod;
@@ -191,23 +202,12 @@ export default function UserScreen() {
   }, [defaultMonth, defaultYear]);
 
   useEffect(() => {
-    const pendingRequest = consumePendingSpendingStatsRequest();
-    let pendingTimeoutId: ReturnType<typeof setTimeout> | null = null;
-
-    if (pendingRequest) {
-      pendingTimeoutId = setTimeout(openSpendingStatsFromTransactions, 0);
-    }
-
     const unsubscribe = subscribeSpendingStatsRequest(() => {
       consumePendingSpendingStatsRequest();
-      setTimeout(openSpendingStatsFromTransactions, 0);
+      openSpendingStatsFromTransactions();
     });
 
     return () => {
-      if (pendingTimeoutId) {
-        clearTimeout(pendingTimeoutId);
-      }
-
       unsubscribe();
     };
   }, [openSpendingStatsFromTransactions]);
@@ -297,7 +297,12 @@ export default function UserScreen() {
     if (returnPath) {
       setStatsReturnPath(null);
       clearSpendingStatsFromTransactions();
-      router.navigate('/(tabs)/transactions');
+      setView('menu');
+      if (tabsNavigation.jumpTo) {
+        tabsNavigation.jumpTo('transactions');
+      } else {
+        tabsNavigation.navigate('transactions');
+      }
       return;
     }
 
