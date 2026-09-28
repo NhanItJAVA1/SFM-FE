@@ -1,10 +1,12 @@
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { router, useFocusEffect } from 'expo-router';
+import * as SecureStore from 'expo-secure-store';
 import { SymbolView } from 'expo-symbols';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  AppState,
   Image,
   KeyboardAvoidingView,
   Modal,
@@ -20,15 +22,15 @@ import {
 
 import { categoriesApi, Category } from '@/api/categoriesApi';
 import { FinancialAccount, financialAccountApi } from '@/api/financialAccountApi';
-import { FocusedScreenTransition } from '@/components/screen-transition';
 import {
+  CreateTransactionPayload,
   transactionsApi,
   TransactionType,
-  CreateTransactionPayload,
 } from '@/api/transactionsApi';
-import { presentTransactionNotifications } from '@/services/transactionNotifications';
+import { FocusedScreenTransition } from '@/components/screen-transition';
 import { useAppTheme } from '@/hooks/use-app-theme';
 import { useThemeMode } from '@/hooks/use-theme-mode';
+import { presentTransactionNotifications } from '@/services/transactionNotifications';
 import { openVietQRPayment } from '@/utils/paymentDeeplink';
 
 const transactionTypes: { label: string; value: TransactionType }[] = [
@@ -52,6 +54,44 @@ const VIETQR_BANK_APP_ENDPOINT =
     ? 'https://api.vietqr.io/v2/ios-app-deeplinks'
     : 'https://api.vietqr.io/v2/android-app-deeplinks';
 const BANK_LOGO_PREFETCH_LIMIT = 12;
+const PAYMENT_AUTO_SAVE_SECONDS = 30;
+const PAYMENT_AUTO_SAVE_STORAGE_KEY = 'sfm.pendingPaymentAutoSave';
+
+type PendingPaymentAutoSave = {
+  deadline: number;
+  payload: CreateTransactionPayload;
+};
+
+let inMemoryPendingPaymentAutoSave: PendingPaymentAutoSave | null = null;
+
+async function savePendingPaymentAutoSave(pendingPayment: PendingPaymentAutoSave) {
+  inMemoryPendingPaymentAutoSave = pendingPayment;
+  await SecureStore.setItemAsync(PAYMENT_AUTO_SAVE_STORAGE_KEY, JSON.stringify(pendingPayment));
+}
+
+async function loadPendingPaymentAutoSave() {
+  if (inMemoryPendingPaymentAutoSave) {
+    return inMemoryPendingPaymentAutoSave;
+  }
+
+  const storedValue = await SecureStore.getItemAsync(PAYMENT_AUTO_SAVE_STORAGE_KEY);
+  if (!storedValue) {
+    return null;
+  }
+
+  try {
+    inMemoryPendingPaymentAutoSave = JSON.parse(storedValue) as PendingPaymentAutoSave;
+    return inMemoryPendingPaymentAutoSave;
+  } catch {
+    await SecureStore.deleteItemAsync(PAYMENT_AUTO_SAVE_STORAGE_KEY);
+    return null;
+  }
+}
+
+async function clearPendingPaymentAutoSave() {
+  inMemoryPendingPaymentAutoSave = null;
+  await SecureStore.deleteItemAsync(PAYMENT_AUTO_SAVE_STORAGE_KEY);
+}
 
 function formatAmount(amount: number) {
   return new Intl.NumberFormat('vi-VN', {
@@ -77,7 +117,7 @@ export default function CreateScreen() {
   const [accounts, setAccounts] = useState<FinancialAccount[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [paymentBankApps, setPaymentBankApps] = useState<VietQRBankApp[]>([]);
-  
+
   const [amount, setAmount] = useState<string>('');
   const [description, setDescription] = useState<string>('');
   const [location, setLocation] = useState<string>('');
@@ -89,14 +129,42 @@ export default function CreateScreen() {
   const [recipientAccountNumber, setRecipientAccountNumber] = useState('');
   const [isExcluded, setIsExcluded] = useState(false);
   const [isPaymentMode, setIsPaymentMode] = useState(false);
+  const [isPaymentAutoSavePending, setIsPaymentAutoSavePending] = useState(false);
+  const [paymentAutoSaveCountdown, setPaymentAutoSaveCountdown] = useState(PAYMENT_AUTO_SAVE_SECONDS);
 
   const [isAccountPickerVisible, setIsAccountPickerVisible] = useState(false);
   const [isCategoryPickerVisible, setIsCategoryPickerVisible] = useState(false);
   const [isTypePickerVisible, setIsTypePickerVisible] = useState(false);
   const [isDatePickerVisible, setIsDatePickerVisible] = useState(false);
   const [isPaymentBankPickerVisible, setIsPaymentBankPickerVisible] = useState(false);
-  
+
   const [isSaving, setIsSaving] = useState(false);
+  const paymentAutoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const paymentCountdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pendingPaymentPayloadRef = useRef<CreateTransactionPayload | null>(null);
+  const paymentAutoSaveDeadlineRef = useRef<number | null>(null);
+
+  const clearPaymentAutoSaveTimers = useCallback(() => {
+    if (paymentAutoSaveTimerRef.current) {
+      clearTimeout(paymentAutoSaveTimerRef.current);
+      paymentAutoSaveTimerRef.current = null;
+    }
+
+    if (paymentCountdownTimerRef.current) {
+      clearInterval(paymentCountdownTimerRef.current);
+      paymentCountdownTimerRef.current = null;
+    }
+  }, []);
+
+  const getPaymentAutoSaveRemainingSeconds = useCallback(() => {
+    const deadline = paymentAutoSaveDeadlineRef.current;
+
+    if (!deadline) {
+      return PAYMENT_AUTO_SAVE_SECONDS;
+    }
+
+    return Math.max(Math.ceil((deadline - Date.now()) / 1000), 0);
+  }, []);
 
   const loadData = useCallback(async () => {
     try {
@@ -105,7 +173,7 @@ export default function CreateScreen() {
         categoriesApi.list(),
         fetch(VIETQR_BANK_APP_ENDPOINT).then((response) => response.json()),
       ]);
-      
+
       setAccounts(accountsRes.data);
       setCategories(categoriesRes.data);
       const bankApps: VietQRBankApp[] = paymentBankAppsRes.apps ?? [];
@@ -116,7 +184,7 @@ export default function CreateScreen() {
           Image.prefetch(app.appLogo);
         }
       });
-      
+
       if (accountsRes.data.length > 0 && selectedAccountId === null) {
         setSelectedAccountId(accountsRes.data[0].id);
       }
@@ -131,44 +199,62 @@ export default function CreateScreen() {
     }, [loadData])
   );
 
-  const handleSave = async () => {
+  useEffect(() => {
+    return clearPaymentAutoSaveTimers;
+  }, [clearPaymentAutoSaveTimers]);
+
+  const buildTransactionPayload = useCallback((): CreateTransactionPayload | null => {
     if (!amount || isNaN(Number(amount))) {
       Alert.alert('Lỗi', 'Vui lòng nhập số tiền hợp lệ');
-      return;
+      return null;
     }
+
     if (selectedAccountId === null) {
       Alert.alert('Lỗi', 'Vui lòng chọn tài khoản');
-      return;
+      return null;
     }
 
+    return {
+      accountId: selectedAccountId,
+      categoryId: selectedCategoryId,
+      type,
+      amount: Number(amount),
+      description: description || undefined,
+      location: location || undefined,
+      transactionDate: transactionDate.toISOString(),
+      isExcluded,
+    };
+  }, [amount, description, isExcluded, location, selectedAccountId, selectedCategoryId, transactionDate, type]);
+
+  const resetForm = useCallback(() => {
+    setAmount('');
+    setDescription('');
+    setLocation('');
+    setType('Expense');
+    setTransactionDate(new Date());
+    setSelectedCategoryId(null);
+    setIsExcluded(false);
+    setRecipientAccountNumber('');
+    setIsPaymentAutoSavePending(false);
+    setPaymentAutoSaveCountdown(PAYMENT_AUTO_SAVE_SECONDS);
+    pendingPaymentPayloadRef.current = null;
+    paymentAutoSaveDeadlineRef.current = null;
+    clearPendingPaymentAutoSave();
+  }, []);
+
+  const saveTransaction = useCallback(async (payload: CreateTransactionPayload) => {
     try {
       setIsSaving(true);
-      const payload: CreateTransactionPayload = {
-        accountId: selectedAccountId,
-        categoryId: selectedCategoryId,
-        type,
-        amount: Number(amount),
-        description: description || undefined,
-        location: location || undefined,
-        transactionDate: transactionDate.toISOString(),
-        isExcluded,
-      };
-
       const response = await transactionsApi.create(payload);
       await presentTransactionNotifications(response.data);
-      
+
       Alert.alert('Thành công', 'Đã lưu giao dịch', [
-        { text: 'OK', onPress: () => {
-          // Reset form
-          setAmount('');
-          setDescription('');
-          setLocation('');
-          setType('Expense');
-          setTransactionDate(new Date());
-          setSelectedCategoryId(null);
-          setIsExcluded(false);
-          router.replace('/(tabs)/transactions');
-        }}
+        {
+          text: 'OK', onPress: () => {
+            resetForm();
+            router.replace('/(tabs)/transactions');
+          }
+        }
       ]);
     } catch (error) {
       Alert.alert('Lỗi', 'Không thể lưu giao dịch. Vui lòng thử lại.');
@@ -176,11 +262,133 @@ export default function CreateScreen() {
     } finally {
       setIsSaving(false);
     }
+  }, [resetForm]);
+
+  const completePaymentAutoSave = useCallback(() => {
+    const payload = pendingPaymentPayloadRef.current;
+
+    if (!payload) {
+      return;
+    }
+
+    clearPaymentAutoSaveTimers();
+    pendingPaymentPayloadRef.current = null;
+    paymentAutoSaveDeadlineRef.current = null;
+    clearPendingPaymentAutoSave();
+    setIsPaymentAutoSavePending(false);
+    setPaymentAutoSaveCountdown(PAYMENT_AUTO_SAVE_SECONDS);
+    saveTransaction(payload);
+  }, [clearPaymentAutoSaveTimers, saveTransaction]);
+
+  const schedulePaymentAutoSaveTimers = useCallback(() => {
+    clearPaymentAutoSaveTimers();
+
+    paymentCountdownTimerRef.current = setInterval(() => {
+      const remainingSeconds = getPaymentAutoSaveRemainingSeconds();
+      setPaymentAutoSaveCountdown(remainingSeconds);
+
+      if (remainingSeconds <= 0) {
+        completePaymentAutoSave();
+      }
+    }, 1000);
+
+    const remainingMs = Math.max((paymentAutoSaveDeadlineRef.current ?? Date.now()) - Date.now(), 0);
+    paymentAutoSaveTimerRef.current = setTimeout(() => {
+      completePaymentAutoSave();
+    }, remainingMs);
+  }, [clearPaymentAutoSaveTimers, completePaymentAutoSave, getPaymentAutoSaveRemainingSeconds]);
+
+  const startPaymentAutoSave = useCallback(async (payload: CreateTransactionPayload) => {
+    const pendingPayment = {
+      deadline: Date.now() + PAYMENT_AUTO_SAVE_SECONDS * 1000,
+      payload,
+    };
+
+    pendingPaymentPayloadRef.current = pendingPayment.payload;
+    paymentAutoSaveDeadlineRef.current = pendingPayment.deadline;
+    setPaymentAutoSaveCountdown(PAYMENT_AUTO_SAVE_SECONDS);
+    setIsPaymentAutoSavePending(true);
+    schedulePaymentAutoSaveTimers();
+    await savePendingPaymentAutoSave(pendingPayment);
+  }, [schedulePaymentAutoSaveTimers]);
+
+  const stopPaymentAutoSave = useCallback(() => {
+    clearPaymentAutoSaveTimers();
+    pendingPaymentPayloadRef.current = null;
+    paymentAutoSaveDeadlineRef.current = null;
+    clearPendingPaymentAutoSave();
+    setIsPaymentAutoSavePending(false);
+    setPaymentAutoSaveCountdown(PAYMENT_AUTO_SAVE_SECONDS);
+  }, [clearPaymentAutoSaveTimers]);
+
+  const restorePaymentAutoSave = useCallback(async () => {
+    const pendingPayment = await loadPendingPaymentAutoSave();
+
+    if (!pendingPayment) {
+      return;
+    }
+
+    pendingPaymentPayloadRef.current = pendingPayment.payload;
+    paymentAutoSaveDeadlineRef.current = pendingPayment.deadline;
+    const remainingSeconds = getPaymentAutoSaveRemainingSeconds();
+
+    if (remainingSeconds <= 0) {
+      completePaymentAutoSave();
+      return;
+    }
+
+    setPaymentAutoSaveCountdown(remainingSeconds);
+    setIsPaymentAutoSavePending(true);
+    schedulePaymentAutoSaveTimers();
+  }, [completePaymentAutoSave, getPaymentAutoSaveRemainingSeconds, schedulePaymentAutoSaveTimers]);
+
+  useEffect(() => {
+    const restoreTimer = setTimeout(() => {
+      restorePaymentAutoSave();
+    }, 0);
+
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      if (nextAppState !== 'active') {
+        return;
+      }
+
+      if (!pendingPaymentPayloadRef.current) {
+        restorePaymentAutoSave();
+        return;
+      }
+
+      const remainingSeconds = getPaymentAutoSaveRemainingSeconds();
+      setPaymentAutoSaveCountdown(remainingSeconds);
+
+      if (remainingSeconds <= 0) {
+        completePaymentAutoSave();
+        return;
+      }
+
+      setIsPaymentAutoSavePending(true);
+      schedulePaymentAutoSaveTimers();
+    });
+
+    return () => {
+      clearTimeout(restoreTimer);
+      subscription.remove();
+    };
+  }, [completePaymentAutoSave, getPaymentAutoSaveRemainingSeconds, restorePaymentAutoSave, schedulePaymentAutoSaveTimers]);
+
+  const handleSave = async () => {
+    const payload = buildTransactionPayload();
+
+    if (!payload) {
+      return;
+    }
+
+    await saveTransaction(payload);
   };
 
   const handlePayment = async () => {
-    if (!amount || isNaN(Number(amount))) {
-      Alert.alert('Lỗi', 'Vui lòng nhập số tiền hợp lệ');
+    const payload = buildTransactionPayload();
+
+    if (!payload) {
       return;
     }
 
@@ -194,9 +402,14 @@ export default function CreateScreen() {
       return;
     }
 
+    await startPaymentAutoSave(payload);
+
     try {
-      setIsSaving(true);
-      await openVietQRPayment({
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, 300);
+      });
+
+      const result = await openVietQRPayment({
         appCode: selectedPaymentBank.appId,
         bankCode: selectedPaymentBank.appId,
         accountNumber: recipientAccountNumber.trim(),
@@ -204,9 +417,19 @@ export default function CreateScreen() {
         content: description.trim() || 'TEST SFM',
         returnUrl: 'https://payos.vn',
       });
-    } finally {
-      setIsSaving(false);
+
+      if (!result.opened) {
+        stopPaymentAutoSave();
+      }
+    } catch (error) {
+      stopPaymentAutoSave();
+      throw error;
     }
+  };
+
+  const handleCancelPaymentAutoSave = () => {
+    stopPaymentAutoSave();
+    Alert.alert('Đã hủy giao dịch', 'Giao dịch này sẽ không được tự động lưu.');
   };
 
   const selectedAccount = accounts.find(a => a.id === selectedAccountId);
@@ -234,162 +457,175 @@ export default function CreateScreen() {
         style={styles.keyboardView}
       >
         <View style={styles.header}>
-        <Text style={[styles.headerTitle, { color: theme.text }]}>Tạo giao dịch</Text>
-        <Pressable 
-          style={[styles.scanButton, { backgroundColor: theme.primaryPressed }]} 
-          onPress={() => router.push('/(tabs)/scan-bill')}
-        >
-          <SymbolView
-            name={{ ios: 'camera.fill', android: 'camera', web: 'camera' }}
-            size={18}
-            tintColor={theme.primary}
-          />
-          <Text style={[styles.scanButtonText, { color: theme.primary }]}>Quét hóa đơn</Text>
-        </Pressable>
+          <Text style={[styles.headerTitle, { color: theme.text }]}>Tạo giao dịch</Text>
+          <Pressable
+            style={[styles.scanButton, { backgroundColor: theme.primaryPressed }]}
+            onPress={() => router.push('/(tabs)/scan-bill')}
+          >
+            <SymbolView
+              name={{ ios: 'camera.fill', android: 'camera', web: 'camera' }}
+              size={18}
+              tintColor={theme.primary}
+            />
+            <Text style={[styles.scanButtonText, { color: theme.primary }]}>Quét hóa đơn</Text>
+          </Pressable>
         </View>
 
         <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-        <View style={[styles.card, { backgroundColor: theme.card }]}>
-          <View style={styles.inputGroup}>
-            <Text style={[styles.inputLabel, { color: theme.textSubtle }]}>Số tiền</Text>
-            <TextInput
-              style={[styles.amountInput, { color: theme.primary }]}
-              value={amount}
-              onChangeText={setAmount}
-              keyboardType="numeric"
-              placeholder="0"
-              placeholderTextColor={theme.textSubtle}
-            />
-          </View>
-
-          <Pressable style={[styles.row, { borderTopColor: theme.border }]} onPress={() => setIsTypePickerVisible(true)}>
-            <View style={styles.rowLabelContainer}>
-              <SymbolView name="tag" size={20} tintColor={theme.textSubtle} />
-              <Text style={[styles.rowLabel, { color: theme.text }]}>Loại</Text>
+          <View style={[styles.card, { backgroundColor: theme.card }]}>
+            <View style={styles.inputGroup}>
+              <Text style={[styles.inputLabel, { color: theme.textSubtle }]}>Số tiền</Text>
+              <TextInput
+                style={[styles.amountInput, { color: theme.primary }]}
+                value={amount}
+                onChangeText={setAmount}
+                keyboardType="numeric"
+                placeholder="0"
+                placeholderTextColor={theme.textSubtle}
+              />
             </View>
-            <Text style={[styles.rowValue, { color: theme.text }]}>
-              {transactionTypes.find(t => t.value === type)?.label}
-            </Text>
-          </Pressable>
 
-          <Pressable style={[styles.row, { borderTopColor: theme.border }]} onPress={() => setIsAccountPickerVisible(true)}>
-            <View style={styles.rowLabelContainer}>
-              <SymbolView name="creditcard" size={20} tintColor={theme.textSubtle} />
-              <Text style={[styles.rowLabel, { color: theme.text }]}>Tài khoản</Text>
-            </View>
-            <Text style={[styles.rowValue, { color: theme.text }]}>
-              {selectedAccount?.name || 'Chọn tài khoản'}
-            </Text>
-          </Pressable>
-
-          <Pressable style={[styles.row, { borderTopColor: theme.border }]} onPress={() => setIsCategoryPickerVisible(true)}>
-            <View style={styles.rowLabelContainer}>
-              <SymbolView name="list.bullet" size={20} tintColor={theme.textSubtle} />
-              <Text style={[styles.rowLabel, { color: theme.text }]}>Danh mục</Text>
-            </View>
-            <Text style={[styles.rowValue, { color: theme.text }]}>
-              {selectedCategory?.name || 'Chưa phân loại'}
-            </Text>
-          </Pressable>
-
-          <Pressable style={[styles.row, { borderTopColor: theme.border }]} onPress={() => setIsDatePickerVisible(true)}>
-            <View style={styles.rowLabelContainer}>
-              <SymbolView name="calendar" size={20} tintColor={theme.textSubtle} />
-              <Text style={[styles.rowLabel, { color: theme.text }]}>Ngày</Text>
-            </View>
-            <Text style={[styles.rowValue, { color: theme.text }]}>
-              {formatDate(transactionDate)}
-            </Text>
-          </Pressable>
-        </View>
-
-        <View style={[styles.card, { backgroundColor: theme.card, marginTop: 16 }]}>
-          <View style={styles.inputGroup}>
-            <Text style={[styles.inputLabel, { color: theme.textSubtle }]}>Ghi chú</Text>
-            <TextInput
-              style={[styles.textInput, { color: theme.text }]}
-              value={description}
-              onChangeText={setDescription}
-              placeholder="Nhập ghi chú..."
-              placeholderTextColor={theme.textSubtle}
-              multiline
-            />
-          </View>
-
-          <View style={[styles.inputGroup, { borderTopWidth: 1, borderTopColor: theme.border }]}>
-            <Text style={[styles.inputLabel, { color: theme.textSubtle }]}>Địa điểm</Text>
-            <TextInput
-              style={[styles.textInput, { color: theme.text }]}
-              value={location}
-              onChangeText={setLocation}
-              placeholder="Nhập địa điểm..."
-              placeholderTextColor={theme.textSubtle}
-            />
-          </View>
-        </View>
-
-        <View style={[styles.card, { backgroundColor: theme.card, marginTop: 16 }]}>
-          <View style={styles.paymentToggleRow}>
-            <View style={styles.rowLabelContainer}>
-              <SymbolView name="creditcard" size={20} tintColor={theme.textSubtle} />
-              <Text style={[styles.rowLabel, { color: theme.text }]}>Thanh toán ngân hàng</Text>
-            </View>
-            <Switch
-              value={isPaymentMode}
-              onValueChange={setIsPaymentMode}
-              trackColor={{ false: theme.border, true: theme.primaryPressed }}
-              thumbColor={isPaymentMode ? theme.primary : theme.textSubtle}
-            />
-          </View>
-
-          {isPaymentMode ? (
-            <>
-              <Pressable
-                style={[styles.row, { borderTopColor: theme.border }]}
-                onPress={() => setIsPaymentBankPickerVisible(true)}
-              >
-                <View style={styles.rowLabelContainer}>
-                  {selectedPaymentBank?.appLogo ? (
-                    <View style={[styles.bankLogoFrame, { backgroundColor: theme.cardAlt }]}>
-                      <Image source={{ uri: selectedPaymentBank.appLogo }} style={styles.bankLogo} />
-                    </View>
-                  ) : (
-                    <SymbolView name="building.columns" size={20} tintColor={theme.textSubtle} />
-                  )}
-                  <Text numberOfLines={1} style={[styles.rowLabel, { color: theme.text }]}>
-                    {selectedPaymentBank?.appName || 'Ngân hàng'}
-                  </Text>
-                </View>
-              </Pressable>
-
-              <View style={[styles.inputGroup, { borderTopWidth: 1, borderTopColor: theme.border }]}>
-                <Text style={[styles.inputLabel, { color: theme.textSubtle }]}>Số tài khoản nhận</Text>
-                <TextInput
-                  style={[styles.textInput, { color: theme.text }]}
-                  value={recipientAccountNumber}
-                  onChangeText={setRecipientAccountNumber}
-                  keyboardType="number-pad"
-                  placeholder="Nhập số tài khoản"
-                  placeholderTextColor={theme.textSubtle}
-                />
+            <Pressable style={[styles.row, { borderTopColor: theme.border }]} onPress={() => setIsTypePickerVisible(true)}>
+              <View style={styles.rowLabelContainer}>
+                <SymbolView name="tag" size={20} tintColor={theme.textSubtle} />
+                <Text style={[styles.rowLabel, { color: theme.text }]}>Loại</Text>
               </View>
-            </>
-          ) : null}
-        </View>
+              <Text style={[styles.rowValue, { color: theme.text }]}>
+                {transactionTypes.find(t => t.value === type)?.label}
+              </Text>
+            </Pressable>
 
-        <Pressable 
-          style={[styles.saveButton, { backgroundColor: theme.primary }, isSaving && { opacity: 0.7 }]}
-          onPress={isPaymentMode ? handlePayment : handleSave}
-          disabled={isSaving}
-        >
-          {isSaving ? (
-            <ActivityIndicator color={theme.textInverse} />
-          ) : (
-            <Text style={[styles.saveButtonText, { color: theme.textInverse }]}>
-              {isPaymentMode ? 'Thanh toán' : 'Lưu giao dịch'}
-            </Text>
-          )}
-        </Pressable>
+            <Pressable style={[styles.row, { borderTopColor: theme.border }]} onPress={() => setIsAccountPickerVisible(true)}>
+              <View style={styles.rowLabelContainer}>
+                <SymbolView name="creditcard" size={20} tintColor={theme.textSubtle} />
+                <Text style={[styles.rowLabel, { color: theme.text }]}>Tài khoản</Text>
+              </View>
+              <Text style={[styles.rowValue, { color: theme.text }]}>
+                {selectedAccount?.name || 'Chọn tài khoản'}
+              </Text>
+            </Pressable>
+
+            <Pressable style={[styles.row, { borderTopColor: theme.border }]} onPress={() => setIsCategoryPickerVisible(true)}>
+              <View style={styles.rowLabelContainer}>
+                <SymbolView name="list.bullet" size={20} tintColor={theme.textSubtle} />
+                <Text style={[styles.rowLabel, { color: theme.text }]}>Danh mục</Text>
+              </View>
+              <Text style={[styles.rowValue, { color: theme.text }]}>
+                {selectedCategory?.name || 'Chưa phân loại'}
+              </Text>
+            </Pressable>
+
+            <Pressable style={[styles.row, { borderTopColor: theme.border }]} onPress={() => setIsDatePickerVisible(true)}>
+              <View style={styles.rowLabelContainer}>
+                <SymbolView name="calendar" size={20} tintColor={theme.textSubtle} />
+                <Text style={[styles.rowLabel, { color: theme.text }]}>Ngày</Text>
+              </View>
+              <Text style={[styles.rowValue, { color: theme.text }]}>
+                {formatDate(transactionDate)}
+              </Text>
+            </Pressable>
+          </View>
+
+          <View style={[styles.card, { backgroundColor: theme.card, marginTop: 16 }]}>
+            <View style={styles.inputGroup}>
+              <Text style={[styles.inputLabel, { color: theme.textSubtle }]}>Ghi chú</Text>
+              <TextInput
+                style={[styles.textInput, { color: theme.text }]}
+                value={description}
+                onChangeText={setDescription}
+                placeholder="Nhập ghi chú..."
+                placeholderTextColor={theme.textSubtle}
+                multiline
+              />
+            </View>
+
+            <View style={[styles.inputGroup, { borderTopWidth: 1, borderTopColor: theme.border }]}>
+              <Text style={[styles.inputLabel, { color: theme.textSubtle }]}>Địa điểm</Text>
+              <TextInput
+                style={[styles.textInput, { color: theme.text }]}
+                value={location}
+                onChangeText={setLocation}
+                placeholder="Nhập địa điểm..."
+                placeholderTextColor={theme.textSubtle}
+              />
+            </View>
+          </View>
+
+          <View style={[styles.card, { backgroundColor: theme.card, marginTop: 16 }]}>
+            <View style={styles.paymentToggleRow}>
+              <View style={styles.rowLabelContainer}>
+                <SymbolView name="creditcard" size={20} tintColor={theme.textSubtle} />
+                <Text style={[styles.rowLabel, { color: theme.text }]}>Thanh toán ngân hàng</Text>
+              </View>
+              <Switch
+                value={isPaymentMode}
+                onValueChange={(value) => {
+                  if (!value && isPaymentAutoSavePending) {
+                    handleCancelPaymentAutoSave();
+                  }
+                  setIsPaymentMode(value);
+                }}
+                trackColor={{ false: theme.border, true: theme.primaryPressed }}
+                thumbColor={isPaymentMode ? theme.primary : theme.textSubtle}
+              />
+            </View>
+
+            {isPaymentMode ? (
+              <>
+                <Pressable
+                  style={[styles.row, { borderTopColor: theme.border }]}
+                  onPress={() => setIsPaymentBankPickerVisible(true)}
+                >
+                  <View style={styles.rowLabelContainer}>
+                    {selectedPaymentBank?.appLogo ? (
+                      <View style={[styles.bankLogoFrame, { backgroundColor: theme.cardAlt }]}>
+                        <Image source={{ uri: selectedPaymentBank.appLogo }} style={styles.bankLogo} />
+                      </View>
+                    ) : (
+                      <SymbolView name="building.columns" size={20} tintColor={theme.textSubtle} />
+                    )}
+                    <Text numberOfLines={1} style={[styles.rowLabel, { color: theme.text }]}>
+                      {selectedPaymentBank?.appName || 'Ngân hàng'}
+                    </Text>
+                  </View>
+                </Pressable>
+
+                <View style={[styles.inputGroup, { borderTopWidth: 1, borderTopColor: theme.border }]}>
+                  <Text style={[styles.inputLabel, { color: theme.textSubtle }]}>Số tài khoản nhận</Text>
+                  <TextInput
+                    style={[styles.textInput, { color: theme.text }]}
+                    value={recipientAccountNumber}
+                    onChangeText={setRecipientAccountNumber}
+                    keyboardType="number-pad"
+                    placeholder="Nhập số tài khoản"
+                    placeholderTextColor={theme.textSubtle}
+                  />
+                </View>
+              </>
+            ) : null}
+          </View>
+
+          <Pressable
+            style={[
+              styles.saveButton,
+              { backgroundColor: isPaymentAutoSavePending ? theme.danger : theme.primary },
+              isSaving && { opacity: 0.7 },
+            ]}
+            onPress={isPaymentAutoSavePending ? handleCancelPaymentAutoSave : isPaymentMode ? handlePayment : handleSave}
+            disabled={isSaving}
+          >
+            {isSaving ? (
+              <ActivityIndicator color={theme.textInverse} />
+            ) : (
+              <Text style={[styles.saveButtonText, { color: theme.textInverse }]}>
+                {isPaymentAutoSavePending
+                  ? `Hủy giao dịch (${paymentAutoSaveCountdown}s)`
+                  : isPaymentMode
+                    ? 'Thanh toán'
+                    : 'Lưu giao dịch'}
+              </Text>
+            )}
+          </Pressable>
         </ScrollView>
       </KeyboardAvoidingView>
 
