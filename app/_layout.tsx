@@ -2,6 +2,7 @@ import { Stack } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
+import { subscribeBankNotificationDevLogger } from '@/features/bank-notifications';
 import { restoreAuthSession } from '@/stores/persistedAuthSession';
 import { restoreThemeMode } from '@/stores/themePreference';
 
@@ -15,6 +16,14 @@ export default function RootLayout() {
     }
 
     hydrateSession();
+  }, []);
+
+  useEffect(() => {
+    const subscription = subscribeBankNotificationDevLogger();
+
+    return () => {
+      subscription.remove();
+    };
   }, []);
 
   if (isRestoringSession) {

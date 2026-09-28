@@ -6,6 +6,7 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -19,6 +20,10 @@ import { financialInsightsApi, FinancialInsightsResponse } from '@/api/financial
 import { CategorySpendingItem, CategorySpendingResponse, transactionsApi } from '@/api/transactionsApi';
 import { usersApi } from '@/api/usersApi';
 import { FocusedScreenTransition } from '@/components/screen-transition';
+import {
+  isNotificationAccessEnabled,
+  openNotificationAccessSettings,
+} from '@/features/bank-notifications';
 import { SpendingDonutChart, SpendingDonutSegment } from '@/components/spending-donut-chart';
 import { ThemeModeIconFrame, useThemeModeTransition } from '@/components/theme-mode-transition';
 import { useAppTheme } from '@/hooks/use-app-theme';
@@ -428,6 +433,28 @@ export default function UserScreen() {
     }
   }
 
+  async function handleOpenNotificationAccessSettings() {
+    if (Platform.OS !== 'android') {
+      Alert.alert('Chỉ hỗ trợ Android', 'PoC đọc thông báo ngân hàng chỉ hoạt động trên Android.');
+      return;
+    }
+
+    try {
+      const isEnabled = await isNotificationAccessEnabled();
+
+      if (isEnabled) {
+        Alert.alert('Đã bật quyền', 'SFM đã có quyền đọc thông báo. Bạn vẫn có thể kiểm tra trong cài đặt Android.');
+      }
+
+      await openNotificationAccessSettings();
+    } catch (error) {
+      Alert.alert(
+        'Không mở được cài đặt',
+        error instanceof Error ? error.message : 'Vui lòng mở Notification Access trong cài đặt Android.',
+      );
+    }
+  }
+
   if (view === 'manage') {
     return (
       <FocusedScreenTransition style={styles.screen} triggerKey={view} variant="slide-left">
@@ -793,6 +820,16 @@ export default function UserScreen() {
           <Text style={styles.menuText}>Tài khoản</Text>
           <Text style={styles.chevron}>›</Text>
         </Pressable>
+        {Platform.OS === 'android' ? (
+          <>
+            <View style={styles.menuDivider} />
+            <Pressable style={styles.menuRow} onPress={handleOpenNotificationAccessSettings}>
+              <Text style={styles.menuIcon}>▣</Text>
+              <Text style={styles.menuText}>Quyền đọc thông báo ngân hàng</Text>
+              <Text style={styles.chevron}>›</Text>
+            </Pressable>
+          </>
+        ) : null}
       </View>
     </ScrollView>
     {transitionOverlay}
