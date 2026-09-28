@@ -356,17 +356,9 @@ export default function CreateScreen() {
                   ) : (
                     <SymbolView name="building.columns" size={20} tintColor={theme.textSubtle} />
                   )}
-                  <Text style={[styles.rowLabel, { color: theme.text }]}>Ngân hàng</Text>
-                </View>
-                <View style={styles.paymentBankValue}>
-                  <Text numberOfLines={1} style={[styles.rowValue, { color: theme.text }]}>
-                    {selectedPaymentBank?.appName || 'Chọn ngân hàng'}
+                  <Text numberOfLines={1} style={[styles.rowLabel, { color: theme.text }]}>
+                    {selectedPaymentBank?.appName || 'Ngân hàng'}
                   </Text>
-                  {selectedPaymentBank ? (
-                    <Text style={[styles.pickerItemSubtext, { color: theme.textSubtle }]}>
-                      app={selectedPaymentBank.appId}
-                    </Text>
-                  ) : null}
                 </View>
               </Pressable>
 
@@ -502,7 +494,7 @@ export default function CreateScreen() {
                     <View style={styles.bankPickerCopy}>
                       <Text style={[styles.pickerItemText, { color: theme.text }]}>{bankApp.appName}</Text>
                       <Text style={[styles.pickerItemSubtext, { color: theme.textSubtle }]}>
-                        {bankApp.bankName} · app={bankApp.appId}
+                        {bankApp.bankName}
                       </Text>
                     </View>
                   </View>
