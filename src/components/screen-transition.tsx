@@ -12,6 +12,7 @@ export type ScreenTransitionProps = {
   children?: ReactNode;
   duration?: number;
   enabled?: boolean;
+  reanimateOnFocus?: boolean;
   style?: StyleProp<ViewStyle>;
   triggerKey?: string | number | boolean | null;
   variant?: ScreenTransitionVariant;
@@ -91,17 +92,22 @@ export function ScreenTransition({
 }
 
 export function FocusedScreenTransition(props: ScreenTransitionProps) {
+  const { reanimateOnFocus = true, ...transitionProps } = props;
   const [focusTick, setFocusTick] = useState(0);
 
   useFocusEffect(
     useCallback(() => {
-      setFocusTick((current) => current + 1);
-    }, []),
+      if (reanimateOnFocus) {
+        setFocusTick((current) => current + 1);
+      }
+    }, [reanimateOnFocus]),
   );
 
-  const triggerKey = `${String(props.triggerKey ?? 'screen')}-${focusTick}`;
+  const triggerKey = reanimateOnFocus
+    ? `${String(props.triggerKey ?? 'screen')}-${focusTick}`
+    : props.triggerKey;
 
-  return <ScreenTransition {...props} triggerKey={triggerKey} />;
+  return <ScreenTransition {...transitionProps} triggerKey={triggerKey} />;
 }
 
 const styles = StyleSheet.create({

@@ -5,11 +5,14 @@ import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Image,
+  KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   View,
@@ -26,6 +29,7 @@ import {
 import { presentTransactionNotifications } from '@/services/transactionNotifications';
 import { useAppTheme } from '@/hooks/use-app-theme';
 import { useThemeMode } from '@/hooks/use-theme-mode';
+import { openVietQRPayment } from '@/utils/paymentDeeplink';
 
 const transactionTypes: { label: string; value: TransactionType }[] = [
   { label: 'Chi tiêu', value: 'Expense' },
@@ -33,6 +37,21 @@ const transactionTypes: { label: string; value: TransactionType }[] = [
   { label: 'Chuyển vào', value: 'TransferIn' },
   { label: 'Chuyển ra', value: 'TransferOut' },
 ];
+
+type VietQRBankApp = {
+  appId: string;
+  appLogo: string;
+  appName: string;
+  bankName: string;
+  autofill: number;
+  deeplink: string;
+};
+
+const VIETQR_BANK_APP_ENDPOINT =
+  Platform.OS === 'ios'
+    ? 'https://api.vietqr.io/v2/ios-app-deeplinks'
+    : 'https://api.vietqr.io/v2/android-app-deeplinks';
+const BANK_LOGO_PREFETCH_LIMIT = 12;
 
 function formatAmount(amount: number) {
   return new Intl.NumberFormat('vi-VN', {
@@ -57,6 +76,7 @@ export default function CreateScreen() {
   const themeMode = useThemeMode();
   const [accounts, setAccounts] = useState<FinancialAccount[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [paymentBankApps, setPaymentBankApps] = useState<VietQRBankApp[]>([]);
   
   const [amount, setAmount] = useState<string>('');
   const [description, setDescription] = useState<string>('');
@@ -65,24 +85,37 @@ export default function CreateScreen() {
   const [transactionDate, setTransactionDate] = useState<Date>(new Date());
   const [selectedAccountId, setSelectedAccountId] = useState<number | null>(null);
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
+  const [selectedPaymentBank, setSelectedPaymentBank] = useState<VietQRBankApp | null>(null);
+  const [recipientAccountNumber, setRecipientAccountNumber] = useState('');
   const [isExcluded, setIsExcluded] = useState(false);
+  const [isPaymentMode, setIsPaymentMode] = useState(false);
 
   const [isAccountPickerVisible, setIsAccountPickerVisible] = useState(false);
   const [isCategoryPickerVisible, setIsCategoryPickerVisible] = useState(false);
   const [isTypePickerVisible, setIsTypePickerVisible] = useState(false);
   const [isDatePickerVisible, setIsDatePickerVisible] = useState(false);
+  const [isPaymentBankPickerVisible, setIsPaymentBankPickerVisible] = useState(false);
   
   const [isSaving, setIsSaving] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
-      const [accountsRes, categoriesRes] = await Promise.all([
+      const [accountsRes, categoriesRes, paymentBankAppsRes] = await Promise.all([
         financialAccountApi.list(),
         categoriesApi.list(),
+        fetch(VIETQR_BANK_APP_ENDPOINT).then((response) => response.json()),
       ]);
       
       setAccounts(accountsRes.data);
       setCategories(categoriesRes.data);
+      const bankApps: VietQRBankApp[] = paymentBankAppsRes.apps ?? [];
+      setPaymentBankApps(bankApps);
+      setSelectedPaymentBank((current) => current ?? bankApps.find((app) => app.appId === 'mb') ?? bankApps[0] ?? null);
+      bankApps.slice(0, BANK_LOGO_PREFETCH_LIMIT).forEach((app) => {
+        if (app.appLogo) {
+          Image.prefetch(app.appLogo);
+        }
+      });
       
       if (accountsRes.data.length > 0 && selectedAccountId === null) {
         setSelectedAccountId(accountsRes.data[0].id);
@@ -145,6 +178,37 @@ export default function CreateScreen() {
     }
   };
 
+  const handlePayment = async () => {
+    if (!amount || isNaN(Number(amount))) {
+      Alert.alert('Lỗi', 'Vui lòng nhập số tiền hợp lệ');
+      return;
+    }
+
+    if (!recipientAccountNumber.trim()) {
+      Alert.alert('Lỗi', 'Vui lòng nhập số tài khoản nhận');
+      return;
+    }
+
+    if (!selectedPaymentBank) {
+      Alert.alert('Lỗi', 'Vui lòng chọn ngân hàng thanh toán');
+      return;
+    }
+
+    try {
+      setIsSaving(true);
+      await openVietQRPayment({
+        appCode: selectedPaymentBank.appId,
+        bankCode: selectedPaymentBank.appId,
+        accountNumber: recipientAccountNumber.trim(),
+        amount: Number(amount),
+        content: description.trim() || 'TEST SFM',
+        returnUrl: 'https://payos.vn',
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const selectedAccount = accounts.find(a => a.id === selectedAccountId);
   const selectedCategory = categories.find(c => c.id === selectedCategoryId);
 
@@ -164,7 +228,12 @@ export default function CreateScreen() {
 
   return (
     <FocusedScreenTransition style={[styles.container, { backgroundColor: theme.screen }]}>
-      <View style={styles.header}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 84 : 0}
+        style={styles.keyboardView}
+      >
+        <View style={styles.header}>
         <Text style={[styles.headerTitle, { color: theme.text }]}>Tạo giao dịch</Text>
         <Pressable 
           style={[styles.scanButton, { backgroundColor: theme.primaryPressed }]} 
@@ -177,9 +246,9 @@ export default function CreateScreen() {
           />
           <Text style={[styles.scanButtonText, { color: theme.primary }]}>Quét hóa đơn</Text>
         </Pressable>
-      </View>
+        </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+        <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
         <View style={[styles.card, { backgroundColor: theme.card }]}>
           <View style={styles.inputGroup}>
             <Text style={[styles.inputLabel, { color: theme.textSubtle }]}>Số tiền</Text>
@@ -259,18 +328,78 @@ export default function CreateScreen() {
           </View>
         </View>
 
+        <View style={[styles.card, { backgroundColor: theme.card, marginTop: 16 }]}>
+          <View style={styles.paymentToggleRow}>
+            <View style={styles.rowLabelContainer}>
+              <SymbolView name="creditcard" size={20} tintColor={theme.textSubtle} />
+              <Text style={[styles.rowLabel, { color: theme.text }]}>Thanh toán ngân hàng</Text>
+            </View>
+            <Switch
+              value={isPaymentMode}
+              onValueChange={setIsPaymentMode}
+              trackColor={{ false: theme.border, true: theme.primaryPressed }}
+              thumbColor={isPaymentMode ? theme.primary : theme.textSubtle}
+            />
+          </View>
+
+          {isPaymentMode ? (
+            <>
+              <Pressable
+                style={[styles.row, { borderTopColor: theme.border }]}
+                onPress={() => setIsPaymentBankPickerVisible(true)}
+              >
+                <View style={styles.rowLabelContainer}>
+                  {selectedPaymentBank?.appLogo ? (
+                    <View style={[styles.bankLogoFrame, { backgroundColor: theme.cardAlt }]}>
+                      <Image source={{ uri: selectedPaymentBank.appLogo }} style={styles.bankLogo} />
+                    </View>
+                  ) : (
+                    <SymbolView name="building.columns" size={20} tintColor={theme.textSubtle} />
+                  )}
+                  <Text style={[styles.rowLabel, { color: theme.text }]}>Ngân hàng</Text>
+                </View>
+                <View style={styles.paymentBankValue}>
+                  <Text numberOfLines={1} style={[styles.rowValue, { color: theme.text }]}>
+                    {selectedPaymentBank?.appName || 'Chọn ngân hàng'}
+                  </Text>
+                  {selectedPaymentBank ? (
+                    <Text style={[styles.pickerItemSubtext, { color: theme.textSubtle }]}>
+                      app={selectedPaymentBank.appId}
+                    </Text>
+                  ) : null}
+                </View>
+              </Pressable>
+
+              <View style={[styles.inputGroup, { borderTopWidth: 1, borderTopColor: theme.border }]}>
+                <Text style={[styles.inputLabel, { color: theme.textSubtle }]}>Số tài khoản nhận</Text>
+                <TextInput
+                  style={[styles.textInput, { color: theme.text }]}
+                  value={recipientAccountNumber}
+                  onChangeText={setRecipientAccountNumber}
+                  keyboardType="number-pad"
+                  placeholder="Nhập số tài khoản"
+                  placeholderTextColor={theme.textSubtle}
+                />
+              </View>
+            </>
+          ) : null}
+        </View>
+
         <Pressable 
           style={[styles.saveButton, { backgroundColor: theme.primary }, isSaving && { opacity: 0.7 }]}
-          onPress={handleSave}
+          onPress={isPaymentMode ? handlePayment : handleSave}
           disabled={isSaving}
         >
           {isSaving ? (
             <ActivityIndicator color={theme.textInverse} />
           ) : (
-            <Text style={[styles.saveButtonText, { color: theme.textInverse }]}>Lưu giao dịch</Text>
+            <Text style={[styles.saveButtonText, { color: theme.textInverse }]}>
+              {isPaymentMode ? 'Thanh toán' : 'Lưu giao dịch'}
+            </Text>
           )}
         </Pressable>
-      </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
 
       {/* Pickers */}
       <Modal visible={isAccountPickerVisible} transparent animationType="slide">
@@ -352,6 +481,38 @@ export default function CreateScreen() {
         </Pressable>
       </Modal>
 
+      <Modal visible={isPaymentBankPickerVisible} transparent animationType="slide">
+        <Pressable style={[styles.modalOverlay, { backgroundColor: theme.overlay }]} onPress={() => setIsPaymentBankPickerVisible(false)}>
+          <View style={[styles.modalContent, { backgroundColor: theme.card }]}>
+            <Text style={[styles.modalTitle, { color: theme.text }]}>Chọn ngân hàng thanh toán</Text>
+            <ScrollView>
+              {paymentBankApps.map((bankApp) => (
+                <Pressable
+                  key={bankApp.appId}
+                  style={[styles.pickerItem, selectedPaymentBank?.appId === bankApp.appId && { backgroundColor: theme.primaryPressed }]}
+                  onPress={() => {
+                    setSelectedPaymentBank(bankApp);
+                    setIsPaymentBankPickerVisible(false);
+                  }}
+                >
+                  <View style={styles.bankPickerItem}>
+                    <View style={[styles.bankPickerLogoFrame, { backgroundColor: theme.cardAlt }]}>
+                      <Image source={{ uri: bankApp.appLogo }} style={styles.bankPickerLogo} />
+                    </View>
+                    <View style={styles.bankPickerCopy}>
+                      <Text style={[styles.pickerItemText, { color: theme.text }]}>{bankApp.appName}</Text>
+                      <Text style={[styles.pickerItemSubtext, { color: theme.textSubtle }]}>
+                        {bankApp.bankName} · app={bankApp.appId}
+                      </Text>
+                    </View>
+                  </View>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
+        </Pressable>
+      </Modal>
+
       {isDatePickerVisible && Platform.OS === 'android' ? (
         <DateTimePicker
           value={transactionDate}
@@ -397,6 +558,7 @@ export default function CreateScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  keyboardView: { flex: 1 },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -431,6 +593,33 @@ const styles = StyleSheet.create({
   rowLabelContainer: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   rowLabel: { fontSize: 16, fontWeight: '500' },
   rowValue: { fontSize: 16, fontWeight: '600' },
+  paymentToggleRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    padding: 16,
+  },
+  paymentBankValue: { alignItems: 'flex-end', flex: 1, marginLeft: 12 },
+  bankLogoFrame: {
+    alignItems: 'center',
+    borderRadius: 12,
+    height: 24,
+    justifyContent: 'center',
+    overflow: 'hidden',
+    width: 24,
+  },
+  bankLogo: { height: 24, width: 24 },
+  bankPickerItem: { alignItems: 'center', flexDirection: 'row', gap: 12 },
+  bankPickerLogoFrame: {
+    alignItems: 'center',
+    borderRadius: 19,
+    height: 38,
+    justifyContent: 'center',
+    overflow: 'hidden',
+    width: 38,
+  },
+  bankPickerLogo: { height: 38, width: 38 },
+  bankPickerCopy: { flex: 1 },
   saveButton: {
     marginTop: 32,
     height: 56,
