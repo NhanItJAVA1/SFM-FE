@@ -1,3 +1,4 @@
+import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { router, useNavigation } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { SymbolView } from 'expo-symbols';
@@ -6,6 +7,8 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -16,6 +19,7 @@ import {
 
 import { authApi } from '@/api/authApi';
 import { financialInsightsApi, FinancialInsightsResponse } from '@/api/financialInsightsApi';
+import { FinancialAccount, financialAccountApi } from '@/api/financialAccountApi';
 import { CategorySpendingItem, CategorySpendingResponse, transactionsApi } from '@/api/transactionsApi';
 import { usersApi } from '@/api/usersApi';
 import { FocusedScreenTransition } from '@/components/screen-transition';
@@ -33,9 +37,11 @@ import {
 } from '@/stores/spendingStatsNavigation';
 import { subscribeUserTabPress } from '@/stores/userTabPress';
 import type { AppTheme } from '@/theme/appTheme';
+import { exportTransactionsFile } from '@/utils/transactionExportFile';
 
-type UserView = 'menu' | 'manage' | 'editProfile' | 'spendingStats';
+type UserView = 'menu' | 'manage' | 'editProfile' | 'spendingStats' | 'exportFile';
 type SpendingStatsReturnPath = '/(tabs)/transactions';
+type ExportDateField = 'fromDate' | 'toDate';
 type TabsNavigation = {
   jumpTo?: (screen: string) => void;
   navigate: (screen: string) => void;
@@ -87,6 +93,29 @@ function getNextMonth(month: number, year: number) {
   }
 
   return { month: month + 1, year };
+}
+
+function getCurrentMonthExportRange() {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), 1);
+  const end = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+
+  return { fromDate: start, toDate: new Date(end.getTime() - 1) };
+}
+
+function normalizeDateStart(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0);
+}
+
+function normalizeDateEnd(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
+}
+
+function formatExportDate(date: Date) {
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+
+  return `${day}/${month}/${date.getFullYear()}`;
 }
 
 function formatSignedMoney(current: number, compare: number) {
@@ -147,9 +176,17 @@ export default function UserScreen() {
   const [selectedAvatar, setSelectedAvatar] = useState<ImagePicker.ImagePickerAsset | null>(null);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [isExportingTransactions, setIsExportingTransactions] = useState(false);
+  const [exportAccounts, setExportAccounts] = useState<FinancialAccount[]>([]);
+  const [isLoadingExportAccounts, setIsLoadingExportAccounts] = useState(false);
+  const [selectedExportAccountId, setSelectedExportAccountId] = useState<number | null>(null);
+  const [activeExportDateField, setActiveExportDateField] = useState<ExportDateField | null>(null);
   const today = new Date();
   const defaultMonth = today.getMonth() + 1;
   const defaultYear = today.getFullYear();
+  const defaultExportRange = useMemo(() => getCurrentMonthExportRange(), []);
+  const [exportFromDate, setExportFromDate] = useState(defaultExportRange.fromDate);
+  const [exportToDate, setExportToDate] = useState(defaultExportRange.toDate);
   const initialStatsReturnPath = useMemo(() => {
     const pendingRequest = consumePendingSpendingStatsRequest();
 
@@ -185,6 +222,7 @@ export default function UserScreen() {
         percentage: category.percentage,
       }));
   }, [spendingStats]);
+  const activeExportDate = activeExportDateField === 'toDate' ? exportToDate : exportFromDate;
 
   useEffect(() => {
     return subscribeUserTabPress(() => {
@@ -267,6 +305,26 @@ export default function UserScreen() {
     return () => clearTimeout(timeoutId);
   }, [isFinancialInsightsVisible, loadFinancialInsights, view]);
 
+  const loadExportAccounts = useCallback(async () => {
+    try {
+      setIsLoadingExportAccounts(true);
+      const response = await financialAccountApi.list();
+      setExportAccounts(response.data);
+    } catch (error) {
+      Alert.alert('Không tải được ví', error instanceof Error ? error.message : 'Vui lòng thử lại sau.');
+    } finally {
+      setIsLoadingExportAccounts(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (view !== 'exportFile') {
+      return;
+    }
+
+    loadExportAccounts();
+  }, [loadExportAccounts, view]);
+
   function goPreviousStatsPeriod() {
     const previous = getPreviousMonth(statsMonth, statsYear);
     setStatsMonth(previous.month);
@@ -316,6 +374,41 @@ export default function UserScreen() {
     setEditAvatarUrl(user?.avatarUrl ?? null);
     setSelectedAvatar(null);
     setView('editProfile');
+  }
+
+  function openExportFile() {
+    setView('exportFile');
+  }
+
+  function closeExportDatePicker() {
+    setActiveExportDateField(null);
+  }
+
+  function handlePickExportDate(event: DateTimePickerEvent, pickedDate?: Date) {
+    if (Platform.OS === 'android') {
+      closeExportDatePicker();
+    }
+
+    if (event.type === 'dismissed' || !pickedDate || !activeExportDateField) {
+      return;
+    }
+
+    if (activeExportDateField === 'fromDate') {
+      const nextFromDate = normalizeDateStart(pickedDate);
+      setExportFromDate(nextFromDate);
+
+      if (nextFromDate.getTime() > exportToDate.getTime()) {
+        setExportToDate(normalizeDateEnd(pickedDate));
+      }
+      return;
+    }
+
+    const nextToDate = normalizeDateEnd(pickedDate);
+    setExportToDate(nextToDate);
+
+    if (nextToDate.getTime() < exportFromDate.getTime()) {
+      setExportFromDate(normalizeDateStart(pickedDate));
+    }
   }
 
   async function handlePickAvatar() {
@@ -413,6 +506,25 @@ export default function UserScreen() {
     }
   }
 
+  async function handleExportFile() {
+    try {
+      setIsExportingTransactions(true);
+      const result = await exportTransactionsFile({
+        accountId: selectedExportAccountId,
+        fromDate: exportFromDate.toISOString(),
+        toDate: exportToDate.toISOString(),
+      });
+
+      if (result.fileUri && !result.shared) {
+        Alert.alert('Đã xuất file', `File đã được lưu tạm tại ${result.fileUri}`);
+      }
+    } catch (error) {
+      Alert.alert('Xuất file thất bại', error instanceof Error ? error.message : 'Vui lòng thử lại sau.');
+    } finally {
+      setIsExportingTransactions(false);
+    }
+  }
+
   async function handleLogout() {
     try {
       setIsLoggingOut(true);
@@ -426,6 +538,139 @@ export default function UserScreen() {
       setIsLoggingOut(false);
       router.replace('/auth/login');
     }
+  }
+
+  if (view === 'exportFile') {
+    return (
+      <FocusedScreenTransition style={styles.screen} triggerKey={view} variant="slide-left">
+        <View style={styles.walletHeader}>
+          <Pressable onPress={() => setView('menu')} hitSlop={12}>
+            <Text style={styles.backText}>‹ Cá nhân</Text>
+          </Pressable>
+          <Text style={styles.topTitle}>Xuất File</Text>
+          <View style={styles.topSpacer} />
+        </View>
+
+        <ScrollView contentContainerStyle={styles.exportContent} keyboardShouldPersistTaps="handled">
+          <View style={styles.exportSection}>
+            <Text style={styles.exportSectionTitle}>Ví</Text>
+            <Pressable
+              style={[styles.exportOptionRow, selectedExportAccountId === null && styles.exportOptionRowActive]}
+              onPress={() => setSelectedExportAccountId(null)}
+            >
+              <View style={styles.exportOptionIcon}>
+                <Text style={styles.exportOptionIconText}>▰</Text>
+              </View>
+              <View style={styles.walletInfo}>
+                <Text style={styles.exportOptionTitle}>Tất cả ví</Text>
+                <Text style={styles.exportOptionSubtitle}>Xuất giao dịch của mọi ví</Text>
+              </View>
+              <Text style={styles.exportOptionCheck}>{selectedExportAccountId === null ? '✓' : ''}</Text>
+            </Pressable>
+
+            {isLoadingExportAccounts ? (
+              <View style={styles.exportLoadingRow}>
+                <ActivityIndicator color={theme.primary} />
+                <Text style={styles.exportOptionSubtitle}>Đang tải ví...</Text>
+              </View>
+            ) : (
+              exportAccounts.map((account) => {
+                const isSelected = selectedExportAccountId === account.id;
+
+                return (
+                  <Pressable
+                    key={account.id}
+                    style={[styles.exportOptionRow, isSelected && styles.exportOptionRowActive]}
+                    onPress={() => setSelectedExportAccountId(account.id)}
+                  >
+                    <View style={styles.exportOptionIcon}>
+                      <Text style={styles.exportOptionIconText}>◧</Text>
+                    </View>
+                    <View style={styles.walletInfo}>
+                      <Text style={styles.exportOptionTitle}>{account.name}</Text>
+                      <Text style={styles.exportOptionSubtitle}>{account.type}</Text>
+                    </View>
+                    <Text style={styles.exportOptionCheck}>{isSelected ? '✓' : ''}</Text>
+                  </Pressable>
+                );
+              })
+            )}
+          </View>
+
+          <View style={styles.exportSection}>
+            <Text style={styles.exportSectionTitle}>Thời gian</Text>
+            <View style={styles.exportDateGrid}>
+              <Pressable style={styles.exportDateCard} onPress={() => setActiveExportDateField('fromDate')}>
+                <Text style={styles.exportDateLabel}>Từ ngày</Text>
+                <Text style={styles.exportDateValue}>{formatExportDate(exportFromDate)}</Text>
+              </Pressable>
+              <Pressable style={styles.exportDateCard} onPress={() => setActiveExportDateField('toDate')}>
+                <Text style={styles.exportDateLabel}>Đến ngày</Text>
+                <Text style={styles.exportDateValue}>{formatExportDate(exportToDate)}</Text>
+              </Pressable>
+            </View>
+          </View>
+
+          <Pressable
+            style={[styles.primaryButton, isExportingTransactions && styles.buttonDisabled]}
+            onPress={handleExportFile}
+            disabled={isExportingTransactions}
+          >
+            {isExportingTransactions ? (
+              <ActivityIndicator color={theme.textInverse} />
+            ) : (
+              <Text style={styles.primaryButtonText}>Xuất File</Text>
+            )}
+          </Pressable>
+        </ScrollView>
+
+        {activeExportDateField && Platform.OS === 'android' ? (
+          <DateTimePicker
+            display="default"
+            maximumDate={activeExportDateField === 'fromDate' ? exportToDate : undefined}
+            minimumDate={activeExportDateField === 'toDate' ? exportFromDate : undefined}
+            mode="date"
+            onChange={handlePickExportDate}
+            value={activeExportDate}
+          />
+        ) : null}
+
+        <Modal
+          animationType="slide"
+          transparent
+          visible={activeExportDateField !== null && Platform.OS !== 'android'}
+          onRequestClose={closeExportDatePicker}
+        >
+          <Pressable style={styles.bottomSheetOverlay} onPress={closeExportDatePicker}>
+            <Pressable style={styles.exportDatePickerSheet} onPress={(event) => event.stopPropagation()}>
+              <View style={styles.datePickerHeader}>
+                <Pressable onPress={closeExportDatePicker} hitSlop={10}>
+                  <Text style={[styles.datePickerAction, { color: theme.textSubtle }]}>Hủy</Text>
+                </Pressable>
+                <Text style={styles.datePickerTitle}>
+                  {activeExportDateField === 'fromDate' ? 'Chọn ngày bắt đầu' : 'Chọn ngày kết thúc'}
+                </Text>
+                <Pressable onPress={closeExportDatePicker} hitSlop={10}>
+                  <Text style={[styles.datePickerAction, { color: theme.primary }]}>Xong</Text>
+                </Pressable>
+              </View>
+              <DateTimePicker
+                accentColor={theme.primary}
+                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                maximumDate={activeExportDateField === 'fromDate' ? exportToDate : undefined}
+                minimumDate={activeExportDateField === 'toDate' ? exportFromDate : undefined}
+                mode="date"
+                onChange={handlePickExportDate}
+                style={styles.datePicker}
+                textColor={theme.text}
+                themeVariant={themeMode}
+                value={activeExportDate}
+              />
+            </Pressable>
+          </Pressable>
+        </Modal>
+      </FocusedScreenTransition>
+    );
   }
 
   if (view === 'manage') {
@@ -788,6 +1033,16 @@ export default function UserScreen() {
           <Text style={styles.chevron}>›</Text>
         </Pressable>
         <View style={styles.menuDivider} />
+        <Pressable
+          style={[styles.menuRow, isExportingTransactions && styles.menuRowDisabled]}
+          onPress={openExportFile}
+          disabled={isExportingTransactions}
+        >
+          <Text style={styles.menuIcon}>⇩</Text>
+          <Text style={styles.menuText}>Xuất File</Text>
+          <Text style={styles.chevron}>›</Text>
+        </Pressable>
+        <View style={styles.menuDivider} />
         <Pressable style={styles.menuRow} onPress={() => setView('manage')}>
           <Text style={styles.menuIcon}>⚙</Text>
           <Text style={styles.menuText}>Tài khoản</Text>
@@ -887,6 +1142,7 @@ function createStyles(theme: AppTheme) {
   chevron: { color: theme.chevron, fontSize: 40, lineHeight: 42 },
   menuCard: { backgroundColor: theme.card, borderRadius: 8, marginTop: 34, overflow: 'hidden' },
   menuRow: { alignItems: 'center', flexDirection: 'row', minHeight: 76, paddingHorizontal: 22 },
+  menuRowDisabled: { opacity: 0.62 },
   menuDivider: { backgroundColor: theme.border, height: 1, marginLeft: 68 },
   menuIcon: { color: theme.text, fontSize: 30, width: 46 },
   menuText: { color: theme.text, flex: 1, fontSize: 22, fontWeight: '500' },
@@ -934,6 +1190,89 @@ function createStyles(theme: AppTheme) {
   },
   addWalletText: { color: theme.textInverse, fontSize: 30, fontWeight: '500', lineHeight: 33 },
   walletList: { gap: 14, padding: 20, paddingBottom: 96 },
+  exportContent: { gap: 16, padding: 20, paddingBottom: 96 },
+  exportSection: {
+    backgroundColor: theme.card,
+    borderColor: theme.border,
+    borderRadius: 8,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  exportSectionTitle: {
+    color: theme.text,
+    fontSize: 16,
+    fontWeight: '900',
+    paddingHorizontal: 16,
+    paddingTop: 15,
+    paddingBottom: 10,
+  },
+  exportOptionRow: {
+    alignItems: 'center',
+    borderTopColor: theme.border,
+    borderTopWidth: 1,
+    flexDirection: 'row',
+    minHeight: 70,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  exportOptionRowActive: { backgroundColor: theme.primaryPressed },
+  exportOptionIcon: {
+    alignItems: 'center',
+    backgroundColor: theme.cardAlt,
+    borderRadius: 19,
+    height: 38,
+    justifyContent: 'center',
+    marginRight: 12,
+    width: 38,
+  },
+  exportOptionIconText: { color: theme.text, fontSize: 18, fontWeight: '900' },
+  exportOptionTitle: { color: theme.text, fontSize: 16, fontWeight: '900' },
+  exportOptionSubtitle: { color: theme.textMuted, fontSize: 13, fontWeight: '700', marginTop: 3 },
+  exportOptionCheck: { color: theme.primary, fontSize: 21, fontWeight: '900', width: 24 },
+  exportLoadingRow: {
+    alignItems: 'center',
+    borderTopColor: theme.border,
+    borderTopWidth: 1,
+    flexDirection: 'row',
+    gap: 10,
+    minHeight: 62,
+    paddingHorizontal: 16,
+  },
+  exportDateGrid: { flexDirection: 'row', gap: 10, padding: 14, paddingTop: 0 },
+  exportDateCard: {
+    backgroundColor: theme.cardAlt,
+    borderColor: theme.border,
+    borderRadius: 8,
+    borderWidth: 1,
+    flex: 1,
+    gap: 7,
+    minHeight: 76,
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+  },
+  exportDateLabel: { color: theme.textMuted, fontSize: 12, fontWeight: '900', textTransform: 'uppercase' },
+  exportDateValue: { color: theme.text, fontSize: 17, fontWeight: '900' },
+  bottomSheetOverlay: {
+    backgroundColor: theme.overlay,
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  exportDatePickerSheet: {
+    backgroundColor: theme.sheet,
+    borderTopLeftRadius: 8,
+    borderTopRightRadius: 8,
+    padding: 18,
+    paddingBottom: 28,
+  },
+  datePickerHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  datePickerTitle: { color: theme.text, flex: 1, fontSize: 17, fontWeight: '900', textAlign: 'center' },
+  datePickerAction: { fontSize: 16, fontWeight: '900' },
+  datePicker: { alignSelf: 'stretch' },
   statsContent: { backgroundColor: theme.screen, padding: 14, paddingBottom: 96 },
   statsPanel: { backgroundColor: theme.screen, borderRadius: 8, gap: 12, padding: 4 },
   monthSwitcher: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', minHeight: 44 },
