@@ -444,7 +444,7 @@ function createStyles(theme: AppTheme) {
   headerTools: { alignItems: "center", flexDirection: "row", gap: 22, width: 72 },
   filterIcon: { color: theme.text, fontSize: 21, transform: [{ rotate: "90deg" }] },
   searchIcon: { color: theme.text, fontSize: 27 },
-  walletList: { gap: 14, padding: 20, paddingBottom: 96, position: "relative" },
+  walletList: { flexGrow: 1, gap: 14, padding: 20, paddingBottom: 96, position: "relative" },
   balanceSummary: { paddingBottom: 0, paddingTop: 0 },
   summaryLabel: { color: theme.textMuted, fontSize: 14, marginBottom: 4 },
   summaryValue: { color: theme.text, fontSize: 26, fontWeight: "700" },
