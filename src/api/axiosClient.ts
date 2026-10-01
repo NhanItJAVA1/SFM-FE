@@ -245,9 +245,10 @@ export const axiosClient = {
       method: 'PUT',
       body,
     }),
-  delete: <T = unknown>(path: string) =>
+  delete: <T = unknown>(path: string, body?: unknown) =>
     request<T>(path, {
       method: 'DELETE',
+      body,
     }),
   uploadFormData,
 };
