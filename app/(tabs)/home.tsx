@@ -4,12 +4,13 @@ import { ActivityIndicator, Alert, Pressable, RefreshControl, ScrollView, StyleS
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { categoriesApi, Category } from "@/api/categoriesApi";
-import { FinancialAccount, financialAccountApi, getFinancialAccountBalance } from "@/api/financialAccountApi";
+import { FinancialAccount, financialAccountApi } from "@/api/financialAccountApi";
 import { CategorySpendingResponse, Transaction, transactionsApi, TransactionType } from "@/api/transactionsApi";
 import { FocusedScreenTransition } from "@/components/screen-transition";
 import { useAppTheme } from "@/hooks/use-app-theme";
 import { getAuthUser } from "@/stores/authSession";
 import type { AppTheme } from "@/theme/appTheme";
+import { getAccountCurrentBalance } from "@/utils/accountBalance";
 
 const accountTypeMeta: Record<FinancialAccount["type"], { color: string; icon: string; label: string }> = {
   Bank: { color: "#2778d7", icon: "▤", label: "Bank" },
@@ -150,7 +151,7 @@ export default function HomeScreen() {
 
   const activeAccounts = useMemo(() => accounts.filter((account) => account.isActive), [accounts]);
   const totalBalance = useMemo(
-    () => activeAccounts.reduce((total, account) => total + getFinancialAccountBalance(account), 0),
+    () => activeAccounts.reduce((total, account) => total + getAccountCurrentBalance(account), 0),
     [activeAccounts],
   );
 
@@ -436,7 +437,7 @@ function HeroAccountRow({
         {account.name}
       </Text>
       <Text style={styles.heroAccountBalance}>
-        {isBalanceVisible ? formatMoney(getFinancialAccountBalance(account), account.currency || currency) : "••••••••"}
+        {isBalanceVisible ? formatMoney(getAccountCurrentBalance(account), account.currency || currency) : "••••••••"}
       </Text>
     </Pressable>
   );

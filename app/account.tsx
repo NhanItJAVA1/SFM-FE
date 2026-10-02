@@ -18,6 +18,7 @@ import { AccountType, FinancialAccount, financialAccountApi } from "@/api/financ
 import { FocusedScreenTransition } from "@/components/screen-transition";
 import { useAppTheme } from "@/hooks/use-app-theme";
 import type { AppTheme } from "@/theme/appTheme";
+import { getAccountCurrentBalance } from "@/utils/accountBalance";
 
 const accountTypes: { label: string; value: AccountType }[] = [
   { label: "Cash", value: "Cash" },
@@ -60,9 +61,9 @@ export default function AccountScreen() {
   const [openAccountMenu, setOpenAccountMenu] = useState<number | null>(null);
   const [editingAccount, setEditingAccount] = useState<FinancialAccount | null>(null);
 
-  // Tổng số dư chỉ được tính lại khi danh sách tài khoản thay đổi.
+  // Số dư hiện tại do BE tính sẵn trong currentBalance.
   const totalBalance = useMemo(
-    () => accounts.reduce((total, account) => total + account.initialBalance, 0),
+    () => accounts.reduce((total, account) => total + getAccountCurrentBalance(account), 0),
     [accounts],
   );
 
@@ -75,8 +76,8 @@ export default function AccountScreen() {
         setIsLoading(true);
       }
 
-      const response = await financialAccountApi.list();
-      setAccounts(response.data);
+      const accountResponse = await financialAccountApi.list();
+      setAccounts(accountResponse.data);
     } catch (error) {
       Alert.alert("Không tải được ví", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
     } finally {
@@ -367,7 +368,7 @@ export default function AccountScreen() {
                   <Text style={styles.walletType}>{account.type}</Text>
                 </View>
                 <View style={styles.walletRight}>
-                  <Text style={styles.walletBalance}>{formatMoney(account.initialBalance, account.currency)}</Text>
+                  <Text style={styles.walletBalance}>{formatMoney(getAccountCurrentBalance(account), account.currency)}</Text>
                   <Pressable
                     style={styles.moreButton}
                     onPress={() => setOpenAccountMenu(openAccountMenu === account.id ? null : account.id)}

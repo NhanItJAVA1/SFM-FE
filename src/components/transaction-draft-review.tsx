@@ -30,6 +30,7 @@ import { useAppTheme } from '@/hooks/use-app-theme';
 import { useThemeMode } from '@/hooks/use-theme-mode';
 import { presentTransactionNotifications } from '@/services/transactionNotifications';
 import type { AppTheme } from '@/theme/appTheme';
+import { getAccountCurrentBalance } from '@/utils/accountBalance';
 
 type TransactionDraftReviewProps = {
   draft: TransactionDraft;
@@ -214,10 +215,10 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
     const timeoutId = setTimeout(async () => {
       try {
         setIsLoadingAccounts(true);
-        const response = await financialAccountApi.list();
-        setAccounts(response.data);
+        const accountResponse = await financialAccountApi.list();
+        setAccounts(accountResponse.data);
 
-        setSelectedAccountId((currentAccountId) => currentAccountId ?? response.data[0]?.id ?? null);
+        setSelectedAccountId((currentAccountId) => currentAccountId ?? accountResponse.data[0]?.id ?? null);
       } catch (error) {
         Alert.alert('Không tải được ví', error instanceof Error ? error.message : 'Vui lòng thử lại sau.');
       } finally {
@@ -408,7 +409,7 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
               </Text>
             </View>
             <Text style={styles.walletBalanceText} numberOfLines={1}>
-              {selectedAccount ? formatAmount(selectedAccount.initialBalance) : 'Bấm để chọn'}
+              {selectedAccount ? formatAmount(getAccountCurrentBalance(selectedAccount)) : 'Bấm để chọn'}
             </Text>
           </Pressable>
 
@@ -542,7 +543,7 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
                       <View style={styles.accountInfo}>
                         <Text style={styles.accountName}>{account.name}</Text>
                         <Text style={styles.accountMeta}>
-                          {account.type} · {formatAmount(account.initialBalance)}
+                          {account.type} · {formatAmount(getAccountCurrentBalance(account))}
                         </Text>
                       </View>
                     </Pressable>
