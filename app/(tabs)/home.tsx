@@ -3,10 +3,12 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import type { AIAnalysis } from "@/api/aiApi";
 import { categoriesApi, Category } from "@/api/categoriesApi";
 import { FinancialAccount, financialAccountApi } from "@/api/financialAccountApi";
 import { CategorySpendingResponse, Transaction, transactionsApi, TransactionType } from "@/api/transactionsApi";
 import { FocusedScreenTransition } from "@/components/screen-transition";
+import { useAIAnalysis } from "@/hooks/use-ai-analysis";
 import { useAppTheme } from "@/hooks/use-app-theme";
 import { getAuthUser } from "@/stores/authSession";
 import type { AppTheme } from "@/theme/appTheme";
@@ -86,6 +88,20 @@ function getCategoryFallback(type: TransactionType) {
   return "Chi tiêu";
 }
 
+function getPriorityRecommendation(analysis: AIAnalysis) {
+  const dashboardRecommendations = analysis.recommendations.filter(
+    (recommendation) => !/^\d+$/.test(recommendation.category.trim()),
+  );
+
+  return [...dashboardRecommendations].sort((left, right) => {
+    const priorities = { HIGH: 0, MEDIUM: 1, LOW: 2 };
+    return (
+      (priorities[left.priority as keyof typeof priorities] ?? 3) -
+      (priorities[right.priority as keyof typeof priorities] ?? 3)
+    );
+  })[0];
+}
+
 export default function HomeScreen() {
   const theme = useAppTheme();
   const styles = useHomeStyles();
@@ -100,48 +116,53 @@ export default function HomeScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const hasLoadedDataRef = useRef(false);
+  const { analysis, isLoading: isAILoading, refresh: refreshAI } = useAIAnalysis();
 
-  const loadHomeData = useCallback(async ({ refresh = false, silent = false } = {}) => {
-    try {
-      if (refresh) {
-        setIsRefreshing(true);
-      } else if (!silent) {
-        setIsLoading(true);
-      }
-      setErrorMessage(null);
+  const loadHomeData = useCallback(
+    async ({ refresh = false, silent = false } = {}) => {
+      try {
+        if (refresh) {
+          setIsRefreshing(true);
+        } else if (!silent) {
+          setIsLoading(true);
+        }
+        setErrorMessage(null);
 
-      const [accountResponse, transactionResponse, categoryResponse, spendingResponse] = await Promise.all([
-        financialAccountApi.list(),
-        transactionsApi.list(),
-        categoriesApi.list(),
-        transactionsApi.categorySpending(),
-      ]);
+        const [accountResponse, transactionResponse, categoryResponse, spendingResponse] = await Promise.all([
+          financialAccountApi.list(),
+          transactionsApi.list(),
+          categoriesApi.list(),
+          transactionsApi.categorySpending(),
+          ...(refresh ? [refreshAI()] : []),
+        ]);
 
-      setAccounts(accountResponse.data);
-      setTransactions(transactionResponse.data);
-      setCategories(categoryResponse.data);
-      setSpendingStats(spendingResponse.data);
-      hasLoadedDataRef.current = true;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Vui lòng thử lại sau.";
-      setErrorMessage(message);
-      if (silent) {
-        console.warn("Không tải được tổng quan", error);
-      } else {
-        Alert.alert("Không tải được tổng quan", message);
+        setAccounts(accountResponse.data);
+        setTransactions(transactionResponse.data);
+        setCategories(categoryResponse.data);
+        setSpendingStats(spendingResponse.data);
+        hasLoadedDataRef.current = true;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Vui lòng thử lại sau.";
+        setErrorMessage(message);
+        if (silent) {
+          console.warn("Không tải được tổng quan", error);
+        } else {
+          Alert.alert("Không tải được tổng quan", message);
+        }
+      } finally {
+        if (!silent) {
+          setIsLoading(false);
+        }
+        setIsRefreshing(false);
       }
-    } finally {
-      if (!silent) {
-        setIsLoading(false);
-      }
-      setIsRefreshing(false);
-    }
-  }, []);
+    },
+    [refreshAI],
+  );
 
   useFocusEffect(
     useCallback(() => {
       loadHomeData({ silent: hasLoadedDataRef.current });
-    }, [loadHomeData])
+    }, [loadHomeData]),
   );
 
   const currency = accounts[0]?.currency ?? "VND";
@@ -225,182 +246,260 @@ export default function HomeScreen() {
         <ScrollView
           contentContainerStyle={styles.content}
           refreshControl={
-            <RefreshControl refreshing={isRefreshing} onRefresh={() => loadHomeData({ refresh: true })} tintColor={theme.primary} />
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={() => loadHomeData({ refresh: true })}
+              tintColor={theme.primary}
+            />
           }
           showsVerticalScrollIndicator={false}
         >
-        <View style={styles.header}>
-          <View style={styles.headerCopy}>
-            <Text style={styles.greeting}>{getGreeting()}</Text>
-            <Text numberOfLines={1} style={styles.userName}>
-              {displayName}
-            </Text>
+          <View style={styles.header}>
+            <View style={styles.headerCopy}>
+              <Text style={styles.greeting}>{getGreeting()}</Text>
+              <Text numberOfLines={1} style={styles.userName}>
+                {displayName}
+              </Text>
+            </View>
+            <Pressable
+              style={styles.iconButton}
+              onPress={() => loadHomeData({ refresh: true })}
+              accessibilityLabel="Làm mới tổng quan"
+            >
+              <Text style={styles.iconButtonText}>↻</Text>
+            </Pressable>
           </View>
-          <Pressable
-            style={styles.iconButton}
-            onPress={() => loadHomeData({ refresh: true })}
-            accessibilityLabel="Làm mới tổng quan"
-          >
-            <Text style={styles.iconButtonText}>↻</Text>
-          </Pressable>
-        </View>
 
-        <View style={styles.heroCard}>
-          <View style={styles.heroTopRow}>
-            <Pressable style={{ flex: 1 }} onPress={() => setIsAccountsVisible((visible) => !visible)}>
-              <View style={styles.heroTitleRow}>
-                <Text style={styles.heroLabel}>Tổng số dư</Text>
-                <Text style={styles.chevronText}>{isAccountsVisible ? " ▾" : " ▸"}</Text>
-              </View>
-              <Text style={styles.heroCaption}>
-                {activeAccounts.length} ví · {isAccountsVisible ? "Nhấn để thu gọn" : "Nhấn để xem chi tiết"}
+          <View style={styles.heroCard}>
+            <View style={styles.heroTopRow}>
+              <Pressable style={{ flex: 1 }} onPress={() => setIsAccountsVisible((visible) => !visible)}>
+                <View style={styles.heroTitleRow}>
+                  <Text style={styles.heroLabel}>Tổng số dư</Text>
+                  <Text style={styles.chevronText}>{isAccountsVisible ? " ▾" : " ▸"}</Text>
+                </View>
+                <Text style={styles.heroCaption}>
+                  {activeAccounts.length} ví · {isAccountsVisible ? "Nhấn để thu gọn" : "Nhấn để xem chi tiết"}
+                </Text>
+              </Pressable>
+              <Pressable
+                style={styles.eyeButton}
+                onPress={() => setIsBalanceVisible((visible) => !visible)}
+                hitSlop={10}
+              >
+                <Text style={styles.eyeText}>{isBalanceVisible ? "◉" : "○"}</Text>
+              </Pressable>
+            </View>
+            <Pressable onPress={() => setIsAccountsVisible((visible) => !visible)}>
+              <Text style={styles.heroBalance}>
+                {isBalanceVisible ? formatMoney(totalBalance, currency) : "••••••••••"}
               </Text>
             </Pressable>
-            <Pressable style={styles.eyeButton} onPress={() => setIsBalanceVisible((visible) => !visible)} hitSlop={10}>
-              <Text style={styles.eyeText}>{isBalanceVisible ? "◉" : "○"}</Text>
-            </Pressable>
-          </View>
-          <Pressable onPress={() => setIsAccountsVisible((visible) => !visible)}>
-            <Text style={styles.heroBalance}>
-              {isBalanceVisible ? formatMoney(totalBalance, currency) : "••••••••••"}
-            </Text>
-          </Pressable>
-          <View style={styles.heroStats}>
-            <MetricPill label="Thu tháng này" tone="good" value={formatMoney(monthlyIncome, currency)} />
-            <MetricPill label="Chi tháng này" tone="warn" value={formatMoney(monthlyExpense, currency)} />
+            <View style={styles.heroStats}>
+              <MetricPill label="Thu tháng này" tone="good" value={formatMoney(monthlyIncome, currency)} />
+              <MetricPill label="Chi tháng này" tone="warn" value={formatMoney(monthlyExpense, currency)} />
+            </View>
+
+            {isAccountsVisible && (
+              <View style={styles.heroAccountsList}>
+                <View style={styles.heroDivider} />
+                <View style={styles.heroAccountsHeader}>
+                  <Text style={styles.heroAccountsTitle}>Danh sách tài khoản</Text>
+                  <Pressable onPress={() => router.push("/account")} hitSlop={8}>
+                    <Text style={styles.heroAccountsAction}>Quản lý ví ➔</Text>
+                  </Pressable>
+                </View>
+                <View style={styles.heroAccountsGrid}>
+                  {activeAccounts.length === 0 ? (
+                    <EmptyState title="Chưa có ví" description="Tạo ví đầu tiên để bắt đầu theo dõi số dư." />
+                  ) : (
+                    activeAccounts.map((account) => (
+                      <HeroAccountRow
+                        key={account.id}
+                        account={account}
+                        currency={currency}
+                        isBalanceVisible={isBalanceVisible}
+                      />
+                    ))
+                  )}
+                </View>
+              </View>
+            )}
           </View>
 
-          {isAccountsVisible && (
-            <View style={styles.heroAccountsList}>
-              <View style={styles.heroDivider} />
-              <View style={styles.heroAccountsHeader}>
-                <Text style={styles.heroAccountsTitle}>Danh sách tài khoản</Text>
-                <Pressable onPress={() => router.push("/account")} hitSlop={8}>
-                  <Text style={styles.heroAccountsAction}>Quản lý ví ➔</Text>
-                </Pressable>
+          <AIWidget analysis={analysis} isLoading={isAILoading} styles={styles} />
+
+          {errorMessage ? (
+            <View style={styles.errorCard}>
+              <Text style={styles.errorTitle}>Dữ liệu chưa sẵn sàng</Text>
+              <Text style={styles.errorText}>{errorMessage}</Text>
+            </View>
+          ) : null}
+
+          {isLoading ? (
+            <View style={styles.loadingCard}>
+              <ActivityIndicator color={theme.primary} />
+              <Text style={styles.loadingText}>Đang tải dữ liệu tổng quan...</Text>
+            </View>
+          ) : (
+            <>
+              <SectionHeading
+                title="Báo cáo tháng này"
+                action="Xem sổ"
+                onAction={() => router.push("/(tabs)/transactions")}
+              />
+              <View style={styles.reportCard}>
+                <View style={styles.reportHeader}>
+                  <View>
+                    <Text style={styles.reportLabel}>Tổng chi tiêu</Text>
+                    <Text style={[styles.reportValue, styles.negativeText]}>
+                      {formatMoney(monthlyExpense, currency)}
+                    </Text>
+                  </View>
+                  <View>
+                    <Text style={styles.reportLabel}>Tổng thu nhập</Text>
+                    <Text style={[styles.reportValue, styles.positiveText]}>
+                      {formatMoney(monthlyIncome, currency)}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Biểu đồ cột chi tiêu theo ngày */}
+                <View style={styles.chartWrapper}>
+                  {activeDaysData.length === 0 ? (
+                    <View style={styles.chartEmptyState}>
+                      <Text style={styles.chartEmptyText}>Chưa có chi tiêu trong tháng</Text>
+                    </View>
+                  ) : (
+                    <View style={styles.dailyChartContainer}>
+                      {activeDaysData.map((item) => (
+                        <View key={item.day} style={styles.dailyBarWrapper}>
+                          <Text style={styles.barAmountText}>{formatShortMoney(item.amount)}</Text>
+                          <View
+                            style={[
+                              styles.dailyBar,
+                              {
+                                height: Math.max(
+                                  minChartBarHeight,
+                                  (item.amount / maxDailySpending) * maxChartBarHeight,
+                                ),
+                              },
+                            ]}
+                          />
+                          <Text style={styles.xAxisLabel}>{item.day}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </View>
+                <Text style={styles.chartFooter}>Ngày trong tháng</Text>
               </View>
-              <View style={styles.heroAccountsGrid}>
-                {activeAccounts.length === 0 ? (
-                  <EmptyState title="Chưa có ví" description="Tạo ví đầu tiên để bắt đầu theo dõi số dư." />
+
+              <SectionHeading
+                title="Chi tiêu nhiều nhất"
+                action="Chi tiết"
+                onAction={() => router.push("/(tabs)/user")}
+              />
+              <View style={styles.categoryCard}>
+                {topCategories.length === 0 ? (
+                  <EmptyState
+                    title="Chưa có chi tiêu"
+                    description="Các danh mục phát sinh trong tháng sẽ hiện ở đây."
+                  />
                 ) : (
-                  activeAccounts.map((account) => (
-                    <HeroAccountRow
-                      key={account.id}
-                      account={account}
+                  topCategories.map((category, index) => (
+                    <CategoryRow
+                      key={category.categoryId ?? category.categoryName}
+                      category={category}
+                      index={index}
                       currency={currency}
-                      isBalanceVisible={isBalanceVisible}
                     />
                   ))
                 )}
               </View>
-            </View>
-          )}
-        </View>
 
-        {errorMessage ? (
-          <View style={styles.errorCard}>
-            <Text style={styles.errorTitle}>Dữ liệu chưa sẵn sàng</Text>
-            <Text style={styles.errorText}>{errorMessage}</Text>
-          </View>
-        ) : null}
-
-        {isLoading ? (
-          <View style={styles.loadingCard}>
-            <ActivityIndicator color={theme.primary} />
-            <Text style={styles.loadingText}>Đang tải dữ liệu tổng quan...</Text>
-          </View>
-        ) : (
-          <>
-            <SectionHeading
-              title="Báo cáo tháng này"
-              action="Xem sổ"
-              onAction={() => router.push("/(tabs)/transactions")}
-            />
-            <View style={styles.reportCard}>
-              <View style={styles.reportHeader}>
-                <View>
-                  <Text style={styles.reportLabel}>Tổng chi tiêu</Text>
-                  <Text style={[styles.reportValue, styles.negativeText]}>{formatMoney(monthlyExpense, currency)}</Text>
-                </View>
-                <View>
-                  <Text style={styles.reportLabel}>Tổng thu nhập</Text>
-                  <Text style={[styles.reportValue, styles.positiveText]}>{formatMoney(monthlyIncome, currency)}</Text>
-                </View>
-              </View>
-
-              {/* Biểu đồ cột chi tiêu theo ngày */}
-              <View style={styles.chartWrapper}>
-                {activeDaysData.length === 0 ? (
-                  <View style={styles.chartEmptyState}>
-                    <Text style={styles.chartEmptyText}>Chưa có chi tiêu trong tháng</Text>
-                  </View>
+              <SectionHeading
+                title="Giao dịch gần đây"
+                action="Xem tất cả"
+                onAction={() => router.push("/(tabs)/transactions")}
+              />
+              <View style={styles.transactionCard}>
+                {recentTransactions.length === 0 ? (
+                  <EmptyState title="Chưa có giao dịch" description="Giao dịch mới nhất trong tháng sẽ hiện ở đây." />
                 ) : (
-                  <View style={styles.dailyChartContainer}>
-                    {activeDaysData.map((item) => (
-                      <View key={item.day} style={styles.dailyBarWrapper}>
-                        <Text style={styles.barAmountText}>{formatShortMoney(item.amount)}</Text>
-                        <View
-                          style={[
-                            styles.dailyBar,
-                            {
-                              height: Math.max(minChartBarHeight, (item.amount / maxDailySpending) * maxChartBarHeight),
-                            },
-                          ]}
-                        />
-                        <Text style={styles.xAxisLabel}>{item.day}</Text>
-                      </View>
-                    ))}
-                  </View>
+                  recentTransactions.map((transaction) => (
+                    <TransactionRow
+                      key={transaction.id}
+                      account={accountMap.get(transaction.accountId)}
+                      category={transaction.categoryId ? categoryMap.get(transaction.categoryId) : undefined}
+                      currency={currency}
+                      transaction={transaction}
+                    />
+                  ))
                 )}
               </View>
-              <Text style={styles.chartFooter}>Ngày trong tháng</Text>
-            </View>
-
-            <SectionHeading
-              title="Chi tiêu nhiều nhất"
-              action="Chi tiết"
-              onAction={() => router.push("/(tabs)/user")}
-            />
-            <View style={styles.categoryCard}>
-              {topCategories.length === 0 ? (
-                <EmptyState title="Chưa có chi tiêu" description="Các danh mục phát sinh trong tháng sẽ hiện ở đây." />
-              ) : (
-                topCategories.map((category, index) => (
-                  <CategoryRow
-                    key={category.categoryId ?? category.categoryName}
-                    category={category}
-                    index={index}
-                    currency={currency}
-                  />
-                ))
-              )}
-            </View>
-
-            <SectionHeading
-              title="Giao dịch gần đây"
-              action="Xem tất cả"
-              onAction={() => router.push("/(tabs)/transactions")}
-            />
-            <View style={styles.transactionCard}>
-              {recentTransactions.length === 0 ? (
-                <EmptyState title="Chưa có giao dịch" description="Giao dịch mới nhất trong tháng sẽ hiện ở đây." />
-              ) : (
-                recentTransactions.map((transaction) => (
-                  <TransactionRow
-                    key={transaction.id}
-                    account={accountMap.get(transaction.accountId)}
-                    category={transaction.categoryId ? categoryMap.get(transaction.categoryId) : undefined}
-                    currency={currency}
-                    transaction={transaction}
-                  />
-                ))
-              )}
-            </View>
-          </>
-        )}
+            </>
+          )}
         </ScrollView>
       </SafeAreaView>
     </FocusedScreenTransition>
+  );
+}
+
+function AIWidget({
+  analysis,
+  isLoading,
+  styles,
+}: {
+  analysis: AIAnalysis | null;
+  isLoading: boolean;
+  styles: ReturnType<typeof createStyles>;
+}) {
+  if (isLoading) {
+    return (
+      <View style={styles.aiCard}>
+        <View style={styles.aiSkeletonTitle} />
+        <View style={styles.aiSkeletonLine} />
+        <View style={styles.aiSkeletonLineShort} />
+      </View>
+    );
+  }
+
+  if (!analysis) {
+    return null;
+  }
+
+  const recommendation = getPriorityRecommendation(analysis);
+  const isHealthy = analysis.health_status.toLowerCase() === "healthy";
+  const isCritical = analysis.health_status.toLowerCase() === "critical";
+
+  return (
+    <View style={styles.aiCard}>
+      <View style={styles.aiHeader}>
+        <Text style={styles.aiEyebrow}>PHÂN TÍCH AI</Text>
+        <View
+          style={[
+            styles.aiBadge,
+            isHealthy ? styles.aiBadgeHealthy : isCritical ? styles.aiBadgeCritical : styles.aiBadgeWarning,
+          ]}
+        >
+          <Text style={styles.aiBadgeText}>{analysis.health_status}</Text>
+        </View>
+      </View>
+      <View style={styles.aiStatsRow}>
+        <View>
+          <Text style={styles.aiLabel}>Tỷ lệ tiết kiệm</Text>
+          <Text style={styles.aiRate}>{Math.round(analysis.features.savings_rate * 100)}%</Text>
+        </View>
+        {recommendation ? (
+          <View style={styles.aiRecommendation}>
+            <Text style={styles.aiRecommendationTitle}>{recommendation.title}</Text>
+            <Text numberOfLines={2} style={styles.aiRecommendationText}>
+              {recommendation.message}
+            </Text>
+          </View>
+        ) : null}
+      </View>
+    </View>
   );
 }
 
@@ -605,6 +704,30 @@ function createStyles(theme: AppTheme) {
       padding: 28,
     },
     loadingText: { color: theme.textMuted, fontSize: 13, fontWeight: "700" },
+    aiCard: {
+      backgroundColor: theme.card,
+      borderColor: theme.border,
+      borderRadius: 8,
+      borderWidth: 1,
+      marginTop: 12,
+      padding: 14,
+    },
+    aiHeader: { alignItems: "center", flexDirection: "row", justifyContent: "space-between" },
+    aiEyebrow: { color: theme.textMuted, fontSize: 10, fontWeight: "900", letterSpacing: 0.5 },
+    aiBadge: { borderRadius: 12, paddingHorizontal: 9, paddingVertical: 5 },
+    aiBadgeHealthy: { backgroundColor: theme.goodBackground },
+    aiBadgeWarning: { backgroundColor: theme.warningBackground },
+    aiBadgeCritical: { backgroundColor: `${theme.danger}22` },
+    aiBadgeText: { color: theme.text, fontSize: 11, fontWeight: "900" },
+    aiStatsRow: { flexDirection: "row", gap: 16, marginTop: 12 },
+    aiLabel: { color: theme.textMuted, fontSize: 11, fontWeight: "700" },
+    aiRate: { color: theme.primary, fontSize: 24, fontWeight: "900", marginTop: 3 },
+    aiRecommendation: { borderLeftColor: theme.primary, borderLeftWidth: 2, flex: 1, paddingLeft: 12 },
+    aiRecommendationTitle: { color: theme.text, fontSize: 12, fontWeight: "900" },
+    aiRecommendationText: { color: theme.textMuted, fontSize: 12, lineHeight: 17, marginTop: 3 },
+    aiSkeletonTitle: { backgroundColor: theme.cardAlt, borderRadius: 4, height: 12, width: "32%" },
+    aiSkeletonLine: { backgroundColor: theme.cardAlt, borderRadius: 4, height: 24, marginTop: 12, width: "22%" },
+    aiSkeletonLineShort: { backgroundColor: theme.cardAlt, borderRadius: 4, height: 10, marginTop: 8, width: "68%" },
     sectionHeading: {
       alignItems: "center",
       flexDirection: "row",

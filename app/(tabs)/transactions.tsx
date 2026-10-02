@@ -4,9 +4,10 @@ import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } 
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { FinancialAccount, financialAccountApi } from "@/api/financialAccountApi";
-import { FocusedScreenTransition } from "@/components/screen-transition";
-import { useAppTheme } from "@/hooks/use-app-theme";
 import { Transaction, TransactionType, transactionsApi } from "@/api/transactionsApi";
+import { FocusedScreenTransition } from "@/components/screen-transition";
+import { useAIAnalysis } from "@/hooks/use-ai-analysis";
+import { useAppTheme } from "@/hooks/use-app-theme";
 import { requestSpendingStatsFromTransactions } from "@/stores/spendingStatsNavigation";
 import type { AppTheme } from "@/theme/appTheme";
 
@@ -58,41 +59,55 @@ export default function TransactionsScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const hasLoadedDataRef = useRef(false);
+  const [showAnomaliesOnly, setShowAnomaliesOnly] = useState(false);
+  const { analysis, refresh: refreshAI } = useAIAnalysis();
 
-  const loadData = useCallback(async ({ refresh = false, silent = false } = {}) => {
-    try {
-      if (refresh) {
-        setIsRefreshing(true);
-      } else if (!silent) {
-        setIsLoading(true);
-      }
-      const [accountResponse, transactionResponse] = await Promise.all([
-        financialAccountApi.list(),
-        transactionsApi.list({ accountId: selectedAccountId }),
-      ]);
-      setAccounts(accountResponse.data);
-      setTransactions(transactionResponse.data);
-      hasLoadedDataRef.current = true;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Vui lòng thử lại sau.";
+  const loadData = useCallback(
+    async ({ refresh = false, silent = false } = {}) => {
+      try {
+        if (refresh) {
+          setIsRefreshing(true);
+        } else if (!silent) {
+          setIsLoading(true);
+        }
+        const [accountResponse, transactionResponse] = await Promise.all([
+          financialAccountApi.list(),
+          transactionsApi.list({ accountId: selectedAccountId }),
+          ...(refresh ? [refreshAI()] : []),
+        ]);
+        setAccounts(accountResponse.data);
+        setTransactions(transactionResponse.data);
+        hasLoadedDataRef.current = true;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Vui lòng thử lại sau.";
 
-      if (silent) {
-        console.warn("Không tải được giao dịch", error);
-      } else {
-        Alert.alert("Không tải được giao dịch", message);
+        if (silent) {
+          console.warn("Không tải được giao dịch", error);
+        } else {
+          Alert.alert("Không tải được giao dịch", message);
+        }
+      } finally {
+        if (!silent) {
+          setIsLoading(false);
+        }
+        setIsRefreshing(false);
       }
-    } finally {
-      if (!silent) {
-        setIsLoading(false);
-      }
-      setIsRefreshing(false);
-    }
-  }, [selectedAccountId]);
+    },
+    [refreshAI, selectedAccountId],
+  );
 
   useFocusEffect(
     useCallback(() => {
       loadData({ silent: hasLoadedDataRef.current });
-    }, [loadData])
+    }, [loadData]),
+  );
+
+  const anomalyIds = useMemo(
+    () =>
+      new Set(
+        (analysis?.anomalies ?? []).filter((anomaly) => anomaly.isAnomaly).map((anomaly) => anomaly.transactionId),
+      ),
+    [analysis],
   );
 
   const filteredTransactions = useMemo(() => {
@@ -118,18 +133,23 @@ export default function TransactionsScreen() {
   }, [filteredTransactions]);
 
   const groupedTransactions = useMemo(() => {
+    const transactionsToDisplay = showAnomaliesOnly
+      ? filteredTransactions.filter((transaction) => anomalyIds.has(transaction.id))
+      : filteredTransactions;
     const groups = new Map<string, Transaction[]>();
-    filteredTransactions.forEach((transaction) => {
+    transactionsToDisplay.forEach((transaction) => {
       const key = new Date(transaction.transactionDate).toISOString().slice(0, 10);
       groups.set(key, [...(groups.get(key) ?? []), transaction]);
     });
     return [...groups.entries()];
-  }, [filteredTransactions]);
+  }, [anomalyIds, filteredTransactions, showAnomaliesOnly]);
 
   const selectedAccount = accounts.find((account) => account.id === selectedAccountId);
   const currency = selectedAccount?.currency ?? accounts[0]?.currency ?? "VND";
   const netRatio = summary.incoming ? Math.min(100, Math.max(0, (summary.net / summary.incoming) * 100)) : 0;
   const currentMonth = new Date().getMonth() + 1;
+  const visibleAnomalyCount = filteredTransactions.filter((transaction) => anomalyIds.has(transaction.id)).length;
+  const displayedTransactionCount = showAnomaliesOnly ? visibleAnomalyCount : filteredTransactions.length;
 
   return (
     <FocusedScreenTransition reanimateOnFocus={false}>
@@ -137,134 +157,157 @@ export default function TransactionsScreen() {
         <ScrollView
           contentContainerStyle={styles.content}
           refreshControl={
-            <RefreshControl refreshing={isRefreshing} onRefresh={() => loadData({ refresh: true })} tintColor={theme.primary} />
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={() => loadData({ refresh: true })}
+              tintColor={theme.primary}
+            />
           }
           showsVerticalScrollIndicator={false}
         >
-        <View style={styles.header}>
-          <View>
-            <Text style={styles.eyebrow}>Quản lý tài chính</Text>
-            <Text style={styles.title}>Sổ giao dịch</Text>
-          </View>
-          <Pressable
-            style={styles.monthOverviewButton}
-            onPress={() => {
-              requestSpendingStatsFromTransactions();
-              router.push("/(tabs)/user");
-            }}
-          >
-            <Text style={styles.monthOverviewText}>Tổng Quan Tháng {currentMonth}</Text>
-            <Text style={styles.monthOverviewArrow}>›</Text>
-          </Pressable>
-        </View>
-
-        <Pressable style={styles.selector} onPress={() => setIsAccountPickerOpen((open) => !open)}>
-          <View>
-            <Text style={styles.selectorLabel}>Đang xem giao dịch của</Text>
-            <Text style={styles.selectorValue}>{selectedAccount?.name ?? "Tổng cộng"}</Text>
-          </View>
-          <Text style={styles.chevron}>{isAccountPickerOpen ? "⌃" : "⌄"}</Text>
-        </Pressable>
-        {isAccountPickerOpen && (
-          <View style={styles.pickerMenu}>
-            <AccountOption
-              label="Tổng cộng"
-              selected={selectedAccountId === null}
+          <View style={styles.header}>
+            <View>
+              <Text style={styles.eyebrow}>Quản lý tài chính</Text>
+              <Text style={styles.title}>Sổ giao dịch</Text>
+            </View>
+            <Pressable
+              style={styles.monthOverviewButton}
               onPress={() => {
-                setSelectedAccountId(null);
-                setIsAccountPickerOpen(false);
+                requestSpendingStatsFromTransactions();
+                router.push("/(tabs)/user");
               }}
-            />
-            {accounts.map((account) => (
+            >
+              <Text style={styles.monthOverviewText}>Tổng Quan Tháng {currentMonth}</Text>
+              <Text style={styles.monthOverviewArrow}>›</Text>
+            </Pressable>
+          </View>
+
+          <Pressable style={styles.selector} onPress={() => setIsAccountPickerOpen((open) => !open)}>
+            <View>
+              <Text style={styles.selectorLabel}>Đang xem giao dịch của</Text>
+              <Text style={styles.selectorValue}>{selectedAccount?.name ?? "Tổng cộng"}</Text>
+            </View>
+            <Text style={styles.chevron}>{isAccountPickerOpen ? "⌃" : "⌄"}</Text>
+          </Pressable>
+          {isAccountPickerOpen && (
+            <View style={styles.pickerMenu}>
               <AccountOption
-                key={account.id}
-                label={account.name}
-                selected={selectedAccountId === account.id}
+                label="Tổng cộng"
+                selected={selectedAccountId === null}
                 onPress={() => {
-                  setSelectedAccountId(account.id);
+                  setSelectedAccountId(null);
                   setIsAccountPickerOpen(false);
                 }}
               />
+              {accounts.map((account) => (
+                <AccountOption
+                  key={account.id}
+                  label={account.name}
+                  selected={selectedAccountId === account.id}
+                  onPress={() => {
+                    setSelectedAccountId(account.id);
+                    setIsAccountPickerOpen(false);
+                  }}
+                />
+              ))}
+            </View>
+          )}
+
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.periodTabs}>
+            {(Object.keys(periodLabels) as Period[]).map((item) => (
+              <Pressable
+                key={item}
+                onPress={() => setPeriod(item)}
+                style={[styles.periodTab, period === item && styles.periodTabActive]}
+              >
+                <Text style={[styles.periodTabText, period === item && styles.periodTabTextActive]}>
+                  {periodLabels[item]}
+                </Text>
+              </Pressable>
             ))}
+          </ScrollView>
+
+          <View style={styles.summaryCard}>
+            <Text style={styles.cardTitle}>{periodLabels[period]}</Text>
+            <Text style={styles.availableBalance}>Số dư khả dụng</Text>
+            <Text style={styles.availableValue}>{formatMoney(summary.net, currency)}</Text>
+            <View style={styles.summaryGrid}>
+              <SummaryItem label="Dòng tiền vào" value={summary.incoming} color={theme.goodText} currency={currency} />
+              <SummaryItem label="Dòng tiền ra" value={summary.outgoing} color={theme.dangerText} currency={currency} />
+              <SummaryItem
+                label="Dòng tiền ròng"
+                value={summary.net}
+                color={summary.net >= 0 ? theme.goodText : theme.dangerText}
+                currency={currency}
+              />
+            </View>
           </View>
-        )}
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.periodTabs}>
-          {(Object.keys(periodLabels) as Period[]).map((item) => (
-            <Pressable
-              key={item}
-              onPress={() => setPeriod(item)}
-              style={[styles.periodTab, period === item && styles.periodTabActive]}
-            >
-              <Text style={[styles.periodTabText, period === item && styles.periodTabTextActive]}>
-                {periodLabels[item]}
-              </Text>
-            </Pressable>
-          ))}
-        </ScrollView>
+          <Pressable style={styles.reportButton} onPress={() => router.push("/transaction-report")}>
+            <Text style={styles.reportButtonText}>Xem báo cáo cho giai đoạn này</Text>
+            <Text style={styles.reportArrow}>›</Text>
+          </Pressable>
 
-        <View style={styles.summaryCard}>
-          <Text style={styles.cardTitle}>{periodLabels[period]}</Text>
-          <Text style={styles.availableBalance}>Số dư khả dụng</Text>
-          <Text style={styles.availableValue}>{formatMoney(summary.net, currency)}</Text>
-          <View style={styles.summaryGrid}>
-            <SummaryItem label="Dòng tiền vào" value={summary.incoming} color={theme.goodText} currency={currency} />
-            <SummaryItem label="Dòng tiền ra" value={summary.outgoing} color={theme.dangerText} currency={currency} />
-            <SummaryItem
-              label="Dòng tiền ròng"
-              value={summary.net}
-              color={summary.net >= 0 ? theme.goodText : theme.dangerText}
-              currency={currency}
-            />
-          </View>
-        </View>
-
-        <Pressable style={styles.reportButton} onPress={() => router.push("/transaction-report")}>
-          <Text style={styles.reportButtonText}>Xem báo cáo cho giai đoạn này</Text>
-          <Text style={styles.reportArrow}>›</Text>
-        </Pressable>
-
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Lịch sử giao dịch</Text>
-          <Text style={styles.sectionMeta}>{filteredTransactions.length} giao dịch</Text>
-        </View>
-        {isLoading ? (
-          <TransactionSkeleton />
-        ) : groupedTransactions.length === 0 ? (
-          <EmptyState />
-        ) : (
-          groupedTransactions.map(([date, items]) => (
-            <TransactionDay key={date} date={date} transactions={items} currency={currency} />
-          ))
-        )}
-
-        <View style={styles.netCard}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Thu nhập ròng</Text>
-            <Text style={[styles.netValue, { color: summary.net >= 0 ? theme.goodText : theme.dangerText }]}>
-              {formatMoney(summary.net, currency)}
-            </Text>
+            <Text style={styles.sectionTitle}>Lịch sử giao dịch</Text>
+            <Text style={styles.sectionMeta}>{displayedTransactionCount} giao dịch</Text>
           </View>
-          <Text style={styles.helperText}>Khoản thu trừ khoản chi trong kỳ</Text>
-          <View style={styles.progressTrack}>
-            <View style={[styles.progressFill, { width: `${netRatio}%` }]} />
-          </View>
-          <Text style={styles.progressLabel}>{Math.round(netRatio)}% dòng tiền vào còn lại</Text>
-        </View>
+          {visibleAnomalyCount > 0 ? (
+            <View style={styles.anomalyBanner}>
+              <Text style={styles.anomalyBannerIcon}>⚡</Text>
+              <View style={styles.anomalyBannerCopy}>
+                <Text style={styles.anomalyBannerText}>
+                  Phát hiện {visibleAnomalyCount} giao dịch có biến động chi tiêu bất thường
+                </Text>
+                <Pressable
+                  onPress={() => setShowAnomaliesOnly((currentValue) => !currentValue)}
+                  style={styles.anomalyBannerButton}
+                >
+                  <Text style={styles.anomalyBannerButtonText}>
+                    {showAnomaliesOnly ? "Xem tất cả giao dịch" : "Xem danh sách bất thường"}
+                  </Text>
+                  <Text style={styles.anomalyBannerButtonArrow}>{showAnomaliesOnly ? "‹" : "›"}</Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : null}
+          {isLoading ? (
+            <TransactionSkeleton />
+          ) : groupedTransactions.length === 0 ? (
+            <EmptyState />
+          ) : (
+            groupedTransactions.map(([date, items]) => (
+              <TransactionDay key={date} anomalyIds={anomalyIds} currency={currency} date={date} transactions={items} />
+            ))
+          )}
 
-        <View style={styles.breakdownCard}>
-          <Text style={styles.sectionTitle}>Báo cáo theo nhóm</Text>
-          <View style={styles.breakdownRow}>
-            <Donut value={summary.incoming} color={theme.goodText} label="Thu nhập" />
-            <Donut value={summary.outgoing} color={theme.dangerText} label="Chi tiêu" />
+          <View style={styles.netCard}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Thu nhập ròng</Text>
+              <Text style={[styles.netValue, { color: summary.net >= 0 ? theme.goodText : theme.dangerText }]}>
+                {formatMoney(summary.net, currency)}
+              </Text>
+            </View>
+            <Text style={styles.helperText}>Khoản thu trừ khoản chi trong kỳ</Text>
+            <View style={styles.progressTrack}>
+              <View style={[styles.progressFill, { width: `${netRatio}%` }]} />
+            </View>
+            <Text style={styles.progressLabel}>{Math.round(netRatio)}% dòng tiền vào còn lại</Text>
           </View>
-        </View>
-        <View style={styles.otherCard}>
-          <Text style={styles.sectionTitle}>Nợ, cho vay và khác</Text>
-          <SummaryItem label="Nợ" value={0} color={theme.dangerText} currency={currency} />
-          <SummaryItem label="Cho vay" value={0} color={theme.warning} currency={currency} />
-          <SummaryItem label="Khác" value={0} color={theme.textSubtle} currency={currency} />
-        </View>
+
+          <View style={styles.breakdownCard}>
+            <Text style={styles.sectionTitle}>Báo cáo theo nhóm</Text>
+            <View style={styles.breakdownRow}>
+              <Donut value={summary.incoming} color={theme.goodText} label="Thu nhập" />
+              <Donut value={summary.outgoing} color={theme.dangerText} label="Chi tiêu" />
+            </View>
+          </View>
+          <View style={styles.otherCard}>
+            <Text style={styles.sectionTitle}>Nợ, cho vay và khác</Text>
+            <SummaryItem label="Nợ" value={0} color={theme.dangerText} currency={currency} />
+            <SummaryItem label="Cho vay" value={0} color={theme.warning} currency={currency} />
+            <SummaryItem label="Khác" value={0} color={theme.textSubtle} currency={currency} />
+          </View>
         </ScrollView>
       </SafeAreaView>
     </FocusedScreenTransition>
@@ -304,10 +347,12 @@ function SummaryItem({
 }
 
 function TransactionDay({
+  anomalyIds,
   date,
   transactions,
   currency,
 }: {
+  anomalyIds: Set<number>;
   date: string;
   transactions: Transaction[];
   currency: string;
@@ -342,10 +387,23 @@ function TransactionDay({
             </Text>
           </View>
           <View style={styles.transactionCopy}>
-            <Text style={styles.transactionTitle}>{typeLabels[transaction.type]}</Text>
+            <View style={styles.transactionTitleRow}>
+              <Text style={styles.transactionTitle}>{typeLabels[transaction.type]}</Text>
+              {anomalyIds.has(transaction.id) ? (
+                <View style={styles.anomalyTag}>
+                  <Text style={styles.anomalyIcon}>⚡</Text>
+                  <Text style={styles.anomalyTagText}>BẤT THƯỜNG</Text>
+                </View>
+              ) : null}
+            </View>
             <Text style={styles.transactionDescription}>{transaction.description || "Không có ghi chú"}</Text>
           </View>
-          <Text style={[styles.transactionAmount, { color: isPositive(transaction.type) ? theme.goodText : theme.dangerText }]}>
+          <Text
+            style={[
+              styles.transactionAmount,
+              { color: isPositive(transaction.type) ? theme.goodText : theme.dangerText },
+            ]}
+          >
             {isPositive(transaction.type) ? "+" : "-"}
             {formatMoney(transaction.amount, currency)}
           </Text>
@@ -401,211 +459,260 @@ function Donut({ value, color, label }: { value: number; color: string; label: s
 
 function createStyles(theme: AppTheme) {
   return StyleSheet.create({
-  screen: { backgroundColor: theme.screen, flex: 1 },
-  content: { padding: 16, paddingBottom: 96 },
-  header: {
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 18,
-    marginTop: 12,
-  },
-  eyebrow: { color: theme.textMuted, fontSize: 12 },
-  title: { color: theme.text, fontSize: 27, fontWeight: "800", marginTop: 3 },
-  monthOverviewButton: {
-    alignItems: "center",
-    backgroundColor: theme.primaryPressed,
-    borderColor: theme.primary,
-    borderRadius: 18,
-    borderWidth: 1,
-    flexDirection: "row",
-    gap: 6,
-    justifyContent: "center",
-    minHeight: 38,
-    paddingHorizontal: 12,
-  },
-  monthOverviewText: { color: theme.primary, fontSize: 12, fontWeight: "800" },
-  monthOverviewArrow: { color: theme.primary, fontSize: 19, fontWeight: "800", lineHeight: 19 },
-  selector: {
-    alignItems: "center",
-    backgroundColor: theme.card,
-    borderColor: theme.border,
-    borderRadius: 12,
-    borderWidth: 1,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    padding: 14,
-  },
-  selectorLabel: { color: theme.textMuted, fontSize: 11 },
-  selectorValue: { color: theme.text, fontSize: 16, fontWeight: "700", marginTop: 3 },
-  chevron: { color: theme.text, fontSize: 22 },
-  pickerMenu: {
-    backgroundColor: theme.card,
-    borderColor: theme.border,
-    borderRadius: 10,
-    borderWidth: 1,
-    marginTop: 5,
-    overflow: "hidden",
-  },
-  pickerOption: {
-    alignItems: "center",
-    borderBottomColor: theme.border,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    padding: 13,
-  },
-  pickerOptionText: { color: theme.text, fontSize: 14 },
-  check: { color: theme.primary, fontSize: 18, fontWeight: "700" },
-  periodTabs: { gap: 8, paddingVertical: 16 },
-  periodTab: { backgroundColor: theme.cardAlt, borderRadius: 18, paddingHorizontal: 16, paddingVertical: 9 },
-  periodTabActive: { backgroundColor: theme.primary },
-  periodTabText: { color: theme.textSubtle, fontSize: 13, fontWeight: "600" },
-  periodTabTextActive: { color: theme.textInverse },
-  summaryCard: { backgroundColor: theme.card, borderColor: theme.border, borderRadius: 15, borderWidth: 1, padding: 16 },
-  cardTitle: { color: theme.textMuted, fontSize: 13 },
-  availableBalance: { color: theme.textMuted, fontSize: 12, marginTop: 15 },
-  availableValue: { color: theme.text, fontSize: 28, fontWeight: "800", marginTop: 3 },
-  summaryGrid: { borderTopColor: theme.border, borderTopWidth: 1, flexDirection: "row", marginTop: 16, paddingTop: 13 },
-  summaryItem: { flex: 1 },
-  summaryLabel: { color: theme.textMuted, fontSize: 11 },
-  summaryValue: { fontSize: 13, fontWeight: "700", marginTop: 4 },
-  reportButton: {
-    alignItems: "center",
-    backgroundColor: theme.goodBackground,
-    borderRadius: 10,
-    flexDirection: "row",
-    justifyContent: "center",
-    marginTop: 12,
-    padding: 13,
-  },
-  reportButtonText: { color: theme.goodText, fontSize: 14, fontWeight: "700" },
-  reportArrow: { color: theme.goodText, fontSize: 22, marginLeft: 8 },
-  sectionHeader: {
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 10,
-    marginTop: 20,
-  },
-  sectionTitle: { color: theme.text, fontSize: 17, fontWeight: "800" },
-  sectionMeta: { color: theme.textMuted, fontSize: 12 },
-  skeletonGroup: {
-    backgroundColor: theme.card,
-    borderColor: theme.border,
-    borderRadius: 14,
-    borderWidth: 1,
-    marginBottom: 10,
-    overflow: "hidden",
-    paddingHorizontal: 14,
-  },
-  skeletonHeader: {
-    backgroundColor: theme.cardAlt,
-    borderRadius: 6,
-    height: 14,
-    marginVertical: 14,
-    width: "48%",
-  },
-  skeletonRow: {
-    alignItems: "center",
-    borderTopColor: theme.border,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    flexDirection: "row",
-    minHeight: 64,
-  },
-  skeletonIcon: {
-    backgroundColor: theme.cardAlt,
-    borderRadius: 18,
-    height: 36,
-    marginRight: 11,
-    width: 36,
-  },
-  skeletonCopy: { flex: 1, gap: 8 },
-  skeletonLineWide: { backgroundColor: theme.cardAlt, borderRadius: 5, height: 12, width: "68%" },
-  skeletonLineShort: { backgroundColor: theme.cardAlt, borderRadius: 5, height: 10, width: "42%" },
-  skeletonAmount: { backgroundColor: theme.cardAlt, borderRadius: 5, height: 12, width: 72 },
-  dayGroup: {
-    backgroundColor: theme.card,
-    borderColor: theme.border,
-    borderRadius: 14,
-    borderWidth: 1,
-    marginBottom: 10,
-    overflow: "hidden",
-    paddingHorizontal: 14,
-  },
-  dayHeader: {
-    alignItems: "center",
-    borderBottomColor: theme.border,
-    borderBottomWidth: 1,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingVertical: 13,
-  },
-  dayTitle: { color: theme.text, fontSize: 13, fontWeight: "700" },
-  dayTotal: { fontSize: 13, fontWeight: "700" },
-  transactionRow: {
-    alignItems: "center",
-    borderBottomColor: theme.border,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    flexDirection: "row",
-    paddingVertical: 12,
-  },
-  transactionIcon: {
-    alignItems: "center",
-    borderRadius: 18,
-    height: 36,
-    justifyContent: "center",
-    marginRight: 11,
-    width: 36,
-  },
-  transactionCopy: { flex: 1 },
-  transactionTitle: { color: theme.text, fontSize: 14, fontWeight: "700" },
-  transactionDescription: { color: theme.textSubtle, fontSize: 11, marginTop: 3 },
-  transactionAmount: { fontSize: 13, fontWeight: "700", marginLeft: 8 },
-  netCard: {
-    backgroundColor: theme.card,
-    borderColor: theme.border,
-    borderRadius: 14,
-    borderWidth: 1,
-    marginTop: 10,
-    padding: 15,
-  },
-  netValue: { fontSize: 15, fontWeight: "800" },
-  helperText: { color: theme.textMuted, fontSize: 12 },
-  progressTrack: { backgroundColor: theme.progressTrack, borderRadius: 5, height: 9, marginTop: 12, overflow: "hidden" },
-  progressFill: { backgroundColor: theme.primary, borderRadius: 5, height: "100%" },
-  progressLabel: { color: theme.textMuted, fontSize: 11, marginTop: 6 },
-  breakdownCard: {
-    backgroundColor: theme.card,
-    borderColor: theme.border,
-    borderRadius: 14,
-    borderWidth: 1,
-    marginTop: 12,
-    padding: 15,
-  },
-  breakdownRow: { flexDirection: "row", justifyContent: "space-around", paddingTop: 15 },
-  donutItem: { alignItems: "center" },
-  donut: { alignItems: "center", borderRadius: 52, borderWidth: 14, height: 90, justifyContent: "center", width: 90 },
-  donutValue: { color: theme.text, fontSize: 13, fontWeight: "800" },
-  donutLabel: { color: theme.textMuted, fontSize: 12, marginTop: 8 },
-  otherCard: {
-    backgroundColor: theme.card,
-    borderColor: theme.border,
-    borderRadius: 14,
-    borderWidth: 1,
-    gap: 12,
-    marginTop: 12,
-    padding: 15,
-  },
-  empty: {
-    alignItems: "center",
-    backgroundColor: theme.card,
-    borderColor: theme.border,
-    borderRadius: 14,
-    borderWidth: 1,
-    padding: 28,
-  },
-  emptyTitle: { color: theme.text, fontSize: 16, fontWeight: "700" },
-  emptyText: { color: theme.textSubtle, fontSize: 12, marginTop: 6 },
+    screen: { backgroundColor: theme.screen, flex: 1 },
+    content: { padding: 16, paddingBottom: 96 },
+    header: {
+      alignItems: "center",
+      flexDirection: "row",
+      justifyContent: "space-between",
+      marginBottom: 18,
+      marginTop: 12,
+    },
+    eyebrow: { color: theme.textMuted, fontSize: 12 },
+    title: { color: theme.text, fontSize: 27, fontWeight: "800", marginTop: 3 },
+    monthOverviewButton: {
+      alignItems: "center",
+      backgroundColor: theme.primaryPressed,
+      borderColor: theme.primary,
+      borderRadius: 18,
+      borderWidth: 1,
+      flexDirection: "row",
+      gap: 6,
+      justifyContent: "center",
+      minHeight: 38,
+      paddingHorizontal: 12,
+    },
+    monthOverviewText: { color: theme.primary, fontSize: 12, fontWeight: "800" },
+    monthOverviewArrow: { color: theme.primary, fontSize: 19, fontWeight: "800", lineHeight: 19 },
+    selector: {
+      alignItems: "center",
+      backgroundColor: theme.card,
+      borderColor: theme.border,
+      borderRadius: 12,
+      borderWidth: 1,
+      flexDirection: "row",
+      justifyContent: "space-between",
+      padding: 14,
+    },
+    selectorLabel: { color: theme.textMuted, fontSize: 11 },
+    selectorValue: { color: theme.text, fontSize: 16, fontWeight: "700", marginTop: 3 },
+    chevron: { color: theme.text, fontSize: 22 },
+    pickerMenu: {
+      backgroundColor: theme.card,
+      borderColor: theme.border,
+      borderRadius: 10,
+      borderWidth: 1,
+      marginTop: 5,
+      overflow: "hidden",
+    },
+    pickerOption: {
+      alignItems: "center",
+      borderBottomColor: theme.border,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      flexDirection: "row",
+      justifyContent: "space-between",
+      padding: 13,
+    },
+    pickerOptionText: { color: theme.text, fontSize: 14 },
+    check: { color: theme.primary, fontSize: 18, fontWeight: "700" },
+    periodTabs: { gap: 8, paddingVertical: 16 },
+    periodTab: { backgroundColor: theme.cardAlt, borderRadius: 18, paddingHorizontal: 16, paddingVertical: 9 },
+    periodTabActive: { backgroundColor: theme.primary },
+    periodTabText: { color: theme.textSubtle, fontSize: 13, fontWeight: "600" },
+    periodTabTextActive: { color: theme.textInverse },
+    summaryCard: {
+      backgroundColor: theme.card,
+      borderColor: theme.border,
+      borderRadius: 15,
+      borderWidth: 1,
+      padding: 16,
+    },
+    cardTitle: { color: theme.textMuted, fontSize: 13 },
+    availableBalance: { color: theme.textMuted, fontSize: 12, marginTop: 15 },
+    availableValue: { color: theme.text, fontSize: 28, fontWeight: "800", marginTop: 3 },
+    summaryGrid: {
+      borderTopColor: theme.border,
+      borderTopWidth: 1,
+      flexDirection: "row",
+      marginTop: 16,
+      paddingTop: 13,
+    },
+    summaryItem: { flex: 1 },
+    summaryLabel: { color: theme.textMuted, fontSize: 11 },
+    summaryValue: { fontSize: 13, fontWeight: "700", marginTop: 4 },
+    reportButton: {
+      alignItems: "center",
+      backgroundColor: theme.goodBackground,
+      borderRadius: 10,
+      flexDirection: "row",
+      justifyContent: "center",
+      marginTop: 12,
+      padding: 13,
+    },
+    reportButtonText: { color: theme.goodText, fontSize: 14, fontWeight: "700" },
+    reportArrow: { color: theme.goodText, fontSize: 22, marginLeft: 8 },
+    sectionHeader: {
+      alignItems: "center",
+      flexDirection: "row",
+      justifyContent: "space-between",
+      marginBottom: 10,
+      marginTop: 20,
+    },
+    sectionTitle: { color: theme.text, fontSize: 17, fontWeight: "800" },
+    sectionMeta: { color: theme.textMuted, fontSize: 12 },
+    skeletonGroup: {
+      backgroundColor: theme.card,
+      borderColor: theme.border,
+      borderRadius: 14,
+      borderWidth: 1,
+      marginBottom: 10,
+      overflow: "hidden",
+      paddingHorizontal: 14,
+    },
+    skeletonHeader: {
+      backgroundColor: theme.cardAlt,
+      borderRadius: 6,
+      height: 14,
+      marginVertical: 14,
+      width: "48%",
+    },
+    skeletonRow: {
+      alignItems: "center",
+      borderTopColor: theme.border,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      flexDirection: "row",
+      minHeight: 64,
+    },
+    skeletonIcon: {
+      backgroundColor: theme.cardAlt,
+      borderRadius: 18,
+      height: 36,
+      marginRight: 11,
+      width: 36,
+    },
+    skeletonCopy: { flex: 1, gap: 8 },
+    skeletonLineWide: { backgroundColor: theme.cardAlt, borderRadius: 5, height: 12, width: "68%" },
+    skeletonLineShort: { backgroundColor: theme.cardAlt, borderRadius: 5, height: 10, width: "42%" },
+    skeletonAmount: { backgroundColor: theme.cardAlt, borderRadius: 5, height: 12, width: 72 },
+    anomalyBanner: {
+      alignItems: "center",
+      backgroundColor: theme.warningBackground,
+      borderColor: theme.warning,
+      borderRadius: 8,
+      borderWidth: 1,
+      flexDirection: "row",
+      gap: 8,
+      marginBottom: 10,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+    },
+    anomalyBannerIcon: { color: theme.warning, fontSize: 16 },
+    anomalyBannerCopy: { flex: 1, gap: 6 },
+    anomalyBannerText: { color: theme.warning, flex: 1, fontSize: 12, fontWeight: "800", lineHeight: 17 },
+    anomalyBannerButton: { alignItems: "center", flexDirection: "row", gap: 4, alignSelf: "flex-start" },
+    anomalyBannerButtonText: { color: theme.warning, fontSize: 12, fontWeight: "900" },
+    anomalyBannerButtonArrow: { color: theme.warning, fontSize: 18, fontWeight: "900", lineHeight: 18 },
+    loader: { margin: 30 },
+    dayGroup: {
+      backgroundColor: theme.card,
+      borderColor: theme.border,
+      borderRadius: 14,
+      borderWidth: 1,
+      marginBottom: 10,
+      overflow: "hidden",
+      paddingHorizontal: 14,
+    },
+    dayHeader: {
+      alignItems: "center",
+      borderBottomColor: theme.border,
+      borderBottomWidth: 1,
+      flexDirection: "row",
+      justifyContent: "space-between",
+      paddingVertical: 13,
+    },
+    dayTitle: { color: theme.text, fontSize: 13, fontWeight: "700" },
+    dayTotal: { fontSize: 13, fontWeight: "700" },
+    transactionRow: {
+      alignItems: "center",
+      borderBottomColor: theme.border,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      flexDirection: "row",
+      paddingVertical: 12,
+    },
+    transactionIcon: {
+      alignItems: "center",
+      borderRadius: 18,
+      height: 36,
+      justifyContent: "center",
+      marginRight: 11,
+      width: 36,
+    },
+    transactionCopy: { flex: 1 },
+    transactionTitleRow: { alignItems: "center", flexDirection: "row", gap: 6 },
+    transactionTitle: { color: theme.text, fontSize: 14, fontWeight: "700" },
+    transactionDescription: { color: theme.textSubtle, fontSize: 11, marginTop: 3 },
+    anomalyTag: {
+      alignItems: "center",
+      backgroundColor: theme.warningBackground,
+      borderRadius: 9,
+      flexDirection: "row",
+      gap: 3,
+      paddingHorizontal: 6,
+      paddingVertical: 3,
+    },
+    anomalyIcon: { color: theme.warning, fontSize: 12, fontWeight: "900" },
+    anomalyTagText: { color: theme.warning, fontSize: 9, fontWeight: "900" },
+    transactionAmount: { fontSize: 13, fontWeight: "700", marginLeft: 8 },
+    netCard: {
+      backgroundColor: theme.card,
+      borderColor: theme.border,
+      borderRadius: 14,
+      borderWidth: 1,
+      marginTop: 10,
+      padding: 15,
+    },
+    netValue: { fontSize: 15, fontWeight: "800" },
+    helperText: { color: theme.textMuted, fontSize: 12 },
+    progressTrack: {
+      backgroundColor: theme.progressTrack,
+      borderRadius: 5,
+      height: 9,
+      marginTop: 12,
+      overflow: "hidden",
+    },
+    progressFill: { backgroundColor: theme.primary, borderRadius: 5, height: "100%" },
+    progressLabel: { color: theme.textMuted, fontSize: 11, marginTop: 6 },
+    breakdownCard: {
+      backgroundColor: theme.card,
+      borderColor: theme.border,
+      borderRadius: 14,
+      borderWidth: 1,
+      marginTop: 12,
+      padding: 15,
+    },
+    breakdownRow: { flexDirection: "row", justifyContent: "space-around", paddingTop: 15 },
+    donutItem: { alignItems: "center" },
+    donut: { alignItems: "center", borderRadius: 52, borderWidth: 14, height: 90, justifyContent: "center", width: 90 },
+    donutValue: { color: theme.text, fontSize: 13, fontWeight: "800" },
+    donutLabel: { color: theme.textMuted, fontSize: 12, marginTop: 8 },
+    otherCard: {
+      backgroundColor: theme.card,
+      borderColor: theme.border,
+      borderRadius: 14,
+      borderWidth: 1,
+      gap: 12,
+      marginTop: 12,
+      padding: 15,
+    },
+    empty: {
+      alignItems: "center",
+      backgroundColor: theme.card,
+      borderColor: theme.border,
+      borderRadius: 14,
+      borderWidth: 1,
+      padding: 28,
+    },
+    emptyTitle: { color: theme.text, fontSize: 16, fontWeight: "700" },
+    emptyText: { color: theme.textSubtle, fontSize: 12, marginTop: 6 },
   });
 }
