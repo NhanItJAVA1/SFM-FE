@@ -7,6 +7,7 @@ import { categoriesApi } from '@/api/categoriesApi';
 import type { Category } from '@/api/categoriesApi';
 import { FocusedScreenTransition } from '@/components/screen-transition';
 import { useAppTheme } from '@/hooks/use-app-theme';
+import { useAIAnalysis } from '@/hooks/use-ai-analysis';
 import { BudgetCategoryItem } from '@/screens/budgets/budget-category-item';
 import { BudgetSummaryCard } from '@/screens/budgets/budget-summary-card';
 import { BudgetTransactionList } from '@/screens/budgets/budget-transaction-list';
@@ -44,6 +45,7 @@ export default function BudgetsScreen() {
   const [tabTranslateX] = useState(() => new Animated.Value(0));
   const [detailReloadKey, setDetailReloadKey] = useState(0);
   const hasLoadedBudgetsRef = useRef(false);
+  const { analysis, isLoading: isAILoading, refresh: refreshAI } = useAIAnalysis();
 
   const expenseCategories = useMemo(() => categories.filter((category) => category.type === 'Expense'), [categories]);
   const sortedBudgets = useMemo(() => sortBudgetsForCategoryTab(budgets), [budgets]);
@@ -71,6 +73,7 @@ export default function BudgetsScreen() {
       const [budgetResponse, categoryResponse] = await Promise.all([
         budgetsApi.progressSummary(),
         categoriesApi.list(),
+        ...(mode === 'refreshing' ? [refreshAI()] : []),
       ]);
       const budgetProgressEntries = budgetResponse.data.map<BudgetWithProgress>((progress) => ({
         ...progress,
@@ -96,7 +99,7 @@ export default function BudgetsScreen() {
       setIsLoading(false);
       setIsRefreshing(false);
     }
-  }, []);
+  }, [refreshAI]);
 
   const loadSelectedBudgetDetail = useCallback(async (budgetId: number) => {
     try {
@@ -243,6 +246,13 @@ export default function BudgetsScreen() {
         </Pressable>
       </View>
 
+      {isAILoading ? (
+        <View style={styles.aiSkeleton}>
+          <View style={styles.aiSkeletonTitle} />
+          <View style={styles.aiSkeletonLine} />
+        </View>
+      ) : null}
+
       {isLoading ? (
         <View style={styles.loadingState}>
           <ActivityIndicator color={theme.primary} />
@@ -314,6 +324,7 @@ export default function BudgetsScreen() {
                 {sortedBudgets.map((budget) => (
                   <BudgetCategoryItem
                     key={budget.id}
+                    aiRecommendations={analysis?.recommendations ?? []}
                     budget={budget}
                     categories={categories}
                     isSelected={budget.id === selectedBudget?.id}
