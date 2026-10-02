@@ -1,5 +1,5 @@
-import { router } from "expo-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { router, useFocusEffect } from "expo-router";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -98,12 +98,13 @@ export default function HomeScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const hasLoadedDataRef = useRef(false);
 
-  const loadHomeData = useCallback(async (refresh = false) => {
+  const loadHomeData = useCallback(async ({ refresh = false, silent = false } = {}) => {
     try {
       if (refresh) {
         setIsRefreshing(true);
-      } else {
+      } else if (!silent) {
         setIsLoading(true);
       }
       setErrorMessage(null);
@@ -119,21 +120,28 @@ export default function HomeScreen() {
       setTransactions(transactionResponse.data);
       setCategories(categoryResponse.data);
       setSpendingStats(spendingResponse.data);
+      hasLoadedDataRef.current = true;
     } catch (error) {
       const message = error instanceof Error ? error.message : "Vui lòng thử lại sau.";
       setErrorMessage(message);
-      Alert.alert("Không tải được tổng quan", message);
+      if (silent) {
+        console.warn("Không tải được tổng quan", error);
+      } else {
+        Alert.alert("Không tải được tổng quan", message);
+      }
     } finally {
-      setIsLoading(false);
+      if (!silent) {
+        setIsLoading(false);
+      }
       setIsRefreshing(false);
     }
   }, []);
 
-  useEffect(() => {
-    const timeoutId = setTimeout(() => loadHomeData(), 0);
-
-    return () => clearTimeout(timeoutId);
-  }, [loadHomeData]);
+  useFocusEffect(
+    useCallback(() => {
+      loadHomeData({ silent: hasLoadedDataRef.current });
+    }, [loadHomeData])
+  );
 
   const currency = accounts[0]?.currency ?? "VND";
   const accountMap = useMemo(() => new Map(accounts.map((account) => [account.id, account])), [accounts]);
@@ -216,7 +224,7 @@ export default function HomeScreen() {
         <ScrollView
           contentContainerStyle={styles.content}
           refreshControl={
-            <RefreshControl refreshing={isRefreshing} onRefresh={() => loadHomeData(true)} tintColor={theme.primary} />
+            <RefreshControl refreshing={isRefreshing} onRefresh={() => loadHomeData({ refresh: true })} tintColor={theme.primary} />
           }
           showsVerticalScrollIndicator={false}
         >
@@ -229,7 +237,7 @@ export default function HomeScreen() {
           </View>
           <Pressable
             style={styles.iconButton}
-            onPress={() => loadHomeData(true)}
+            onPress={() => loadHomeData({ refresh: true })}
             accessibilityLabel="Làm mới tổng quan"
           >
             <Text style={styles.iconButtonText}>↻</Text>

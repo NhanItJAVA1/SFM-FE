@@ -95,6 +95,12 @@ export type TransactionListParams = {
   filter?: "NotDeleted" | "Deleted" | "All";
 };
 
+export type ExportTransactionsParams = {
+  accountId?: number | null;
+  fromDate?: string;
+  toDate?: string;
+};
+
 export type TransactionType = "Income" | "Expense" | "TransferIn" | "TransferOut";
 
 export type Transaction = {
@@ -185,6 +191,14 @@ export const transactionsApi = {
     axiosClient.get<CategorySpendingResponse>(`/transactions/category-spending${buildQuery(params)}`),
   list: (params: TransactionListParams = {}) =>
     axiosClient.get<Transaction[]>(`/transactions${buildQuery({ accountId: params.accountId, filter: params.filter })}`),
+  exportTransactions: (params: ExportTransactionsParams = {}) =>
+    axiosClient.getBinary(
+      `/transactions/export${buildQuery({
+        accountId: params.accountId,
+        fromDate: params.fromDate,
+        toDate: params.toDate,
+      })}`,
+    ),
   create: (payload: CreateTransactionPayload) =>
     axiosClient.post<CreateTransactionFromScanResponse>('/transactions', payload),
 };

@@ -17,6 +17,12 @@ export type ApiResponse<T = unknown> = {
   status: number;
 };
 
+export type BinaryApiResponse = {
+  data: ArrayBuffer;
+  headers: Headers;
+  status: number;
+};
+
 type RefreshTokenResponse = {
   accessToken: string;
   refreshToken?: string | null;
@@ -79,6 +85,33 @@ async function parseResponse<T>(response: Response): Promise<ApiResponse<T>> {
 
   return {
     data: data as T,
+    status: response.status,
+  };
+}
+
+async function parseBinaryResponse(response: Response): Promise<BinaryApiResponse> {
+  if (!response.ok) {
+    const text = await response.text();
+    let message = `Request failed with status ${response.status}`;
+
+    if (text) {
+      try {
+        const data = JSON.parse(text) as { message?: unknown };
+
+        if (typeof data.message === 'string') {
+          message = data.message;
+        }
+      } catch {
+        message = text;
+      }
+    }
+
+    throw new Error(message);
+  }
+
+  return {
+    data: await response.arrayBuffer(),
+    headers: response.headers,
     status: response.status,
   };
 }
@@ -161,6 +194,23 @@ async function request<T = unknown>(
   return parseResponse<T>(response);
 }
 
+async function requestBinary(path: string, canRetryAuth = true): Promise<BinaryApiResponse> {
+  const response = await fetch(buildUrl(path), {
+    method: 'GET',
+    headers: {
+      Accept: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      ...getNoCacheHeaders('GET'),
+      ...getAuthHeaders(),
+    },
+  });
+
+  if (response.status === 401 && canRetryAuth && (await refreshAccessTokenOnce())) {
+    return requestBinary(path, false);
+  }
+
+  return parseBinaryResponse(response);
+}
+
 async function uploadFormData<T = unknown>(
   path: string,
   formData: FormData,
@@ -184,6 +234,7 @@ async function uploadFormData<T = unknown>(
 
 export const axiosClient = {
   get: <T = unknown>(path: string) => request<T>(path),
+  getBinary: (path: string) => requestBinary(path),
   post: <T = unknown>(path: string, body?: unknown) =>
     request<T>(path, {
       method: 'POST',
@@ -194,9 +245,10 @@ export const axiosClient = {
       method: 'PUT',
       body,
     }),
-  delete: <T = unknown>(path: string) =>
+  delete: <T = unknown>(path: string, body?: unknown) =>
     request<T>(path, {
       method: 'DELETE',
+      body,
     }),
   uploadFormData,
 };

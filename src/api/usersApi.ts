@@ -18,9 +18,15 @@ export type UpdateUserPayload = {
   avatarUrl: string | null;
 };
 
+export type ResetMyDataPayload = {
+  password: string;
+  idToken: string;
+};
+
 export const usersApi = {
   get: (id: number) => axiosClient.get<AuthUser>(`/users/${id}`),
   update: (id: number, payload: UpdateUserPayload) => axiosClient.put(`/users/${id}`, payload),
   createAvatarUploadUrl: (payload: AvatarUploadUrlPayload) =>
     axiosClient.post<AvatarUploadUrlResponse>('/users/avatar/upload-url', payload),
+  resetMyData: (payload: ResetMyDataPayload) => axiosClient.delete('/Users/me/data', payload),
 };
