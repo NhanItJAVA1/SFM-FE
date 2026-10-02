@@ -24,6 +24,7 @@ export type ResetMyDataPayload = {
 };
 
 export const usersApi = {
+  list: () => axiosClient.get<AuthUser[]>('/Users'),
   get: (id: number) => axiosClient.get<AuthUser>(`/users/${id}`),
   update: (id: number, payload: UpdateUserPayload) => axiosClient.put(`/users/${id}`, payload),
   createAvatarUploadUrl: (payload: AvatarUploadUrlPayload) =>

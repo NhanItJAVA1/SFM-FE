@@ -6,8 +6,9 @@ import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, Text, TextIn
 
 import { authApi } from "@/api/authApi";
 import { FocusedScreenTransition } from "@/components/screen-transition";
-import { getAuthAccessToken } from "@/stores/authSession";
+import { getAuthAccessToken, getAuthUser } from "@/stores/authSession";
 import { saveAuthSession } from "@/stores/persistedAuthSession";
+import { isAdminUser } from "@/utils/authRole";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -42,6 +43,10 @@ function decodeJwtPayload(token: string) {
   }
 }
 
+function getPostLoginRoute(user: Parameters<typeof isAdminUser>[0]) {
+  return (isAdminUser(user) ? "/admin" : "/(tabs)/home") as never;
+}
+
 export default function LoginScreen() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -56,7 +61,7 @@ export default function LoginScreen() {
 
   useEffect(() => {
     if (getAuthAccessToken()) {
-      router.replace("/(tabs)/home");
+      router.replace(getPostLoginRoute(getAuthUser()));
     }
   }, []);
 
@@ -68,7 +73,7 @@ export default function LoginScreen() {
           token,
         });
         await saveAuthSession(response.data);
-        router.replace("/(tabs)/home");
+        router.replace(getPostLoginRoute(response.data.user));
       } catch (error) {
         Alert.alert("Google sign in failed", error instanceof Error ? error.message : "Unable to sign in with Google.");
       } finally {
@@ -105,7 +110,7 @@ export default function LoginScreen() {
       setIsSubmitting(true);
       const response = await authApi.login({ username: username.trim(), password });
       await saveAuthSession(response.data);
-      router.replace("/(tabs)/home");
+      router.replace(getPostLoginRoute(response.data.user));
     } catch (error) {
       Alert.alert("Sign in failed", error instanceof Error ? error.message : "Unable to connect to the server.");
     } finally {
