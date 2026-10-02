@@ -31,6 +31,7 @@ import { FocusedScreenTransition } from '@/components/screen-transition';
 import { useAppTheme } from '@/hooks/use-app-theme';
 import { useThemeMode } from '@/hooks/use-theme-mode';
 import { presentTransactionNotifications } from '@/services/transactionNotifications';
+import { getAccountCurrentBalance } from '@/utils/accountBalance';
 import { openVietQRPayment } from '@/utils/paymentDeeplink';
 
 const transactionTypes: { label: string; value: TransactionType }[] = [
@@ -646,7 +647,7 @@ export default function CreateScreen() {
                 >
                   <Text style={[styles.pickerItemText, { color: theme.text }]}>{account.name}</Text>
                   <Text style={[styles.pickerItemSubtext, { color: theme.textSubtle }]}>
-                    {formatAmount(account.initialBalance)}
+                    {formatAmount(getAccountCurrentBalance(account))}
                   </Text>
                 </Pressable>
               ))}

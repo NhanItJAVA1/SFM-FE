@@ -23,14 +23,11 @@ export type FinancialAccount = {
   type: AccountType;
   currency: string;
   initialBalance: number;
+  currentBalance?: number | null;
   isActive: boolean;
   createdAt: string;
   updatedAt: string | null;
 };
-
-export function getFinancialAccountBalance(account: FinancialAccount) {
-  return account.initialBalance;
-}
 
 export const financialAccountApi = {
   list: () => axiosClient.get<FinancialAccount[]>("/accounts"),

@@ -1,4 +1,4 @@
-import { useFocusEffect } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
@@ -17,13 +17,15 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { adminApi } from '@/api/adminApi';
+import { authApi } from '@/api/authApi';
 import type { AuthUser } from '@/api/authApi';
 import { type Category, type CategoryType } from '@/api/categoriesApi';
 import { transactionsApi, type Transaction } from '@/api/transactionsApi';
 import { usersApi } from '@/api/usersApi';
 import { FocusedScreenTransition } from '@/components/screen-transition';
 import { useAppTheme } from '@/hooks/use-app-theme';
-import { getAuthUser } from '@/stores/authSession';
+import { getAuthRefreshToken, getAuthUser } from '@/stores/authSession';
+import { clearAuthSession } from '@/stores/persistedAuthSession';
 import type { AppTheme } from '@/theme/appTheme';
 import { isAdminUser } from '@/utils/authRole';
 
@@ -76,6 +78,7 @@ export default function AdminScreen() {
   const [isCategoryFormVisible, setIsCategoryFormVisible] = useState(false);
   const [isSavingCategory, setIsSavingCategory] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const defaultCategories = categories;
@@ -202,6 +205,28 @@ export default function AdminScreen() {
       setCategories((current) => current.filter((item) => item.id !== category.id));
     } catch (error) {
       Alert.alert('Không xóa được category', error instanceof Error ? error.message : 'Vui lòng thử lại sau.');
+    }
+  }
+
+  function confirmLogout() {
+    Alert.alert('Đăng xuất', 'Bạn muốn đăng xuất khỏi trang Admin?', [
+      { style: 'cancel', text: 'Hủy' },
+      { onPress: () => void handleLogout(), style: 'destructive', text: 'Đăng xuất' },
+    ]);
+  }
+
+  async function handleLogout() {
+    try {
+      setIsLoggingOut(true);
+      const refreshToken = getAuthRefreshToken();
+
+      await authApi.logout(refreshToken ? { refreshToken } : undefined);
+    } catch {
+      // Local logout should still proceed if the server cannot clear the refresh token.
+    } finally {
+      await clearAuthSession();
+      setIsLoggingOut(false);
+      router.replace('/auth/login');
     }
   }
 
@@ -371,8 +396,17 @@ export default function AdminScreen() {
               <Text style={styles.eyebrow}>ADMIN CONSOLE</Text>
               <Text style={styles.title}>Xin chào, {currentUser?.displayName ?? currentUser?.username}</Text>
             </View>
-            <View style={styles.adminAvatar}>
-              <Text style={styles.adminAvatarText}>A</Text>
+            <View style={styles.adminActions}>
+              <View style={styles.adminAvatar}>
+                <Text style={styles.adminAvatarText}>A</Text>
+              </View>
+              <Pressable
+                style={[styles.logoutButton, isLoggingOut && styles.disabledText]}
+                onPress={confirmLogout}
+                disabled={isLoggingOut}
+              >
+                {isLoggingOut ? <ActivityIndicator color={theme.textInverse} /> : <Text style={styles.logoutButtonText}>Đăng xuất</Text>}
+              </Pressable>
             </View>
           </View>
 
@@ -578,6 +612,17 @@ function createStyles(theme: AppTheme) {
       width: 48,
     },
     adminAvatarText: { color: theme.text, fontSize: 20, fontWeight: '900' },
+    adminActions: { alignItems: 'flex-end', gap: 8 },
+    logoutButton: {
+      alignItems: 'center',
+      backgroundColor: theme.danger,
+      borderRadius: 8,
+      justifyContent: 'center',
+      minHeight: 34,
+      minWidth: 92,
+      paddingHorizontal: 12,
+    },
+    logoutButtonText: { color: theme.textInverse, fontSize: 13, fontWeight: '900' },
     tileGrid: { flexDirection: 'row', gap: 12 },
     tile: {
       borderRadius: 8,
