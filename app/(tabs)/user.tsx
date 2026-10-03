@@ -368,26 +368,34 @@ export default function UserScreen() {
 
   useEffect(() => {
     if (view !== "exportFile") {
-      return;
+      return undefined;
     }
 
-    loadExportAccounts();
+    const timeoutId = setTimeout(() => {
+      loadExportAccounts();
+    }, 0);
+
+    return () => clearTimeout(timeoutId);
   }, [loadExportAccounts, view]);
 
   useEffect(() => {
     if (!isGoogleResettingAccount || googleResetResponse?.type !== "success") {
-      return;
+      return undefined;
     }
 
-    const idToken = googleResetResponse.params.id_token;
+    const timeoutId = setTimeout(() => {
+      const idToken = googleResetResponse.params.id_token;
 
-    if (!idToken) {
-      setIsGoogleResettingAccount(false);
-      Alert.alert("Không thể xác nhận Google", "Google không trả về ID token.");
-      return;
-    }
+      if (!idToken) {
+        setIsGoogleResettingAccount(false);
+        Alert.alert("Không thể xác nhận Google", "Google không trả về ID token.");
+        return;
+      }
 
-    resetAccountData({ idToken, password: "" });
+      resetAccountData({ idToken, password: "" });
+    }, 0);
+
+    return () => clearTimeout(timeoutId);
   }, [googleResetResponse, isGoogleResettingAccount, resetAccountData]);
 
   function goPreviousStatsPeriod() {
