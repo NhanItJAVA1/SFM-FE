@@ -1,5 +1,5 @@
-import { router, useFocusEffect } from 'expo-router';
-import { useCallback, useMemo, useState } from 'react';
+import { router, useFocusEffect } from "expo-router";
+import { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -13,23 +13,23 @@ import {
   Text,
   TextInput,
   View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
-import { adminApi } from '@/api/adminApi';
-import { authApi } from '@/api/authApi';
-import type { AuthUser } from '@/api/authApi';
-import { type Category, type CategoryType } from '@/api/categoriesApi';
-import { transactionsApi, type Transaction } from '@/api/transactionsApi';
-import { usersApi } from '@/api/usersApi';
-import { FocusedScreenTransition } from '@/components/screen-transition';
-import { useAppTheme } from '@/hooks/use-app-theme';
-import { getAuthRefreshToken, getAuthUser } from '@/stores/authSession';
-import { clearAuthSession } from '@/stores/persistedAuthSession';
-import type { AppTheme } from '@/theme/appTheme';
-import { isAdminUser } from '@/utils/authRole';
+import { adminApi } from "@/api/adminApi";
+import type { AuthUser } from "@/api/authApi";
+import { authApi } from "@/api/authApi";
+import { type Category, type CategoryType } from "@/api/categoriesApi";
+import { transactionsApi, type Transaction } from "@/api/transactionsApi";
+import { usersApi } from "@/api/usersApi";
+import { FocusedScreenTransition } from "@/components/screen-transition";
+import { useAppTheme } from "@/hooks/use-app-theme";
+import { getAuthRefreshToken, getAuthUser } from "@/stores/authSession";
+import { clearAuthSession } from "@/stores/persistedAuthSession";
+import type { AppTheme } from "@/theme/appTheme";
+import { isAdminUser } from "@/utils/authRole";
 
-type AdminView = 'dashboard' | 'users' | 'categories';
+type AdminView = "dashboard" | "users" | "categories";
 type CategoryFormState = {
   icon: string;
   name: string;
@@ -37,9 +37,9 @@ type CategoryFormState = {
 };
 
 const emptyCategoryForm: CategoryFormState = {
-  icon: 'other',
-  name: '',
-  type: 'Expense',
+  icon: "other",
+  name: "",
+  type: "Expense",
 };
 
 function useAdminStyles() {
@@ -50,25 +50,25 @@ function useAdminStyles() {
 
 function formatDate(value: string | null | undefined) {
   if (!value) {
-    return 'Chưa có';
+    return "Chưa có";
   }
 
-  return new Intl.DateTimeFormat('vi-VN', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
+  return new Intl.DateTimeFormat("vi-VN", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
   }).format(new Date(value));
 }
 
-function getCategoryTypeLabel(type: Category['type']) {
-  return type === 'Income' ? 'Thu nhập' : 'Chi tiêu';
+function getCategoryTypeLabel(type: Category["type"]) {
+  return type === "Income" ? "Thu nhập" : "Chi tiêu";
 }
 
 export default function AdminScreen() {
   const theme = useAppTheme();
   const styles = useAdminStyles();
   const currentUser = getAuthUser();
-  const [view, setView] = useState<AdminView>('dashboard');
+  const [view, setView] = useState<AdminView>("dashboard");
   const [users, setUsers] = useState<AuthUser[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -94,17 +94,17 @@ export default function AdminScreen() {
       const [usersResponse, categoriesResponse, transactionsResponse] = await Promise.all([
         usersApi.list(),
         adminApi.listDefaultCategories(),
-        transactionsApi.list({ filter: 'All' }),
+        transactionsApi.list({ filter: "All" }),
       ]);
 
-      setUsers(usersResponse.data);
-      setCategories(categoriesResponse.data);
-      setTransactions(transactionsResponse.data);
+      setUsers(Array.isArray(usersResponse.data) ? usersResponse.data : []);
+      setCategories(Array.isArray(categoriesResponse.data) ? categoriesResponse.data : []);
+      setTransactions(Array.isArray(transactionsResponse.data) ? transactionsResponse.data : []);
     } catch (error) {
       if (silent) {
-        console.warn('Không tải được admin dashboard', error);
+        console.warn("Không tải được admin dashboard", error);
       } else {
-        Alert.alert('Không tải được dữ liệu admin', error instanceof Error ? error.message : 'Vui lòng thử lại sau.');
+        Alert.alert("Không tải được dữ liệu admin", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
       }
     } finally {
       if (!silent) {
@@ -135,7 +135,7 @@ export default function AdminScreen() {
   function openEditDefaultCategory(category: Category) {
     setEditingCategory(category);
     setCategoryForm({
-      icon: category.icon ?? '',
+      icon: category.icon ?? "",
       name: category.name,
       type: category.type,
     });
@@ -157,7 +157,7 @@ export default function AdminScreen() {
     const icon = categoryForm.icon.trim() || null;
 
     if (!name) {
-      Alert.alert('Thiếu tên danh mục', 'Vui lòng nhập tên category mặc định.');
+      Alert.alert("Thiếu tên danh mục", "Vui lòng nhập tên category mặc định.");
       return;
     }
 
@@ -172,29 +172,33 @@ export default function AdminScreen() {
 
       if (editingCategory) {
         const response = await adminApi.updateDefaultCategory(editingCategory.id, payload);
-        setCategories((current) => current.map((item) => (item.id === response.data.id ? response.data : item)));
+        setCategories((current) =>
+          (current ?? []).map((item) => (item.id === response.data.id ? response.data : item)),
+        );
       } else {
         const response = await adminApi.createDefaultCategory(payload);
-        setCategories((current) => [...current, response.data].sort((left, right) => left.name.localeCompare(right.name)));
+        setCategories((current) =>
+          [...(current ?? []), response.data].sort((left, right) => left.name.localeCompare(right.name)),
+        );
       }
 
       setIsCategoryFormVisible(false);
       setEditingCategory(null);
       setCategoryForm(emptyCategoryForm);
     } catch (error) {
-      Alert.alert('Không lưu được category', error instanceof Error ? error.message : 'Vui lòng thử lại sau.');
+      Alert.alert("Không lưu được category", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
     } finally {
       setIsSavingCategory(false);
     }
   }
 
   function requestDeleteDefaultCategory(category: Category) {
-    Alert.alert('Xóa category mặc định', `Bạn có chắc muốn xóa "${category.name}" không?`, [
-      { style: 'cancel', text: 'Hủy' },
+    Alert.alert("Xóa category mặc định", `Bạn có chắc muốn xóa "${category.name}" không?`, [
+      { style: "cancel", text: "Hủy" },
       {
         onPress: () => void deleteDefaultCategory(category),
-        style: 'destructive',
-        text: 'Xóa',
+        style: "destructive",
+        text: "Xóa",
       },
     ]);
   }
@@ -202,16 +206,16 @@ export default function AdminScreen() {
   async function deleteDefaultCategory(category: Category) {
     try {
       await adminApi.deleteDefaultCategory(category.id);
-      setCategories((current) => current.filter((item) => item.id !== category.id));
+      setCategories((current) => (current ?? []).filter((item) => item.id !== category.id));
     } catch (error) {
-      Alert.alert('Không xóa được category', error instanceof Error ? error.message : 'Vui lòng thử lại sau.');
+      Alert.alert("Không xóa được category", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
     }
   }
 
   function confirmLogout() {
-    Alert.alert('Đăng xuất', 'Bạn muốn đăng xuất khỏi trang Admin?', [
-      { style: 'cancel', text: 'Hủy' },
-      { onPress: () => void handleLogout(), style: 'destructive', text: 'Đăng xuất' },
+    Alert.alert("Đăng xuất", "Bạn muốn đăng xuất khỏi trang Admin?", [
+      { style: "cancel", text: "Hủy" },
+      { onPress: () => void handleLogout(), style: "destructive", text: "Đăng xuất" },
     ]);
   }
 
@@ -226,14 +230,14 @@ export default function AdminScreen() {
     } finally {
       await clearAuthSession();
       setIsLoggingOut(false);
-      router.replace('/auth/login');
+      router.replace("/auth/login");
     }
   }
 
   if (!isAdminUser(currentUser)) {
     return (
       <FocusedScreenTransition style={styles.screen}>
-        <SafeAreaView style={styles.screen} edges={['top']}>
+        <SafeAreaView style={styles.screen} edges={["top"]}>
           <View style={styles.deniedCard}>
             <Text style={styles.deniedTitle}>Không có quyền truy cập</Text>
             <Text style={styles.deniedText}>Tab này chỉ dành cho tài khoản Admin.</Text>
@@ -246,7 +250,7 @@ export default function AdminScreen() {
   if (selectedUser) {
     return (
       <FocusedScreenTransition style={styles.screen} triggerKey="admin-user-detail" variant="slide-left">
-        <SafeAreaView style={styles.screen} edges={['top']}>
+        <SafeAreaView style={styles.screen} edges={["top"]}>
           <View style={styles.header}>
             <Pressable onPress={() => setSelectedUser(null)} hitSlop={12}>
               <Text style={styles.backText}>‹ Users</Text>
@@ -259,7 +263,7 @@ export default function AdminScreen() {
             <View style={styles.userDetailCard}>
               <View style={styles.userAvatar}>
                 <Text style={styles.userAvatarText}>
-                  {(selectedUser.displayName ?? selectedUser.username ?? 'U').charAt(0).toUpperCase()}
+                  {(selectedUser.displayName ?? selectedUser.username ?? "U").charAt(0).toUpperCase()}
                 </Text>
               </View>
               <Text style={styles.userDetailName}>{selectedUser.displayName ?? selectedUser.username}</Text>
@@ -273,7 +277,7 @@ export default function AdminScreen() {
               <InfoRow label="Role" value={selectedUser.role} />
               <InfoRow label="Ngày tạo" value={formatDate(selectedUser.createdAt)} />
               <InfoRow label="Cập nhật" value={formatDate(selectedUser.updatedAt)} />
-              <InfoRow label="Avatar" value={selectedUser.avatarUrl ? 'Có' : 'Không'} />
+              <InfoRow label="Avatar" value={selectedUser.avatarUrl ? "Có" : "Không"} />
             </View>
           </ScrollView>
         </SafeAreaView>
@@ -281,12 +285,12 @@ export default function AdminScreen() {
     );
   }
 
-  if (view === 'users') {
+  if (view === "users") {
     return (
       <FocusedScreenTransition style={styles.screen} triggerKey={view} variant="slide-left">
-        <SafeAreaView style={styles.screen} edges={['top']}>
+        <SafeAreaView style={styles.screen} edges={["top"]}>
           <View style={styles.header}>
-            <Pressable onPress={() => setView('dashboard')} hitSlop={12}>
+            <Pressable onPress={() => setView("dashboard")} hitSlop={12}>
               <Text style={styles.backText}>‹ Admin</Text>
             </Pressable>
             <Text style={styles.headerTitle}>Users</Text>
@@ -296,14 +300,18 @@ export default function AdminScreen() {
           <ScrollView
             contentContainerStyle={styles.listContent}
             refreshControl={
-              <RefreshControl refreshing={isRefreshing} onRefresh={() => loadAdminData({ refresh: true })} tintColor={theme.primary} />
+              <RefreshControl
+                refreshing={isRefreshing}
+                onRefresh={() => loadAdminData({ refresh: true })}
+                tintColor={theme.primary}
+              />
             }
           >
-            {users.map((user) => (
+            {(users ?? []).map((user) => (
               <Pressable key={user.id} style={styles.userRow} onPress={() => openUserDetail(user)}>
                 <View style={styles.userMiniAvatar}>
                   <Text style={styles.userMiniAvatarText}>
-                    {(user.displayName ?? user.username ?? 'U').charAt(0).toUpperCase()}
+                    {(user.displayName ?? user.username ?? "U").charAt(0).toUpperCase()}
                   </Text>
                 </View>
                 <View style={styles.rowCopy}>
@@ -311,7 +319,9 @@ export default function AdminScreen() {
                   <Text style={styles.rowSubtitle}>{user.email}</Text>
                 </View>
                 <View style={[styles.roleBadge, isAdminUser(user) && styles.roleBadgeAdmin]}>
-                  <Text style={[styles.roleBadgeText, isAdminUser(user) && styles.roleBadgeTextAdmin]}>{user.role}</Text>
+                  <Text style={[styles.roleBadgeText, isAdminUser(user) && styles.roleBadgeTextAdmin]}>
+                    {user.role}
+                  </Text>
                 </View>
               </Pressable>
             ))}
@@ -321,12 +331,12 @@ export default function AdminScreen() {
     );
   }
 
-  if (view === 'categories') {
+  if (view === "categories") {
     return (
       <FocusedScreenTransition style={styles.screen} triggerKey={view} variant="slide-left">
-        <SafeAreaView style={styles.screen} edges={['top']}>
+        <SafeAreaView style={styles.screen} edges={["top"]}>
           <View style={styles.header}>
-            <Pressable onPress={() => setView('dashboard')} hitSlop={12}>
+            <Pressable onPress={() => setView("dashboard")} hitSlop={12}>
               <Text style={styles.backText}>‹ Admin</Text>
             </Pressable>
             <Text style={styles.headerTitle}>Category mặc định</Text>
@@ -338,18 +348,22 @@ export default function AdminScreen() {
           <ScrollView
             contentContainerStyle={styles.categoryContent}
             refreshControl={
-              <RefreshControl refreshing={isRefreshing} onRefresh={() => loadAdminData({ refresh: true })} tintColor={theme.primary} />
+              <RefreshControl
+                refreshing={isRefreshing}
+                onRefresh={() => loadAdminData({ refresh: true })}
+                tintColor={theme.primary}
+              />
             }
           >
-            {defaultCategories.map((category) => (
+            {(defaultCategories ?? []).map((category) => (
               <Pressable key={category.id} style={styles.categoryRow} onPress={() => openEditDefaultCategory(category)}>
                 <View style={styles.categoryIcon}>
-                  <Text style={styles.categoryIconText}>{category.icon?.charAt(0).toUpperCase() ?? 'C'}</Text>
+                  <Text style={styles.categoryIconText}>{category.icon?.charAt(0).toUpperCase() ?? "C"}</Text>
                 </View>
                 <View style={styles.rowCopy}>
                   <Text style={styles.rowTitle}>{category.name}</Text>
                   <Text style={styles.rowSubtitle}>
-                    {getCategoryTypeLabel(category.type)} · {category.icon ?? 'no icon'}
+                    {getCategoryTypeLabel(category.type)} · {category.icon ?? "no icon"}
                   </Text>
                 </View>
                 <Pressable
@@ -373,7 +387,7 @@ export default function AdminScreen() {
             onClose={closeCategoryForm}
             onSubmit={saveDefaultCategory}
             theme={theme}
-            title={editingCategory ? 'Sửa category mặc định' : 'Thêm category mặc định'}
+            title={editingCategory ? "Sửa category mặc định" : "Thêm category mặc định"}
             visible={isCategoryFormVisible}
           />
         </SafeAreaView>
@@ -383,11 +397,15 @@ export default function AdminScreen() {
 
   return (
     <FocusedScreenTransition style={styles.screen} triggerKey={view} variant="slide-right">
-      <SafeAreaView style={styles.screen} edges={['top']}>
+      <SafeAreaView style={styles.screen} edges={["top"]}>
         <ScrollView
           contentContainerStyle={styles.content}
           refreshControl={
-            <RefreshControl refreshing={isRefreshing} onRefresh={() => loadAdminData({ refresh: true })} tintColor={theme.primary} />
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={() => loadAdminData({ refresh: true })}
+              tintColor={theme.primary}
+            />
           }
           showsVerticalScrollIndicator={false}
         >
@@ -405,7 +423,11 @@ export default function AdminScreen() {
                 onPress={confirmLogout}
                 disabled={isLoggingOut}
               >
-                {isLoggingOut ? <ActivityIndicator color={theme.textInverse} /> : <Text style={styles.logoutButtonText}>Đăng xuất</Text>}
+                {isLoggingOut ? (
+                  <ActivityIndicator color={theme.textInverse} />
+                ) : (
+                  <Text style={styles.logoutButtonText}>Đăng xuất</Text>
+                )}
               </Pressable>
             </View>
           </View>
@@ -423,14 +445,14 @@ export default function AdminScreen() {
                   label="User"
                   metric={users.length}
                   note="Quản lý người dùng"
-                  onPress={() => setView('users')}
+                  onPress={() => setView("users")}
                 />
                 <AdminTile
                   color="#4a90e2"
                   label="Category"
                   metric={defaultCategories.length}
                   note="Danh mục mặc định"
-                  onPress={() => setView('categories')}
+                  onPress={() => setView("categories")}
                 />
               </View>
 
@@ -517,7 +539,10 @@ function CategoryFormModal({
 
   return (
     <Modal animationType="slide" transparent visible={visible} onRequestClose={onClose}>
-      <KeyboardAvoidingView behavior={Platform.select({ ios: 'padding', default: undefined })} style={styles.modalOverlay}>
+      <KeyboardAvoidingView
+        behavior={Platform.select({ ios: "padding", default: undefined })}
+        style={styles.modalOverlay}
+      >
         <Pressable style={styles.modalBackdrop} onPress={onClose} />
         <View style={styles.categoryFormSheet}>
           <View style={styles.formHeader}>
@@ -546,7 +571,7 @@ function CategoryFormModal({
             <View style={styles.formField}>
               <Text style={styles.formLabel}>Loại</Text>
               <View style={styles.typeToggleRow}>
-                {(['Expense', 'Income'] as CategoryType[]).map((type) => {
+                {(["Expense", "Income"] as CategoryType[]).map((type) => {
                   const isSelected = form.type === type;
 
                   return (
@@ -578,8 +603,16 @@ function CategoryFormModal({
               />
             </View>
 
-            <Pressable style={[styles.fullSaveButton, isSaving && styles.disabledText]} onPress={onSubmit} disabled={isSaving}>
-              {isSaving ? <ActivityIndicator color={theme.textInverse} /> : <Text style={styles.fullSaveButtonText}>Lưu category</Text>}
+            <Pressable
+              style={[styles.fullSaveButton, isSaving && styles.disabledText]}
+              onPress={onSubmit}
+              disabled={isSaving}
+            >
+              {isSaving ? (
+                <ActivityIndicator color={theme.textInverse} />
+              ) : (
+                <Text style={styles.fullSaveButtonText}>Lưu category</Text>
+              )}
             </Pressable>
           </View>
         </View>
@@ -593,104 +626,104 @@ function createStyles(theme: AppTheme) {
     screen: { backgroundColor: theme.screen, flex: 1 },
     content: { padding: 18, paddingBottom: 96 },
     welcomeRow: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      justifyContent: 'space-between',
+      alignItems: "center",
+      flexDirection: "row",
+      justifyContent: "space-between",
       marginBottom: 20,
       marginTop: 8,
     },
-    eyebrow: { color: theme.textMuted, fontSize: 11, fontWeight: '900' },
-    title: { color: theme.text, fontSize: 24, fontWeight: '900', marginTop: 4, maxWidth: 260 },
+    eyebrow: { color: theme.textMuted, fontSize: 11, fontWeight: "900" },
+    title: { color: theme.text, fontSize: 24, fontWeight: "900", marginTop: 4, maxWidth: 260 },
     adminAvatar: {
-      alignItems: 'center',
+      alignItems: "center",
       backgroundColor: theme.card,
       borderColor: theme.border,
       borderRadius: 24,
       borderWidth: 1,
       height: 48,
-      justifyContent: 'center',
+      justifyContent: "center",
       width: 48,
     },
-    adminAvatarText: { color: theme.text, fontSize: 20, fontWeight: '900' },
-    adminActions: { alignItems: 'flex-end', gap: 8 },
+    adminAvatarText: { color: theme.text, fontSize: 20, fontWeight: "900" },
+    adminActions: { alignItems: "flex-end", gap: 8 },
     logoutButton: {
-      alignItems: 'center',
+      alignItems: "center",
       backgroundColor: theme.danger,
       borderRadius: 8,
-      justifyContent: 'center',
+      justifyContent: "center",
       minHeight: 34,
       minWidth: 92,
       paddingHorizontal: 12,
     },
-    logoutButtonText: { color: theme.textInverse, fontSize: 13, fontWeight: '900' },
-    tileGrid: { flexDirection: 'row', gap: 12 },
+    logoutButtonText: { color: theme.textInverse, fontSize: 13, fontWeight: "900" },
+    tileGrid: { flexDirection: "row", gap: 12 },
     tile: {
       borderRadius: 8,
       flex: 1,
       minHeight: 128,
       padding: 14,
-      shadowColor: '#000',
+      shadowColor: "#000",
       shadowOpacity: 0.14,
       shadowRadius: 12,
     },
-    tileLabel: { color: theme.textInverse, fontSize: 14, fontWeight: '900' },
-    tileMetric: { color: theme.textInverse, fontSize: 34, fontWeight: '900', marginTop: 20 },
-    tileNote: { color: theme.textInverse, fontSize: 11, fontWeight: '700', opacity: 0.88 },
-    sectionLabel: { color: theme.textMuted, fontSize: 12, fontWeight: '900', marginBottom: 10, marginTop: 22 },
+    tileLabel: { color: theme.textInverse, fontSize: 14, fontWeight: "900" },
+    tileMetric: { color: theme.textInverse, fontSize: 34, fontWeight: "900", marginTop: 20 },
+    tileNote: { color: theme.textInverse, fontSize: 11, fontWeight: "700", opacity: 0.88 },
+    sectionLabel: { color: theme.textMuted, fontSize: 12, fontWeight: "900", marginBottom: 10, marginTop: 22 },
     statsCard: {
       backgroundColor: theme.card,
       borderColor: theme.border,
       borderRadius: 8,
       borderWidth: 1,
-      overflow: 'hidden',
+      overflow: "hidden",
     },
     statRow: {
-      alignItems: 'center',
+      alignItems: "center",
       borderBottomColor: theme.border,
       borderBottomWidth: StyleSheet.hairlineWidth,
-      flexDirection: 'row',
-      justifyContent: 'space-between',
+      flexDirection: "row",
+      justifyContent: "space-between",
       minHeight: 58,
       paddingHorizontal: 16,
     },
-    statLabel: { color: theme.textMuted, fontSize: 14, fontWeight: '800' },
-    statValue: { color: theme.text, fontSize: 18, fontWeight: '900' },
+    statLabel: { color: theme.textMuted, fontSize: 14, fontWeight: "800" },
+    statValue: { color: theme.text, fontSize: 18, fontWeight: "900" },
     header: {
-      alignItems: 'center',
-      flexDirection: 'row',
-      justifyContent: 'space-between',
+      alignItems: "center",
+      flexDirection: "row",
+      justifyContent: "space-between",
       paddingBottom: 14,
       paddingHorizontal: 18,
       paddingTop: 12,
     },
-    backText: { color: theme.primary, fontSize: 17, fontWeight: '800' },
-    headerTitle: { color: theme.text, fontSize: 20, fontWeight: '900' },
+    backText: { color: theme.primary, fontSize: 17, fontWeight: "800" },
+    headerTitle: { color: theme.text, fontSize: 20, fontWeight: "900" },
     headerSpacer: { width: 74 },
-    headerCount: { color: theme.textMuted, fontSize: 14, fontWeight: '900', minWidth: 74, textAlign: 'right' },
+    headerCount: { color: theme.textMuted, fontSize: 14, fontWeight: "900", minWidth: 74, textAlign: "right" },
     listContent: { gap: 10, padding: 18, paddingBottom: 96 },
     userRow: {
-      alignItems: 'center',
+      alignItems: "center",
       backgroundColor: theme.card,
       borderColor: theme.border,
       borderRadius: 8,
       borderWidth: 1,
-      flexDirection: 'row',
+      flexDirection: "row",
       minHeight: 76,
       padding: 12,
     },
     userMiniAvatar: {
-      alignItems: 'center',
+      alignItems: "center",
       backgroundColor: theme.avatar,
       borderRadius: 22,
       height: 44,
-      justifyContent: 'center',
+      justifyContent: "center",
       marginRight: 12,
       width: 44,
     },
-    userMiniAvatarText: { color: theme.textInverse, fontSize: 18, fontWeight: '900' },
+    userMiniAvatarText: { color: theme.textInverse, fontSize: 18, fontWeight: "900" },
     rowCopy: { flex: 1 },
-    rowTitle: { color: theme.text, fontSize: 16, fontWeight: '900' },
-    rowSubtitle: { color: theme.textMuted, fontSize: 13, fontWeight: '700', marginTop: 3 },
+    rowTitle: { color: theme.text, fontSize: 16, fontWeight: "900" },
+    rowSubtitle: { color: theme.textMuted, fontSize: 13, fontWeight: "700", marginTop: 3 },
     roleBadge: {
       backgroundColor: theme.cardAlt,
       borderRadius: 12,
@@ -698,49 +731,49 @@ function createStyles(theme: AppTheme) {
       paddingVertical: 5,
     },
     roleBadgeAdmin: { backgroundColor: theme.primaryPressed },
-    roleBadgeText: { color: theme.textMuted, fontSize: 11, fontWeight: '900' },
+    roleBadgeText: { color: theme.textMuted, fontSize: 11, fontWeight: "900" },
     roleBadgeTextAdmin: { color: theme.primary },
     categoryContent: { gap: 10, padding: 18, paddingBottom: 96 },
     categoryRow: {
-      alignItems: 'center',
+      alignItems: "center",
       backgroundColor: theme.card,
       borderColor: theme.border,
       borderRadius: 8,
       borderWidth: 1,
-      flexDirection: 'row',
+      flexDirection: "row",
       minHeight: 72,
       padding: 12,
     },
     categoryIcon: {
-      alignItems: 'center',
+      alignItems: "center",
       backgroundColor: theme.primaryPressed,
       borderRadius: 20,
       height: 40,
-      justifyContent: 'center',
+      justifyContent: "center",
       marginRight: 12,
       width: 40,
     },
-    categoryIconText: { color: theme.primary, fontSize: 16, fontWeight: '900' },
-    defaultTag: { color: theme.primary, fontSize: 12, fontWeight: '900' },
+    categoryIconText: { color: theme.primary, fontSize: 16, fontWeight: "900" },
+    defaultTag: { color: theme.primary, fontSize: 12, fontWeight: "900" },
     deleteCategoryButton: {
       backgroundColor: theme.warningBackground,
       borderRadius: 8,
       paddingHorizontal: 10,
       paddingVertical: 7,
     },
-    deleteCategoryText: { color: theme.dangerText, fontSize: 12, fontWeight: '900' },
+    deleteCategoryText: { color: theme.dangerText, fontSize: 12, fontWeight: "900" },
     addButton: {
-      alignItems: 'center',
+      alignItems: "center",
       backgroundColor: theme.primary,
       borderRadius: 18,
       height: 36,
-      justifyContent: 'center',
+      justifyContent: "center",
       width: 36,
     },
-    addButtonText: { color: theme.textInverse, fontSize: 24, fontWeight: '800', lineHeight: 27 },
+    addButtonText: { color: theme.textInverse, fontSize: 24, fontWeight: "800", lineHeight: 27 },
     detailContent: { gap: 14, padding: 18, paddingBottom: 96 },
     userDetailCard: {
-      alignItems: 'center',
+      alignItems: "center",
       backgroundColor: theme.card,
       borderColor: theme.border,
       borderRadius: 8,
@@ -748,23 +781,23 @@ function createStyles(theme: AppTheme) {
       padding: 22,
     },
     userAvatar: {
-      alignItems: 'center',
+      alignItems: "center",
       backgroundColor: theme.avatar,
       borderRadius: 35,
       height: 70,
-      justifyContent: 'center',
+      justifyContent: "center",
       marginBottom: 12,
       width: 70,
     },
-    userAvatarText: { color: theme.textInverse, fontSize: 30, fontWeight: '900' },
-    userDetailName: { color: theme.text, fontSize: 21, fontWeight: '900' },
-    userDetailEmail: { color: theme.textMuted, fontSize: 14, fontWeight: '700', marginTop: 5 },
+    userAvatarText: { color: theme.textInverse, fontSize: 30, fontWeight: "900" },
+    userDetailName: { color: theme.text, fontSize: 21, fontWeight: "900" },
+    userDetailEmail: { color: theme.textMuted, fontSize: 14, fontWeight: "700", marginTop: 5 },
     infoCard: {
       backgroundColor: theme.card,
       borderColor: theme.border,
       borderRadius: 8,
       borderWidth: 1,
-      overflow: 'hidden',
+      overflow: "hidden",
     },
     infoRow: {
       borderBottomColor: theme.border,
@@ -773,14 +806,14 @@ function createStyles(theme: AppTheme) {
       paddingHorizontal: 16,
       paddingVertical: 12,
     },
-    infoLabel: { color: theme.textMuted, fontSize: 12, fontWeight: '900' },
-    infoValue: { color: theme.text, fontSize: 15, fontWeight: '800' },
-    modalOverlay: { flex: 1, justifyContent: 'flex-end' },
+    infoLabel: { color: theme.textMuted, fontSize: 12, fontWeight: "900" },
+    infoValue: { color: theme.text, fontSize: 15, fontWeight: "800" },
+    modalOverlay: { flex: 1, justifyContent: "flex-end" },
     modalBackdrop: {
       backgroundColor: theme.overlay,
       bottom: 0,
       left: 0,
-      position: 'absolute',
+      position: "absolute",
       right: 0,
       top: 0,
     },
@@ -791,21 +824,21 @@ function createStyles(theme: AppTheme) {
       paddingBottom: 24,
     },
     formHeader: {
-      alignItems: 'center',
+      alignItems: "center",
       borderBottomColor: theme.border,
       borderBottomWidth: 1,
-      flexDirection: 'row',
-      justifyContent: 'space-between',
+      flexDirection: "row",
+      justifyContent: "space-between",
       minHeight: 60,
       paddingHorizontal: 18,
     },
-    formClose: { color: theme.textMuted, fontSize: 15, fontWeight: '900' },
-    formTitle: { color: theme.text, fontSize: 17, fontWeight: '900' },
-    formSave: { color: theme.primary, fontSize: 15, fontWeight: '900' },
+    formClose: { color: theme.textMuted, fontSize: 15, fontWeight: "900" },
+    formTitle: { color: theme.text, fontSize: 17, fontWeight: "900" },
+    formSave: { color: theme.primary, fontSize: 15, fontWeight: "900" },
     disabledText: { opacity: 0.55 },
     formBody: { gap: 16, padding: 18 },
     formField: { gap: 8 },
-    formLabel: { color: theme.text, fontSize: 13, fontWeight: '900' },
+    formLabel: { color: theme.text, fontSize: 13, fontWeight: "900" },
     formInput: {
       backgroundColor: theme.card,
       borderColor: theme.border,
@@ -816,30 +849,30 @@ function createStyles(theme: AppTheme) {
       paddingHorizontal: 14,
       paddingVertical: 13,
     },
-    typeToggleRow: { flexDirection: 'row', gap: 10 },
+    typeToggleRow: { flexDirection: "row", gap: 10 },
     typeToggle: {
-      alignItems: 'center',
+      alignItems: "center",
       backgroundColor: theme.card,
       borderColor: theme.border,
       borderRadius: 8,
       borderWidth: 1,
       flex: 1,
       minHeight: 46,
-      justifyContent: 'center',
+      justifyContent: "center",
     },
     typeToggleSelected: { backgroundColor: theme.primary, borderColor: theme.primary },
-    typeToggleText: { color: theme.text, fontSize: 14, fontWeight: '900' },
+    typeToggleText: { color: theme.text, fontSize: 14, fontWeight: "900" },
     typeToggleTextSelected: { color: theme.textInverse },
     fullSaveButton: {
-      alignItems: 'center',
+      alignItems: "center",
       backgroundColor: theme.primary,
       borderRadius: 8,
-      justifyContent: 'center',
+      justifyContent: "center",
       minHeight: 50,
     },
-    fullSaveButtonText: { color: theme.textInverse, fontSize: 16, fontWeight: '900' },
+    fullSaveButtonText: { color: theme.textInverse, fontSize: 16, fontWeight: "900" },
     loadingCard: {
-      alignItems: 'center',
+      alignItems: "center",
       backgroundColor: theme.card,
       borderColor: theme.border,
       borderRadius: 8,
@@ -847,7 +880,7 @@ function createStyles(theme: AppTheme) {
       gap: 10,
       padding: 26,
     },
-    loadingText: { color: theme.textMuted, fontSize: 14, fontWeight: '700' },
+    loadingText: { color: theme.textMuted, fontSize: 14, fontWeight: "700" },
     deniedCard: {
       backgroundColor: theme.card,
       borderColor: theme.border,
@@ -856,7 +889,7 @@ function createStyles(theme: AppTheme) {
       margin: 18,
       padding: 20,
     },
-    deniedTitle: { color: theme.text, fontSize: 18, fontWeight: '900' },
-    deniedText: { color: theme.textMuted, fontSize: 14, fontWeight: '700', lineHeight: 21, marginTop: 8 },
+    deniedTitle: { color: theme.text, fontSize: 18, fontWeight: "900" },
+    deniedText: { color: theme.textMuted, fontSize: 14, fontWeight: "700", lineHeight: 21, marginTop: 8 },
   });
 }
