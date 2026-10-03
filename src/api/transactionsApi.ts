@@ -42,7 +42,7 @@ export type CreateTransactionFromScanPayload = {
 export type TransactionNotification = {
   type?: string | null;
   budgetId?: number | null;
-  level?: 'Warning' | 'Critical' | string | null;
+  level?: "Warning" | "Critical" | string | null;
   title?: string | null;
   body?: string | null;
   message?: string | null;
@@ -108,6 +108,7 @@ export type Transaction = {
   userId: number;
   accountId: number;
   categoryId: number | null;
+  categoryName: string;
   type: TransactionType;
   amount: number;
   description: string | null;
@@ -186,11 +187,13 @@ export const transactionsApi = {
     return axiosClient.uploadFormData<ScanBillResponse>("/transactions/scan-bill", formData);
   },
   createFromScan: (payload: CreateTransactionFromScanPayload) =>
-    axiosClient.post<CreateTransactionFromScanResponse>('/transactions', payload),
+    axiosClient.post<CreateTransactionFromScanResponse>("/transactions", payload),
   categorySpending: (params: CategorySpendingParams = {}) =>
     axiosClient.get<CategorySpendingResponse>(`/transactions/category-spending${buildQuery(params)}`),
   list: (params: TransactionListParams = {}) =>
-    axiosClient.get<Transaction[]>(`/transactions${buildQuery({ accountId: params.accountId, filter: params.filter })}`),
+    axiosClient.get<Transaction[]>(
+      `/transactions${buildQuery({ accountId: params.accountId, filter: params.filter })}`,
+    ),
   exportTransactions: (params: ExportTransactionsParams = {}) =>
     axiosClient.getBinary(
       `/transactions/export${buildQuery({
@@ -200,5 +203,5 @@ export const transactionsApi = {
       })}`,
     ),
   create: (payload: CreateTransactionPayload) =>
-    axiosClient.post<CreateTransactionFromScanResponse>('/transactions', payload),
+    axiosClient.post<CreateTransactionFromScanResponse>("/transactions", payload),
 };

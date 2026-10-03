@@ -89,7 +89,7 @@ function getCategoryFallback(type: TransactionType) {
 }
 
 function getPriorityRecommendation(analysis: AIAnalysis) {
-  const dashboardRecommendations = analysis.recommendations.filter(
+  const dashboardRecommendations = (analysis.recommendations ?? []).filter(
     (recommendation) => !/^\d+$/.test(recommendation.category.trim()),
   );
 
@@ -136,9 +136,9 @@ export default function HomeScreen() {
           ...(refresh ? [refreshAI()] : []),
         ]);
 
-        setAccounts(accountResponse.data);
-        setTransactions(transactionResponse.data);
-        setCategories(categoryResponse.data);
+        setAccounts(Array.isArray(accountResponse.data) ? accountResponse.data : []);
+        setTransactions(Array.isArray(transactionResponse.data) ? transactionResponse.data : []);
+        setCategories(Array.isArray(categoryResponse.data) ? categoryResponse.data : []);
         setSpendingStats(spendingResponse.data);
         hasLoadedDataRef.current = true;
       } catch (error) {
@@ -161,16 +161,20 @@ export default function HomeScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      void refreshAI();
       loadHomeData({ silent: hasLoadedDataRef.current });
-    }, [loadHomeData]),
+    }, [loadHomeData, refreshAI]),
   );
 
   const currency = accounts[0]?.currency ?? "VND";
-  const accountMap = useMemo(() => new Map(accounts.map((account) => [account.id, account])), [accounts]);
-  const categoryMap = useMemo(() => new Map(categories.map((category) => [category.id, category])), [categories]);
+  const accountMap = useMemo(() => new Map((accounts ?? []).map((account) => [account.id, account])), [accounts]);
+  const categoryMap = useMemo(
+    () => new Map((categories ?? []).map((category) => [category.id, category])),
+    [categories],
+  );
   const { end: monthEnd, start: monthStart } = useMemo(() => getMonthRange(), []);
 
-  const activeAccounts = useMemo(() => accounts.filter((account) => account.isActive), [accounts]);
+  const activeAccounts = useMemo(() => (accounts ?? []).filter((account) => account.isActive), [accounts]);
   const totalBalance = useMemo(
     () => activeAccounts.reduce((total, account) => total + getAccountCurrentBalance(account), 0),
     [activeAccounts],
@@ -178,7 +182,7 @@ export default function HomeScreen() {
 
   const monthTransactions = useMemo(
     () =>
-      transactions
+      (transactions ?? [])
         .filter(
           (transaction) => !transaction.isExcluded && isInRange(transaction.transactionDate, monthStart, monthEnd),
         )
@@ -213,7 +217,8 @@ export default function HomeScreen() {
 
   // Tính toán dữ liệu chi tiêu theo ngày
   const dailySpending = useMemo(() => {
-    const daysInMonth = new Date(monthEnd.getFullYear(), monthEnd.getMonth(), 0).getDate();
+    const validMonthEnd = monthEnd ? new Date(monthEnd) : new Date();
+    const daysInMonth = new Date(validMonthEnd.getFullYear(), validMonthEnd.getMonth() + 1, 0).getDate();
     const spendingMap = new Map<number, number>();
 
     monthTransactions

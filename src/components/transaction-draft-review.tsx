@@ -1,7 +1,7 @@
-import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
-import { router } from 'expo-router';
-import { SymbolView } from 'expo-symbols';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import DateTimePicker, { DateTimePickerEvent } from "@react-native-community/datetimepicker";
+import { router } from "expo-router";
+import { SymbolView } from "expo-symbols";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -15,22 +15,23 @@ import {
   Text,
   TextInput,
   View,
-} from 'react-native';
+} from "react-native";
 
-import { categoriesApi, Category, CategoryType } from '@/api/categoriesApi';
-import { FinancialAccount, financialAccountApi } from '@/api/financialAccountApi';
+import { categoriesApi, Category, CategoryType } from "@/api/categoriesApi";
+import { FinancialAccount, financialAccountApi } from "@/api/financialAccountApi";
 import {
   buildCreateTransactionFromScanPayload,
   TransactionDraft,
   TransactionDraftItem,
   transactionsApi,
-} from '@/api/transactionsApi';
-import { ScreenTransition } from '@/components/screen-transition';
-import { useAppTheme } from '@/hooks/use-app-theme';
-import { useThemeMode } from '@/hooks/use-theme-mode';
-import { presentTransactionNotifications } from '@/services/transactionNotifications';
-import type { AppTheme } from '@/theme/appTheme';
-import { getAccountCurrentBalance } from '@/utils/accountBalance';
+} from "@/api/transactionsApi";
+import { ScreenTransition } from "@/components/screen-transition";
+import { invalidateAIAnalysis } from "@/hooks/use-ai-analysis";
+import { useAppTheme } from "@/hooks/use-app-theme";
+import { useThemeMode } from "@/hooks/use-theme-mode";
+import { presentTransactionNotifications } from "@/services/transactionNotifications";
+import type { AppTheme } from "@/theme/appTheme";
+import { getAccountCurrentBalance } from "@/utils/accountBalance";
 
 type TransactionDraftReviewProps = {
   draft: TransactionDraft;
@@ -50,25 +51,25 @@ type EditableBillDraft = {
 };
 
 const transactionTypes = [
-  { label: 'Chi tiêu', value: 'Expense' },
-  { label: 'Thu nhập', value: 'Income' },
+  { label: "Chi tiêu", value: "Expense" },
+  { label: "Thu nhập", value: "Income" },
 ];
 
 function formatAmount(amount: unknown) {
-  if (typeof amount !== 'number' || !Number.isFinite(amount)) {
-    return 'Chưa nhận diện';
+  if (typeof amount !== "number" || !Number.isFinite(amount)) {
+    return "Chưa nhận diện";
   }
 
-  return new Intl.NumberFormat('vi-VN', {
-    currency: 'VND',
+  return new Intl.NumberFormat("vi-VN", {
+    currency: "VND",
     maximumFractionDigits: 0,
-    style: 'currency',
+    style: "currency",
   }).format(amount);
 }
 
 function formatDate(value: unknown) {
-  if (typeof value !== 'string' || !value.trim()) {
-    return 'Chưa nhận diện';
+  if (typeof value !== "string" || !value.trim()) {
+    return "Chưa nhận diện";
   }
 
   const date = new Date(value);
@@ -77,25 +78,25 @@ function formatDate(value: unknown) {
     return value;
   }
 
-  const day = String(date.getDate()).padStart(2, '0');
-  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
   const year = date.getFullYear();
-  const hours = String(date.getHours()).padStart(2, '0');
-  const minutes = String(date.getMinutes()).padStart(2, '0');
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
 
   return `${day}/${month}/${year} | ${hours}:${minutes}`;
 }
 
 function formatText(value: unknown) {
-  if (typeof value === 'string' && value.trim()) {
+  if (typeof value === "string" && value.trim()) {
     return value.trim();
   }
 
-  if (typeof value === 'number' && Number.isFinite(value)) {
+  if (typeof value === "number" && Number.isFinite(value)) {
     return String(value);
   }
 
-  return 'Chưa nhận diện';
+  return "Chưa nhận diện";
 }
 
 function FieldRow({ label, value }: { label: string; value: unknown }) {
@@ -118,18 +119,18 @@ function useDraftReviewStyles() {
 function getInitialEditableDraft(draft: TransactionDraft): EditableBillDraft {
   return {
     amount: draft.amount ?? null,
-    description: draft.description ?? draft.merchantName ?? '',
+    description: draft.description ?? draft.merchantName ?? "",
     difference: draft.difference ?? null,
     items: Array.isArray(draft.items) ? draft.items : [],
     itemsTotal: draft.itemsTotal ?? null,
-    location: draft.location ?? '',
-    transactionDate: draft.transactionDate ?? '',
-    type: draft.type ?? 'Expense',
+    location: draft.location ?? "",
+    transactionDate: draft.transactionDate ?? "",
+    type: draft.type ?? "Expense",
   };
 }
 
 function parseOptionalNumber(value: string) {
-  const normalizedValue = value.trim().replace(/,/g, '');
+  const normalizedValue = value.trim().replace(/,/g, "");
 
   if (!normalizedValue) {
     return null;
@@ -141,7 +142,7 @@ function parseOptionalNumber(value: string) {
 }
 
 function getTransactionTypeLabel(value: string | null | undefined) {
-  return transactionTypes.find((type) => type.value === value)?.label ?? value ?? 'Chi tiêu';
+  return transactionTypes.find((type) => type.value === value)?.label ?? value ?? "Chi tiêu";
 }
 
 function getDatePickerValue(value: string) {
@@ -164,7 +165,7 @@ function getCategoryIconLabel(category: Category) {
     return category.icon.trim().charAt(0).toUpperCase();
   }
 
-  return category.name.trim().charAt(0).toUpperCase() || '?';
+  return category.name.trim().charAt(0).toUpperCase() || "?";
 }
 
 export function TransactionDraftReview({ draft, onRetake }: TransactionDraftReviewProps) {
@@ -175,12 +176,12 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
   const [categories, setCategories] = useState<Category[]>([]);
   const [editableDraft, setEditableDraft] = useState<EditableBillDraft>(() => getInitialEditableDraft(draft));
   const [billEditDraft, setBillEditDraft] = useState<EditableBillDraft>(() => getInitialEditableDraft(draft));
-  const [amountInput, setAmountInput] = useState(String(draft.amount ?? ''));
+  const [amountInput, setAmountInput] = useState(String(draft.amount ?? ""));
   const [selectedAccountId, setSelectedAccountId] = useState<number | null>(
-    typeof draft.accountId === 'number' ? draft.accountId : null
+    typeof draft.accountId === "number" ? draft.accountId : null,
   );
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(
-    typeof draft.categoryId === 'number' ? draft.categoryId : null
+    typeof draft.categoryId === "number" ? draft.categoryId : null,
   );
   const [isAccountPickerVisible, setIsAccountPickerVisible] = useState(false);
   const [isCategoryPickerVisible, setIsCategoryPickerVisible] = useState(false);
@@ -192,13 +193,14 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
   const [isLoadingAccounts, setIsLoadingAccounts] = useState(false);
   const [isLoadingCategories, setIsLoadingCategories] = useState(false);
   const [isCreatingCategory, setIsCreatingCategory] = useState(false);
-  const [newCategoryName, setNewCategoryName] = useState('');
-  const [newCategoryType, setNewCategoryType] = useState<CategoryType>('Expense');
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [newCategoryType, setNewCategoryType] = useState<CategoryType>("Expense");
   const [isSaving, setIsSaving] = useState(false);
-  const items = editableDraft.items;
-  const categoryOptions = categories;
-  const selectedAccount = accounts.find((account) => account.id === selectedAccountId) ?? null;
-  const selectedCategory = categories.find((category) => category.id === selectedCategoryId) ?? null;
+  const items = editableDraft.items ?? [];
+  const categoryType: CategoryType = editableDraft.type === "Income" ? "Income" : "Expense";
+  const categoryOptions = (categories ?? []).filter((category) => category.type === categoryType);
+  const selectedAccount = (accounts ?? []).find((account) => account.id === selectedAccountId) ?? null;
+  const selectedCategory = (categories ?? []).find((category) => category.id === selectedCategoryId) ?? null;
 
   const loadCategories = useCallback(async (showLoading = true) => {
     if (showLoading) {
@@ -206,9 +208,10 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
     }
 
     const response = await categoriesApi.list();
-    setCategories(response.data);
+    const categoryData = Array.isArray(response.data) ? response.data : [];
+    setCategories(categoryData);
 
-    return response.data;
+    return categoryData;
   }, []);
 
   useEffect(() => {
@@ -216,11 +219,11 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
       try {
         setIsLoadingAccounts(true);
         const accountResponse = await financialAccountApi.list();
-        setAccounts(accountResponse.data);
+        setAccounts(Array.isArray(accountResponse.data) ? accountResponse.data : []);
 
         setSelectedAccountId((currentAccountId) => currentAccountId ?? accountResponse.data[0]?.id ?? null);
       } catch (error) {
-        Alert.alert('Không tải được ví', error instanceof Error ? error.message : 'Vui lòng thử lại sau.');
+        Alert.alert("Không tải được ví", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
       } finally {
         setIsLoadingAccounts(false);
       }
@@ -234,7 +237,7 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
       try {
         await loadCategories();
       } catch (error) {
-        Alert.alert('Không tải được danh mục', error instanceof Error ? error.message : 'Vui lòng thử lại sau.');
+        Alert.alert("Không tải được danh mục", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
       } finally {
         setIsLoadingCategories(false);
       }
@@ -247,14 +250,14 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
     const trimmedName = newCategoryName.trim();
 
     if (!trimmedName) {
-      Alert.alert('Thiếu tên danh mục', 'Vui lòng nhập tên danh mục.');
+      Alert.alert("Thiếu tên danh mục", "Vui lòng nhập tên danh mục.");
       return;
     }
 
     try {
       setIsCreatingCategory(true);
       await categoriesApi.create({
-        icon: trimmedName.charAt(0).toLowerCase() || 'tag',
+        icon: trimmedName.charAt(0).toLowerCase() || "tag",
         isDefault: false,
         name: trimmedName,
         type: newCategoryType,
@@ -264,19 +267,18 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
         .reverse()
         .find(
           (category) =>
-            category.name.trim().toLowerCase() === trimmedName.toLowerCase() &&
-            category.type === newCategoryType
+            category.name.trim().toLowerCase() === trimmedName.toLowerCase() && category.type === newCategoryType,
         );
 
       if (createdCategory) {
         setSelectedCategoryId(createdCategory.id);
       }
 
-      setNewCategoryName('');
-      setNewCategoryType('Expense');
+      setNewCategoryName("");
+      setNewCategoryType("Expense");
       setIsCreateCategoryVisible(false);
     } catch (error) {
-      Alert.alert('Tạo danh mục thất bại', error instanceof Error ? error.message : 'Vui lòng thử lại sau.');
+      Alert.alert("Tạo danh mục thất bại", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
     } finally {
       setIsCreatingCategory(false);
       setIsLoadingCategories(false);
@@ -284,7 +286,7 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
   }
 
   function openAmountEditor() {
-    setAmountInput(String(editableDraft.amount ?? ''));
+    setAmountInput(String(editableDraft.amount ?? ""));
     setIsAmountEditorVisible(true);
   }
 
@@ -292,7 +294,7 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
     const nextAmount = parseOptionalNumber(amountInput);
 
     if (nextAmount === null) {
-      Alert.alert('Số tiền không hợp lệ', 'Vui lòng nhập số tiền hợp lệ.');
+      Alert.alert("Số tiền không hợp lệ", "Vui lòng nhập số tiền hợp lệ.");
       return;
     }
 
@@ -301,11 +303,11 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
   }
 
   function handlePickDate(event: DateTimePickerEvent, pickedDate?: Date) {
-    if (Platform.OS === 'android') {
+    if (Platform.OS === "android") {
       setIsDatePickerVisible(false);
     }
 
-    if (event.type === 'dismissed' || !pickedDate) {
+    if (event.type === "dismissed" || !pickedDate) {
       return;
     }
 
@@ -318,7 +320,7 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
   function openBillEditor() {
     setBillEditDraft({
       ...editableDraft,
-      items: editableDraft.items.map((item) => ({ ...item })),
+      items: (editableDraft.items ?? []).map((item) => ({ ...item })),
     });
     setIsBillEditorVisible(true);
   }
@@ -326,26 +328,31 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
   function updateBillItem(index: number, patch: TransactionDraftItem) {
     setBillEditDraft((currentDraft) => ({
       ...currentDraft,
-      items: currentDraft.items.map((item, itemIndex) => (itemIndex === index ? { ...item, ...patch } : item)),
+      items: (currentDraft.items ?? []).map((item, itemIndex) => (itemIndex === index ? { ...item, ...patch } : item)),
     }));
   }
 
   function handleSaveBillEdit() {
     setEditableDraft({
       ...billEditDraft,
-      items: billEditDraft.items.map((item) => ({ ...item })),
+      items: (billEditDraft.items ?? []).map((item) => ({ ...item })),
     });
     setIsBillEditorVisible(false);
   }
 
   async function handleSave() {
     if (selectedAccountId === null) {
-      Alert.alert('Chưa chọn ví', 'Vui lòng chọn ví để lưu giao dịch.');
+      Alert.alert("Chưa chọn ví", "Vui lòng chọn ví để lưu giao dịch.");
       return;
     }
 
-    if (typeof editableDraft.amount !== 'number' || !Number.isFinite(editableDraft.amount)) {
-      Alert.alert('Thiếu số tiền', 'Không thể lưu giao dịch khi chưa nhận diện được số tiền.');
+    if (selectedCategoryId === null) {
+      Alert.alert("Chưa chọn danh mục", "Vui lòng chọn danh mục để lưu giao dịch.");
+      return;
+    }
+
+    if (typeof editableDraft.amount !== "number" || !Number.isFinite(editableDraft.amount)) {
+      Alert.alert("Thiếu số tiền", "Không thể lưu giao dịch khi chưa nhận diện được số tiền.");
       return;
     }
 
@@ -365,18 +372,19 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
             transactionDate: editableDraft.transactionDate,
             type: editableDraft.type,
           },
-          selectedAccountId
-        )
+          selectedAccountId,
+        ),
       );
+      invalidateAIAnalysis();
       await presentTransactionNotifications(response.data);
-      Alert.alert('Đã lưu giao dịch', 'Giao dịch từ hóa đơn đã được lưu.', [
+      Alert.alert("Đã lưu giao dịch", "Giao dịch từ hóa đơn đã được lưu.", [
         {
-          text: 'OK',
+          text: "OK",
           onPress: () => router.back(),
         },
       ]);
     } catch (error) {
-      Alert.alert('Lưu giao dịch thất bại', error instanceof Error ? error.message : 'Vui lòng thử lại.');
+      Alert.alert("Lưu giao dịch thất bại", error instanceof Error ? error.message : "Vui lòng thử lại.");
     } finally {
       setIsSaving(false);
     }
@@ -391,7 +399,7 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
         <Text style={styles.headerTitle}>Kiểm tra giao dịch</Text>
         <Pressable style={styles.editIconButton} onPress={openBillEditor} hitSlop={12}>
           <SymbolView
-            name={{ ios: 'pencil', android: 'edit', web: 'edit' }}
+            name={{ ios: "pencil", android: "edit", web: "edit" }}
             size={22}
             tintColor={theme.text}
             fallback={<Text style={styles.editIconFallback}>✎</Text>}
@@ -401,25 +409,31 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
 
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.summaryGrid}>
-          <Pressable style={[styles.summaryTile, styles.summaryWalletTile]} onPress={() => setIsAccountPickerVisible(true)}>
+          <Pressable
+            style={[styles.summaryTile, styles.summaryWalletTile]}
+            onPress={() => setIsAccountPickerVisible(true)}
+          >
             <View style={styles.summaryTileLabelRow}>
               <SymbolView name="creditcard" size={17} tintColor={theme.textMuted} />
               <Text style={styles.summaryTileValue} numberOfLines={1}>
-                {selectedAccount?.name ?? (isLoadingAccounts ? 'Đang tải...' : 'Chọn ví')}
+                {selectedAccount?.name ?? (isLoadingAccounts ? "Đang tải..." : "Chọn ví")}
               </Text>
             </View>
             <Text style={styles.walletBalanceText} numberOfLines={1}>
-              {selectedAccount ? formatAmount(getAccountCurrentBalance(selectedAccount)) : 'Bấm để chọn'}
+              {selectedAccount ? formatAmount(getAccountCurrentBalance(selectedAccount)) : "Bấm để chọn"}
             </Text>
           </Pressable>
 
-          <Pressable style={[styles.summaryTile, styles.summaryCategoryTile]} onPress={() => setIsCategoryPickerVisible(true)}>
+          <Pressable
+            style={[styles.summaryTile, styles.summaryCategoryTile]}
+            onPress={() => setIsCategoryPickerVisible(true)}
+          >
             <View style={styles.summaryTileLabelRow}>
               <SymbolView name="list.bullet" size={17} tintColor={theme.textMuted} />
               <Text style={styles.summaryTileLabel}>Danh mục</Text>
             </View>
             <Text style={styles.summaryTileValue} numberOfLines={1}>
-              {selectedCategory?.name ?? (selectedCategoryId === null ? 'Chưa phân loại' : 'Chọn danh mục')}
+              {selectedCategory?.name ?? (selectedCategoryId === null ? "Chưa phân loại" : "Chọn danh mục")}
             </Text>
           </Pressable>
         </View>
@@ -476,7 +490,7 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
             </View>
 
             {items.map((item, index) => (
-              <View key={`${item.name ?? 'item'}-${index}`} style={styles.itemRow}>
+              <View key={`${item.name ?? "item"}-${index}`} style={styles.itemRow}>
                 <View style={styles.itemInfo}>
                   <Text style={styles.itemName}>{formatText(item.name)}</Text>
                   <Text style={styles.itemMeta}>
@@ -525,7 +539,7 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
               {accounts.length === 0 && !isLoadingAccounts ? (
                 <Text style={styles.emptyAccountText}>Bạn cần tạo ví trước khi lưu giao dịch.</Text>
               ) : (
-                accounts.map((account) => {
+                (accounts ?? []).map((account) => {
                   const isSelected = account.id === selectedAccountId;
 
                   return (
@@ -555,7 +569,7 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
         </Pressable>
       </Modal>
 
-      {isDatePickerVisible && Platform.OS === 'android' ? (
+      {isDatePickerVisible && Platform.OS === "android" ? (
         <DateTimePicker
           mode="date"
           display="default"
@@ -567,7 +581,7 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
       <Modal
         animationType="slide"
         transparent
-        visible={isDatePickerVisible && Platform.OS !== 'android'}
+        visible={isDatePickerVisible && Platform.OS !== "android"}
         onRequestClose={() => setIsDatePickerVisible(false)}
       >
         <Pressable style={styles.modalOverlay} onPress={() => setIsDatePickerVisible(false)}>
@@ -583,7 +597,7 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
             </View>
             <DateTimePicker
               mode="date"
-              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+              display={Platform.OS === "ios" ? "spinner" : "default"}
               value={getDatePickerValue(editableDraft.transactionDate)}
               onChange={handlePickDate}
               accentColor={theme.primary}
@@ -602,7 +616,7 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
         onRequestClose={() => setIsAmountEditorVisible(false)}
       >
         <KeyboardAvoidingView
-          behavior={Platform.select({ ios: 'padding', default: undefined })}
+          behavior={Platform.select({ ios: "padding", default: undefined })}
           style={styles.keyboardModalOverlay}
         >
           <Pressable style={styles.amountModalDismissArea} onPress={() => setIsAmountEditorVisible(false)}>
@@ -659,6 +673,7 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
                     style={[styles.pickerRow, isSelected && styles.pickerRowSelected]}
                     onPress={() => {
                       setEditableDraft((currentDraft) => ({ ...currentDraft, type: transactionType.value }));
+                      setSelectedCategoryId(null);
                       setIsTypePickerVisible(false);
                     }}
                   >
@@ -689,7 +704,13 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
             <View style={styles.sheetHeader}>
               <Text style={styles.sheetTitle}>Chọn category</Text>
               <View style={styles.sheetActions}>
-                <Pressable onPress={() => setIsCreateCategoryVisible(true)} hitSlop={12}>
+                <Pressable
+                  onPress={() => {
+                    setNewCategoryType(categoryType);
+                    setIsCreateCategoryVisible(true);
+                  }}
+                  hitSlop={12}
+                >
                   <Text style={styles.sheetAdd}>+</Text>
                 </Pressable>
                 <Pressable onPress={() => setIsCategoryPickerVisible(false)} hitSlop={12}>
@@ -704,19 +725,6 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
               </View>
             ) : (
               <ScrollView style={styles.sheetList} contentContainerStyle={styles.sheetListContent}>
-                <Pressable
-                  style={[styles.pickerRow, selectedCategoryId === null && styles.pickerRowSelected]}
-                  onPress={() => {
-                    setSelectedCategoryId(null);
-                    setIsCategoryPickerVisible(false);
-                  }}
-                >
-                  <View style={styles.categoryIcon}>
-                    <Text style={styles.categoryIconText}>?</Text>
-                  </View>
-                  <Text style={styles.categoryOptionText}>Chưa phân loại</Text>
-                </Pressable>
-
                 {categoryOptions.map((category) => {
                   const isSelected = category.id === selectedCategoryId;
 
@@ -735,7 +743,8 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
                       <View style={styles.categoryInfo}>
                         <Text style={styles.categoryName}>{category.name}</Text>
                         <Text style={styles.categoryMeta}>
-                          {category.type === 'Expense' ? 'Chi tiêu' : 'Thu nhập'} · {category.isDefault ? 'Mặc định' : 'Của bạn'}
+                          {category.type === "Expense" ? "Chi tiêu" : "Thu nhập"} ·{" "}
+                          {category.isDefault ? "Mặc định" : "Của bạn"}
                         </Text>
                       </View>
                     </Pressable>
@@ -746,62 +755,62 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
 
             {isCreateCategoryVisible ? (
               <KeyboardAvoidingView
-                behavior={Platform.select({ ios: 'padding', android: 'height' })}
+                behavior={Platform.select({ ios: "padding", android: "height" })}
                 style={styles.inlineCreateOverlay}
               >
                 <Pressable style={styles.inlineCreateDismissArea} onPress={Keyboard.dismiss}>
                   <Pressable style={styles.createCategoryModal} onPress={(event) => event.stopPropagation()}>
-                  <Text style={styles.createCategoryTitle}>Thêm danh mục</Text>
-                  <TextInput
-                    placeholder="Tên category"
-                    placeholderTextColor={theme.inputPlaceholder}
-                    style={styles.categoryInput}
-                    value={newCategoryName}
-                    onChangeText={setNewCategoryName}
-                  />
-                  <View style={styles.categoryTypeRow}>
-                    {(['Expense', 'Income'] as CategoryType[]).map((categoryType) => {
-                      const isSelected = newCategoryType === categoryType;
+                    <Text style={styles.createCategoryTitle}>Thêm danh mục</Text>
+                    <TextInput
+                      placeholder="Tên category"
+                      placeholderTextColor={theme.inputPlaceholder}
+                      style={styles.categoryInput}
+                      value={newCategoryName}
+                      onChangeText={setNewCategoryName}
+                    />
+                    <View style={styles.categoryTypeRow}>
+                      {(["Expense", "Income"] as CategoryType[]).map((categoryType) => {
+                        const isSelected = newCategoryType === categoryType;
 
-                      return (
-                        <Pressable
-                          key={categoryType}
-                          style={[styles.categoryTypeOption, isSelected && styles.categoryTypeOptionSelected]}
-                          onPress={() => setNewCategoryType(categoryType)}
-                          disabled={isCreatingCategory}
-                        >
-                          <Text
-                            style={[
-                              styles.categoryTypeOptionText,
-                              isSelected && styles.categoryTypeOptionTextSelected,
-                            ]}
+                        return (
+                          <Pressable
+                            key={categoryType}
+                            style={[styles.categoryTypeOption, isSelected && styles.categoryTypeOptionSelected]}
+                            onPress={() => setNewCategoryType(categoryType)}
+                            disabled={isCreatingCategory}
                           >
-                            {categoryType === 'Expense' ? 'Chi tiêu' : 'Thu nhập'}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                  <View style={styles.createCategoryActions}>
-                    <Pressable
-                      style={styles.cancelCategoryButton}
-                      onPress={() => setIsCreateCategoryVisible(false)}
-                      disabled={isCreatingCategory}
-                    >
-                      <Text style={styles.cancelCategoryButtonText}>Hủy</Text>
-                    </Pressable>
-                    <Pressable
-                      style={[styles.createCategoryButton, isCreatingCategory && styles.buttonDisabled]}
-                      onPress={handleCreateCategory}
-                      disabled={isCreatingCategory}
-                    >
-                      {isCreatingCategory ? (
-                        <ActivityIndicator color={theme.textInverse} />
-                      ) : (
-                        <Text style={styles.createCategoryButtonText}>Thêm</Text>
-                      )}
-                    </Pressable>
-                  </View>
+                            <Text
+                              style={[
+                                styles.categoryTypeOptionText,
+                                isSelected && styles.categoryTypeOptionTextSelected,
+                              ]}
+                            >
+                              {categoryType === "Expense" ? "Chi tiêu" : "Thu nhập"}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                    <View style={styles.createCategoryActions}>
+                      <Pressable
+                        style={styles.cancelCategoryButton}
+                        onPress={() => setIsCreateCategoryVisible(false)}
+                        disabled={isCreatingCategory}
+                      >
+                        <Text style={styles.cancelCategoryButtonText}>Hủy</Text>
+                      </Pressable>
+                      <Pressable
+                        style={[styles.createCategoryButton, isCreatingCategory && styles.buttonDisabled]}
+                        onPress={handleCreateCategory}
+                        disabled={isCreatingCategory}
+                      >
+                        {isCreatingCategory ? (
+                          <ActivityIndicator color={theme.textInverse} />
+                        ) : (
+                          <Text style={styles.createCategoryButtonText}>Thêm</Text>
+                        )}
+                      </Pressable>
+                    </View>
                   </Pressable>
                 </Pressable>
               </KeyboardAvoidingView>
@@ -810,13 +819,9 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
         </Pressable>
       </Modal>
 
-      <Modal
-        animationType="slide"
-        visible={isBillEditorVisible}
-        onRequestClose={() => setIsBillEditorVisible(false)}
-      >
+      <Modal animationType="slide" visible={isBillEditorVisible} onRequestClose={() => setIsBillEditorVisible(false)}>
         <KeyboardAvoidingView
-          behavior={Platform.select({ ios: 'padding', android: 'height' })}
+          behavior={Platform.select({ ios: "padding", android: "height" })}
           style={styles.editorScreen}
         >
           <View style={styles.header}>
@@ -837,7 +842,7 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
                 placeholder="Tổng tiền"
                 placeholderTextColor={theme.inputPlaceholder}
                 style={styles.categoryInput}
-                value={String(billEditDraft.amount ?? '')}
+                value={String(billEditDraft.amount ?? "")}
                 onChangeText={(value) =>
                   setBillEditDraft((currentDraft) => ({ ...currentDraft, amount: parseOptionalNumber(value) }))
                 }
@@ -872,13 +877,13 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
               {billEditDraft.items.length === 0 ? (
                 <Text style={styles.emptyAccountText}>Không có chi tiết hóa đơn.</Text>
               ) : (
-                billEditDraft.items.map((item, index) => (
-                  <View key={`${item.name ?? 'item'}-${index}`} style={styles.editItemBox}>
+                (billEditDraft.items ?? []).map((item, index) => (
+                  <View key={`${item.name ?? "item"}-${index}`} style={styles.editItemBox}>
                     <TextInput
                       placeholder="Tên món"
                       placeholderTextColor={theme.inputPlaceholder}
                       style={styles.categoryInput}
-                      value={item.name ?? ''}
+                      value={item.name ?? ""}
                       onChangeText={(value) => updateBillItem(index, { name: value })}
                     />
                     <View style={styles.itemEditGrid}>
@@ -887,7 +892,7 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
                         placeholder="SL"
                         placeholderTextColor={theme.inputPlaceholder}
                         style={styles.categoryInput}
-                        value={item.quantity === null || item.quantity === undefined ? '' : String(item.quantity)}
+                        value={item.quantity === null || item.quantity === undefined ? "" : String(item.quantity)}
                         onChangeText={(value) => updateBillItem(index, { quantity: parseOptionalNumber(value) })}
                       />
                       <TextInput
@@ -895,7 +900,7 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
                         placeholder="Đơn giá"
                         placeholderTextColor={theme.inputPlaceholder}
                         style={styles.categoryInput}
-                        value={item.unitPrice === null || item.unitPrice === undefined ? '' : String(item.unitPrice)}
+                        value={item.unitPrice === null || item.unitPrice === undefined ? "" : String(item.unitPrice)}
                         onChangeText={(value) => updateBillItem(index, { unitPrice: parseOptionalNumber(value) })}
                       />
                       <TextInput
@@ -903,7 +908,7 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
                         placeholder="Thành tiền"
                         placeholderTextColor={theme.inputPlaceholder}
                         style={styles.categoryInput}
-                        value={item.amount === null || item.amount === undefined ? '' : String(item.amount)}
+                        value={item.amount === null || item.amount === undefined ? "" : String(item.amount)}
                         onChangeText={(value) => updateBillItem(index, { amount: parseOptionalNumber(value) })}
                       />
                     </View>
@@ -927,7 +932,11 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
           onPress={handleSave}
           disabled={isSaving || selectedAccountId === null || accounts.length === 0}
         >
-          {isSaving ? <ActivityIndicator color={theme.textInverse} /> : <Text style={styles.primaryButtonText}>Lưu</Text>}
+          {isSaving ? (
+            <ActivityIndicator color={theme.textInverse} />
+          ) : (
+            <Text style={styles.primaryButtonText}>Lưu</Text>
+          )}
         </Pressable>
       </View>
     </ScreenTransition>
@@ -936,276 +945,326 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
 
 function createStyles(theme: AppTheme) {
   return StyleSheet.create({
-  screen: { backgroundColor: theme.screen, flex: 1 },
-  header: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: 24,
-    paddingTop: 56,
-    paddingBottom: 14,
-  },
-  headerAction: { color: theme.primary, fontSize: 17, fontWeight: '800' },
-  headerTitle: { color: theme.text, fontSize: 20, fontWeight: '800' },
-  editIconButton: {
-    alignItems: 'center',
-    backgroundColor: theme.card,
-    borderRadius: 18,
-    height: 36,
-    justifyContent: 'center',
-    width: 36,
-  },
-  editIconFallback: { color: theme.text, fontSize: 20, fontWeight: '900' },
-  headerSpacer: { width: 58 },
-  content: { gap: 14, padding: 20, paddingBottom: 130 },
-  summaryGrid: { flexDirection: 'row', gap: 12 },
-  summaryTile: {
-    backgroundColor: theme.card,
-    borderColor: theme.border,
-    borderRadius: 8,
-    borderWidth: 1,
-    flex: 1,
-    minHeight: 104,
-    padding: 14,
-  },
-  summaryWalletTile: { flex: 1.35 },
-  summaryCategoryTile: { flex: 0.85 },
-  summaryTileLabel: { color: theme.textMuted, fontSize: 13, fontWeight: '800' },
-  summaryTileLabelRow: { alignItems: 'center', flexDirection: 'row', gap: 6, marginBottom: 10 },
-  summaryTileValue: { color: theme.text, fontSize: 17, fontWeight: '900' },
-  summaryTileMeta: { color: theme.primary, fontSize: 13, fontWeight: '800', marginTop: 8 },
-  walletBalanceText: { color: theme.primary, fontSize: 17, fontWeight: '900', marginTop: 10 },
-  card: { backgroundColor: theme.card, borderRadius: 8, overflow: 'hidden' },
-  inlineGrid: { flexDirection: 'row', gap: 1 },
-  inlineTile: {
-    borderBottomColor: theme.border,
-    borderBottomWidth: 1,
-    flex: 1,
-    gap: 7,
-    minHeight: 74,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-  },
-  inlineTileLabelRow: { alignItems: 'center', flexDirection: 'row', gap: 6 },
-  inlineTileLabel: { color: theme.textMuted, fontSize: 13, fontWeight: '800' },
-  inlineTileValue: { color: theme.text, fontSize: 16, fontWeight: '900', lineHeight: 21 },
-  fieldRow: { borderBottomColor: theme.border, borderBottomWidth: 1, gap: 6, paddingHorizontal: 16, paddingVertical: 14 },
-  fieldLabel: { color: theme.textMuted, fontSize: 13, fontWeight: '700' },
-  fieldValue: { color: theme.text, fontSize: 16, fontWeight: '700' },
-  categoryHeaderRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
-  aiHint: { color: theme.primary, fontSize: 12, fontWeight: '800' },
-  categoryGrid: { gap: 10, paddingTop: 8 },
-  categoryInput: {
-    backgroundColor: theme.card,
-    borderColor: theme.border,
-    borderRadius: 8,
-    borderWidth: 1,
-    color: theme.text,
-    fontSize: 15,
-    minHeight: 46,
-    paddingHorizontal: 12,
-  },
-  categoryTypeRow: { flexDirection: 'row', gap: 8 },
-  categoryTypeOption: {
-    alignItems: 'center',
-    backgroundColor: theme.card,
-    borderColor: theme.border,
-    borderRadius: 8,
-    borderWidth: 1,
-    flex: 1,
-    minHeight: 42,
-    justifyContent: 'center',
-  },
-  categoryTypeOptionSelected: { backgroundColor: theme.primaryPressed, borderColor: theme.primary },
-  categoryTypeOptionText: { color: theme.textMuted, fontSize: 14, fontWeight: '800' },
-  categoryTypeOptionTextSelected: { color: theme.text },
-  createCategoryButton: {
-    alignItems: 'center',
-    backgroundColor: theme.primary,
-    borderRadius: 8,
-    flex: 1,
-    minHeight: 46,
-    justifyContent: 'center',
-  },
-  createCategoryButtonText: { color: theme.textInverse, fontSize: 15, fontWeight: '900' },
-  categoryOption: {
-    alignItems: 'center',
-    borderColor: theme.border,
-    borderRadius: 8,
-    borderWidth: 1,
-    flexDirection: 'row',
-    gap: 12,
-    minHeight: 58,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  categoryOptionSelected: { backgroundColor: theme.primaryPressed, borderColor: theme.primary },
-  categoryOptionText: { color: theme.text, flex: 1, fontSize: 15, fontWeight: '800' },
-  categoryIcon: { alignItems: 'center', backgroundColor: theme.primaryPressed, borderRadius: 19, height: 38, justifyContent: 'center', width: 38 },
-  categoryIconText: { color: theme.primary, fontSize: 17, fontWeight: '900' },
-  categoryInfo: { flex: 1, gap: 3 },
-  categoryName: { color: theme.text, fontSize: 16, fontWeight: '800' },
-  categoryMeta: { color: theme.textMuted, fontSize: 13, fontWeight: '700' },
-  rawTitle: { color: theme.text, fontSize: 16, fontWeight: '800', paddingHorizontal: 16, paddingTop: 16 },
-  rawText: { color: theme.textSoft, fontSize: 14, lineHeight: 21, padding: 16 },
-  emptyAccountText: { color: theme.textMuted, fontSize: 14, lineHeight: 20, padding: 16, textAlign: 'center' },
-  accountRow: { alignItems: 'center', borderBottomColor: theme.border, borderBottomWidth: 1, flexDirection: 'row', gap: 12, paddingHorizontal: 16, paddingVertical: 14 },
-  accountRowSelected: { backgroundColor: theme.primaryPressed },
-  accountDot: { alignItems: 'center', borderColor: theme.primary, borderRadius: 11, borderWidth: 2, height: 22, justifyContent: 'center', width: 22 },
-  accountDotInner: { backgroundColor: theme.primary, borderRadius: 6, height: 12, width: 12 },
-  accountInfo: { flex: 1, gap: 4 },
-  accountName: { color: theme.text, fontSize: 15, fontWeight: '800' },
-  accountMeta: { color: theme.textMuted, fontSize: 13 },
-  itemsHeader: { alignItems: 'center', borderBottomColor: theme.border, borderBottomWidth: 1, flexDirection: 'row', justifyContent: 'space-between', padding: 16 },
-  itemsTitle: { color: theme.text, fontSize: 16, fontWeight: '800' },
-  itemsCount: { color: theme.textMuted, fontSize: 13, fontWeight: '700' },
-  itemRow: { alignItems: 'center', borderBottomColor: theme.border, borderBottomWidth: 1, flexDirection: 'row', gap: 12, paddingHorizontal: 16, paddingVertical: 13 },
-  itemInfo: { flex: 1, gap: 4 },
-  itemName: { color: theme.text, fontSize: 15, fontWeight: '700' },
-  itemMeta: { color: theme.textMuted, fontSize: 13 },
-  itemAmount: { color: theme.text, fontSize: 15, fontWeight: '800' },
-  totalRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12 },
-  totalLabel: { color: theme.textMuted, fontSize: 14, fontWeight: '700' },
-  totalValue: { color: theme.text, fontSize: 15, fontWeight: '800' },
-  note: { color: theme.textSubtle, fontSize: 13, lineHeight: 19, textAlign: 'center' },
-  modalOverlay: {
-    backgroundColor: theme.overlay,
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  keyboardModalOverlay: {
-    backgroundColor: theme.overlay,
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  amountModalDismissArea: {
-    flex: 1,
-    justifyContent: 'flex-end',
-  },
-  bottomSheet: {
-    backgroundColor: theme.sheet,
-    borderTopLeftRadius: 8,
-    borderTopRightRadius: 8,
-    maxHeight: '76%',
-    paddingBottom: 20,
-  },
-  smallBottomSheet: {
-    backgroundColor: theme.card,
-    borderTopLeftRadius: 8,
-    borderTopRightRadius: 8,
-    gap: 14,
-    padding: 18,
-    paddingBottom: 28,
-  },
-  datePickerHeader: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  datePickerTitle: { flex: 1, marginHorizontal: 12, textAlign: 'center' },
-  datePickerAction: { fontSize: 16, fontWeight: '800' },
-  datePicker: { alignSelf: 'stretch' },
-  sheetHeader: {
-    alignItems: 'center',
-    borderBottomColor: theme.border,
-    borderBottomWidth: 1,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    minHeight: 58,
-    paddingHorizontal: 18,
-  },
-  sheetTitle: { color: theme.text, fontSize: 18, fontWeight: '900' },
-  sheetActions: { alignItems: 'center', flexDirection: 'row', gap: 18 },
-  sheetAdd: { color: theme.primary, fontSize: 32, fontWeight: '600', lineHeight: 34 },
-  sheetClose: { color: theme.primary, fontSize: 15, fontWeight: '900' },
-  sheetList: { maxHeight: 460 },
-  sheetListContent: { gap: 10, padding: 16 },
-  sheetLoading: { alignItems: 'center', minHeight: 180, justifyContent: 'center' },
-  pickerRow: {
-    alignItems: 'center',
-    borderColor: theme.border,
-    borderRadius: 8,
-    borderWidth: 1,
-    flexDirection: 'row',
-    gap: 12,
-    minHeight: 62,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-  },
-  pickerRowSelected: { backgroundColor: theme.primaryPressed, borderColor: theme.primary },
-  inlineCreateOverlay: {
-    alignItems: 'center',
-    backgroundColor: theme.overlayStrong,
-    bottom: 0,
-    justifyContent: 'center',
-    left: 0,
-    position: 'absolute',
-    right: 0,
-    top: 0,
-  },
-  inlineCreateDismissArea: {
-    alignItems: 'center',
-    flex: 1,
-    justifyContent: 'center',
-    padding: 24,
-    width: '100%',
-  },
-  createCategoryModal: {
-    backgroundColor: theme.sheet,
-    borderColor: theme.border,
-    borderRadius: 8,
-    borderWidth: 1,
-    gap: 14,
-    padding: 18,
-    width: '100%',
-  },
-  createCategoryTitle: { color: theme.text, fontSize: 18, fontWeight: '900' },
-  createCategoryActions: { flexDirection: 'row', gap: 10 },
-  cancelCategoryButton: {
-    alignItems: 'center',
-    backgroundColor: theme.cardAlt,
-    borderRadius: 8,
-    flex: 1,
-    justifyContent: 'center',
-    minHeight: 46,
-  },
-  cancelCategoryButtonText: { color: theme.text, fontSize: 15, fontWeight: '900' },
-  editorScreen: { backgroundColor: theme.screen, flex: 1 },
-  editorContent: { gap: 14, padding: 20, paddingBottom: 36 },
-  editorCard: { backgroundColor: theme.card, borderRadius: 8, gap: 12, padding: 14 },
-  editorSectionTitle: { color: theme.text, fontSize: 16, fontWeight: '900' },
-  editItemBox: { borderColor: theme.border, borderRadius: 8, borderWidth: 1, gap: 10, padding: 12 },
-  itemEditGrid: { gap: 8 },
-  footer: {
-    backgroundColor: theme.screen,
-    borderTopColor: theme.tabBorder,
-    borderTopWidth: 1,
-    bottom: 0,
-    flexDirection: 'row',
-    gap: 12,
-    left: 0,
-    padding: 20,
-    position: 'absolute',
-    right: 0,
-  },
-  secondaryButton: {
-    alignItems: 'center',
-    backgroundColor: theme.card,
-    borderRadius: 8,
-    flex: 1,
-    justifyContent: 'center',
-    minHeight: 52,
-  },
-  secondaryButtonText: { color: theme.text, fontSize: 16, fontWeight: '800' },
-  primaryButton: {
-    alignItems: 'center',
-    backgroundColor: theme.primary,
-    borderRadius: 8,
-    flex: 1,
-    justifyContent: 'center',
-    minHeight: 52,
-  },
-  primaryButtonText: { color: theme.textInverse, fontSize: 16, fontWeight: '800' },
-  buttonDisabled: { opacity: 0.65 },
+    screen: { backgroundColor: theme.screen, flex: 1 },
+    header: {
+      alignItems: "center",
+      flexDirection: "row",
+      justifyContent: "space-between",
+      paddingHorizontal: 24,
+      paddingTop: 56,
+      paddingBottom: 14,
+    },
+    headerAction: { color: theme.primary, fontSize: 17, fontWeight: "800" },
+    headerTitle: { color: theme.text, fontSize: 20, fontWeight: "800" },
+    editIconButton: {
+      alignItems: "center",
+      backgroundColor: theme.card,
+      borderRadius: 18,
+      height: 36,
+      justifyContent: "center",
+      width: 36,
+    },
+    editIconFallback: { color: theme.text, fontSize: 20, fontWeight: "900" },
+    headerSpacer: { width: 58 },
+    content: { gap: 14, padding: 20, paddingBottom: 130 },
+    summaryGrid: { flexDirection: "row", gap: 12 },
+    summaryTile: {
+      backgroundColor: theme.card,
+      borderColor: theme.border,
+      borderRadius: 8,
+      borderWidth: 1,
+      flex: 1,
+      minHeight: 104,
+      padding: 14,
+    },
+    summaryWalletTile: { flex: 1.35 },
+    summaryCategoryTile: { flex: 0.85 },
+    summaryTileLabel: { color: theme.textMuted, fontSize: 13, fontWeight: "800" },
+    summaryTileLabelRow: { alignItems: "center", flexDirection: "row", gap: 6, marginBottom: 10 },
+    summaryTileValue: { color: theme.text, fontSize: 17, fontWeight: "900" },
+    summaryTileMeta: { color: theme.primary, fontSize: 13, fontWeight: "800", marginTop: 8 },
+    walletBalanceText: { color: theme.primary, fontSize: 17, fontWeight: "900", marginTop: 10 },
+    card: { backgroundColor: theme.card, borderRadius: 8, overflow: "hidden" },
+    inlineGrid: { flexDirection: "row", gap: 1 },
+    inlineTile: {
+      borderBottomColor: theme.border,
+      borderBottomWidth: 1,
+      flex: 1,
+      gap: 7,
+      minHeight: 74,
+      paddingHorizontal: 16,
+      paddingVertical: 14,
+    },
+    inlineTileLabelRow: { alignItems: "center", flexDirection: "row", gap: 6 },
+    inlineTileLabel: { color: theme.textMuted, fontSize: 13, fontWeight: "800" },
+    inlineTileValue: { color: theme.text, fontSize: 16, fontWeight: "900", lineHeight: 21 },
+    fieldRow: {
+      borderBottomColor: theme.border,
+      borderBottomWidth: 1,
+      gap: 6,
+      paddingHorizontal: 16,
+      paddingVertical: 14,
+    },
+    fieldLabel: { color: theme.textMuted, fontSize: 13, fontWeight: "700" },
+    fieldValue: { color: theme.text, fontSize: 16, fontWeight: "700" },
+    categoryHeaderRow: { alignItems: "center", flexDirection: "row", justifyContent: "space-between" },
+    aiHint: { color: theme.primary, fontSize: 12, fontWeight: "800" },
+    categoryGrid: { gap: 10, paddingTop: 8 },
+    categoryInput: {
+      backgroundColor: theme.card,
+      borderColor: theme.border,
+      borderRadius: 8,
+      borderWidth: 1,
+      color: theme.text,
+      fontSize: 15,
+      minHeight: 46,
+      paddingHorizontal: 12,
+    },
+    categoryTypeRow: { flexDirection: "row", gap: 8 },
+    categoryTypeOption: {
+      alignItems: "center",
+      backgroundColor: theme.card,
+      borderColor: theme.border,
+      borderRadius: 8,
+      borderWidth: 1,
+      flex: 1,
+      minHeight: 42,
+      justifyContent: "center",
+    },
+    categoryTypeOptionSelected: { backgroundColor: theme.primaryPressed, borderColor: theme.primary },
+    categoryTypeOptionText: { color: theme.textMuted, fontSize: 14, fontWeight: "800" },
+    categoryTypeOptionTextSelected: { color: theme.text },
+    createCategoryButton: {
+      alignItems: "center",
+      backgroundColor: theme.primary,
+      borderRadius: 8,
+      flex: 1,
+      minHeight: 46,
+      justifyContent: "center",
+    },
+    createCategoryButtonText: { color: theme.textInverse, fontSize: 15, fontWeight: "900" },
+    categoryOption: {
+      alignItems: "center",
+      borderColor: theme.border,
+      borderRadius: 8,
+      borderWidth: 1,
+      flexDirection: "row",
+      gap: 12,
+      minHeight: 58,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
+    },
+    categoryOptionSelected: { backgroundColor: theme.primaryPressed, borderColor: theme.primary },
+    categoryOptionText: { color: theme.text, flex: 1, fontSize: 15, fontWeight: "800" },
+    categoryIcon: {
+      alignItems: "center",
+      backgroundColor: theme.primaryPressed,
+      borderRadius: 19,
+      height: 38,
+      justifyContent: "center",
+      width: 38,
+    },
+    categoryIconText: { color: theme.primary, fontSize: 17, fontWeight: "900" },
+    categoryInfo: { flex: 1, gap: 3 },
+    categoryName: { color: theme.text, fontSize: 16, fontWeight: "800" },
+    categoryMeta: { color: theme.textMuted, fontSize: 13, fontWeight: "700" },
+    rawTitle: { color: theme.text, fontSize: 16, fontWeight: "800", paddingHorizontal: 16, paddingTop: 16 },
+    rawText: { color: theme.textSoft, fontSize: 14, lineHeight: 21, padding: 16 },
+    emptyAccountText: { color: theme.textMuted, fontSize: 14, lineHeight: 20, padding: 16, textAlign: "center" },
+    accountRow: {
+      alignItems: "center",
+      borderBottomColor: theme.border,
+      borderBottomWidth: 1,
+      flexDirection: "row",
+      gap: 12,
+      paddingHorizontal: 16,
+      paddingVertical: 14,
+    },
+    accountRowSelected: { backgroundColor: theme.primaryPressed },
+    accountDot: {
+      alignItems: "center",
+      borderColor: theme.primary,
+      borderRadius: 11,
+      borderWidth: 2,
+      height: 22,
+      justifyContent: "center",
+      width: 22,
+    },
+    accountDotInner: { backgroundColor: theme.primary, borderRadius: 6, height: 12, width: 12 },
+    accountInfo: { flex: 1, gap: 4 },
+    accountName: { color: theme.text, fontSize: 15, fontWeight: "800" },
+    accountMeta: { color: theme.textMuted, fontSize: 13 },
+    itemsHeader: {
+      alignItems: "center",
+      borderBottomColor: theme.border,
+      borderBottomWidth: 1,
+      flexDirection: "row",
+      justifyContent: "space-between",
+      padding: 16,
+    },
+    itemsTitle: { color: theme.text, fontSize: 16, fontWeight: "800" },
+    itemsCount: { color: theme.textMuted, fontSize: 13, fontWeight: "700" },
+    itemRow: {
+      alignItems: "center",
+      borderBottomColor: theme.border,
+      borderBottomWidth: 1,
+      flexDirection: "row",
+      gap: 12,
+      paddingHorizontal: 16,
+      paddingVertical: 13,
+    },
+    itemInfo: { flex: 1, gap: 4 },
+    itemName: { color: theme.text, fontSize: 15, fontWeight: "700" },
+    itemMeta: { color: theme.textMuted, fontSize: 13 },
+    itemAmount: { color: theme.text, fontSize: 15, fontWeight: "800" },
+    totalRow: {
+      alignItems: "center",
+      flexDirection: "row",
+      justifyContent: "space-between",
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+    },
+    totalLabel: { color: theme.textMuted, fontSize: 14, fontWeight: "700" },
+    totalValue: { color: theme.text, fontSize: 15, fontWeight: "800" },
+    note: { color: theme.textSubtle, fontSize: 13, lineHeight: 19, textAlign: "center" },
+    modalOverlay: {
+      backgroundColor: theme.overlay,
+      flex: 1,
+      justifyContent: "flex-end",
+    },
+    keyboardModalOverlay: {
+      backgroundColor: theme.overlay,
+      flex: 1,
+      justifyContent: "flex-end",
+    },
+    amountModalDismissArea: {
+      flex: 1,
+      justifyContent: "flex-end",
+    },
+    bottomSheet: {
+      backgroundColor: theme.sheet,
+      borderTopLeftRadius: 8,
+      borderTopRightRadius: 8,
+      maxHeight: "76%",
+      paddingBottom: 20,
+    },
+    smallBottomSheet: {
+      backgroundColor: theme.card,
+      borderTopLeftRadius: 8,
+      borderTopRightRadius: 8,
+      gap: 14,
+      padding: 18,
+      paddingBottom: 28,
+    },
+    datePickerHeader: {
+      alignItems: "center",
+      flexDirection: "row",
+      justifyContent: "space-between",
+    },
+    datePickerTitle: { flex: 1, marginHorizontal: 12, textAlign: "center" },
+    datePickerAction: { fontSize: 16, fontWeight: "800" },
+    datePicker: { alignSelf: "stretch" },
+    sheetHeader: {
+      alignItems: "center",
+      borderBottomColor: theme.border,
+      borderBottomWidth: 1,
+      flexDirection: "row",
+      justifyContent: "space-between",
+      minHeight: 58,
+      paddingHorizontal: 18,
+    },
+    sheetTitle: { color: theme.text, fontSize: 18, fontWeight: "900" },
+    sheetActions: { alignItems: "center", flexDirection: "row", gap: 18 },
+    sheetAdd: { color: theme.primary, fontSize: 32, fontWeight: "600", lineHeight: 34 },
+    sheetClose: { color: theme.primary, fontSize: 15, fontWeight: "900" },
+    sheetList: { maxHeight: 460 },
+    sheetListContent: { gap: 10, padding: 16 },
+    sheetLoading: { alignItems: "center", minHeight: 180, justifyContent: "center" },
+    pickerRow: {
+      alignItems: "center",
+      borderColor: theme.border,
+      borderRadius: 8,
+      borderWidth: 1,
+      flexDirection: "row",
+      gap: 12,
+      minHeight: 62,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+    },
+    pickerRowSelected: { backgroundColor: theme.primaryPressed, borderColor: theme.primary },
+    inlineCreateOverlay: {
+      alignItems: "center",
+      backgroundColor: theme.overlayStrong,
+      bottom: 0,
+      justifyContent: "center",
+      left: 0,
+      position: "absolute",
+      right: 0,
+      top: 0,
+    },
+    inlineCreateDismissArea: {
+      alignItems: "center",
+      flex: 1,
+      justifyContent: "center",
+      padding: 24,
+      width: "100%",
+    },
+    createCategoryModal: {
+      backgroundColor: theme.sheet,
+      borderColor: theme.border,
+      borderRadius: 8,
+      borderWidth: 1,
+      gap: 14,
+      padding: 18,
+      width: "100%",
+    },
+    createCategoryTitle: { color: theme.text, fontSize: 18, fontWeight: "900" },
+    createCategoryActions: { flexDirection: "row", gap: 10 },
+    cancelCategoryButton: {
+      alignItems: "center",
+      backgroundColor: theme.cardAlt,
+      borderRadius: 8,
+      flex: 1,
+      justifyContent: "center",
+      minHeight: 46,
+    },
+    cancelCategoryButtonText: { color: theme.text, fontSize: 15, fontWeight: "900" },
+    editorScreen: { backgroundColor: theme.screen, flex: 1 },
+    editorContent: { gap: 14, padding: 20, paddingBottom: 36 },
+    editorCard: { backgroundColor: theme.card, borderRadius: 8, gap: 12, padding: 14 },
+    editorSectionTitle: { color: theme.text, fontSize: 16, fontWeight: "900" },
+    editItemBox: { borderColor: theme.border, borderRadius: 8, borderWidth: 1, gap: 10, padding: 12 },
+    itemEditGrid: { gap: 8 },
+    footer: {
+      backgroundColor: theme.screen,
+      borderTopColor: theme.tabBorder,
+      borderTopWidth: 1,
+      bottom: 0,
+      flexDirection: "row",
+      gap: 12,
+      left: 0,
+      padding: 20,
+      position: "absolute",
+      right: 0,
+    },
+    secondaryButton: {
+      alignItems: "center",
+      backgroundColor: theme.card,
+      borderRadius: 8,
+      flex: 1,
+      justifyContent: "center",
+      minHeight: 52,
+    },
+    secondaryButtonText: { color: theme.text, fontSize: 16, fontWeight: "800" },
+    primaryButton: {
+      alignItems: "center",
+      backgroundColor: theme.primary,
+      borderRadius: 8,
+      flex: 1,
+      justifyContent: "center",
+      minHeight: 52,
+    },
+    primaryButtonText: { color: theme.textInverse, fontSize: 16, fontWeight: "800" },
+    buttonDisabled: { opacity: 0.65 },
   });
 }

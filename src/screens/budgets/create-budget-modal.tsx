@@ -1,6 +1,6 @@
-import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
-import { SymbolView } from 'expo-symbols';
-import { useState } from 'react';
+import DateTimePicker, { DateTimePickerEvent } from "@react-native-community/datetimepicker";
+import { SymbolView } from "expo-symbols";
+import { useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -12,21 +12,21 @@ import {
   Text,
   TextInput,
   View,
-} from 'react-native';
+} from "react-native";
 
-import type { Category } from '@/api/categoriesApi';
-import { useAppTheme } from '@/hooks/use-app-theme';
-import { useThemeMode } from '@/hooks/use-theme-mode';
-import { getLightCategoryColor } from '@/utils/lightCategoryColors';
+import type { Category } from "@/api/categoriesApi";
+import { useAppTheme } from "@/hooks/use-app-theme";
+import { useThemeMode } from "@/hooks/use-theme-mode";
+import { getLightCategoryColor } from "@/utils/lightCategoryColors";
 
-import { useBudgetStyles } from './budgets.styles';
-import { formatDateInput } from './helpers';
-import type { BudgetFormState } from './types';
+import { useBudgetStyles } from "./budgets.styles";
+import { formatDateInput } from "./helpers";
+import type { BudgetFormState } from "./types";
 
-type BudgetDateField = 'startDate' | 'endDate';
+type BudgetDateField = "startDate" | "endDate";
 
 function parseBudgetDate(value: string) {
-  const [year, month, day] = value.split('-').map(Number);
+  const [year, month, day] = value.split("-").map(Number);
 
   if (!year || !month || !day) {
     return new Date();
@@ -37,14 +37,14 @@ function parseBudgetDate(value: string) {
 
 function formatBudgetDate(value: string) {
   const date = parseBudgetDate(value);
-  const day = String(date.getDate()).padStart(2, '0');
-  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
 
   return `${day}/${month}/${date.getFullYear()}`;
 }
 
 export function CreateBudgetModal({
-  categories,
+  categories = [],
   form,
   isSubmitting,
   onChangeForm,
@@ -78,23 +78,23 @@ export function CreateBudgetModal({
   }
 
   function handlePickDate(event: DateTimePickerEvent, pickedDate?: Date) {
-    if (Platform.OS === 'android') {
+    if (Platform.OS === "android") {
       closeDatePicker();
     }
 
-    if (event.type === 'dismissed' || !pickedDate || !activeDateField) {
+    if (event.type === "dismissed" || !pickedDate || !activeDateField) {
       return;
     }
 
     const startDate = parseBudgetDate(form.startDate);
     const endDate = parseBudgetDate(form.endDate);
 
-    if (activeDateField === 'startDate' && pickedDate.getTime() > endDate.getTime()) {
+    if (activeDateField === "startDate" && pickedDate.getTime() > endDate.getTime()) {
       updateForm({ startDate: formatDateInput(endDate) });
       return;
     }
 
-    if (activeDateField === 'endDate' && pickedDate.getTime() < startDate.getTime()) {
+    if (activeDateField === "endDate" && pickedDate.getTime() < startDate.getTime()) {
       updateForm({ endDate: formatDateInput(startDate) });
       return;
     }
@@ -108,7 +108,10 @@ export function CreateBudgetModal({
 
   return (
     <Modal animationType="slide" visible={visible} onRequestClose={onClose}>
-      <KeyboardAvoidingView behavior={Platform.select({ ios: 'padding', default: undefined })} style={styles.formScreen}>
+      <KeyboardAvoidingView
+        behavior={Platform.select({ ios: "padding", default: undefined })}
+        style={styles.formScreen}
+      >
         <View style={styles.formHeader}>
           <Pressable onPress={onClose} hitSlop={12}>
             <Text style={styles.formClose}>×</Text>
@@ -148,14 +151,14 @@ export function CreateBudgetModal({
           </View>
 
           <View style={styles.budgetDateCapsule}>
-            <Pressable style={styles.budgetDateSide} onPress={() => openDatePicker('startDate')}>
+            <Pressable style={styles.budgetDateSide} onPress={() => openDatePicker("startDate")}>
               <Text style={styles.dateCapsuleLabel}>Bắt đầu</Text>
               <Text style={styles.dateCapsuleValue}>{formatBudgetDate(form.startDate)}</Text>
             </Pressable>
             <View style={styles.budgetDateIconBubble}>
               <SymbolView name="calendar" size={28} tintColor={theme.textInverse} />
             </View>
-            <Pressable style={styles.budgetDateSide} onPress={() => openDatePicker('endDate')}>
+            <Pressable style={styles.budgetDateSide} onPress={() => openDatePicker("endDate")}>
               <Text style={styles.dateCapsuleLabel}>Kết thúc</Text>
               <Text style={styles.dateCapsuleValue}>{formatBudgetDate(form.endDate)}</Text>
             </Pressable>
@@ -200,7 +203,7 @@ export function CreateBudgetModal({
               <Pressable
                 style={[
                   styles.categoryGridItem,
-                  form.categoryId !== null && getLightCategoryColor('all-categories'),
+                  form.categoryId !== null && getLightCategoryColor("all-categories"),
                   form.categoryId === null && styles.categoryGridItemSelected,
                 ]}
                 onPress={() => updateForm({ categoryId: null })}
@@ -211,7 +214,7 @@ export function CreateBudgetModal({
                   </Text>
                 </View>
               </Pressable>
-              {categories.map((category) => {
+              {(categories ?? []).map((category) => {
                 const isSelected = form.categoryId === category.id;
 
                 return (
@@ -237,7 +240,6 @@ export function CreateBudgetModal({
               })}
             </View>
           </View>
-
         </ScrollView>
 
         <View style={styles.formFooter}>
@@ -246,15 +248,19 @@ export function CreateBudgetModal({
             onPress={onSubmit}
             disabled={isSubmitting}
           >
-            {isSubmitting ? <ActivityIndicator color={theme.textInverse} /> : <Text style={styles.createButtonText}>Tạo Ngân sách</Text>}
+            {isSubmitting ? (
+              <ActivityIndicator color={theme.textInverse} />
+            ) : (
+              <Text style={styles.createButtonText}>Tạo Ngân sách</Text>
+            )}
           </Pressable>
         </View>
 
-        {activeDateField && Platform.OS === 'android' ? (
+        {activeDateField && Platform.OS === "android" ? (
           <DateTimePicker
             display="default"
-            maximumDate={activeDateField === 'startDate' ? endDateLimit : undefined}
-            minimumDate={activeDateField === 'endDate' ? startDateLimit : undefined}
+            maximumDate={activeDateField === "startDate" ? endDateLimit : undefined}
+            minimumDate={activeDateField === "endDate" ? startDateLimit : undefined}
             mode="date"
             onChange={handlePickDate}
             value={selectedDateValue}
@@ -264,7 +270,7 @@ export function CreateBudgetModal({
         <Modal
           animationType="slide"
           transparent
-          visible={activeDateField !== null && Platform.OS !== 'android'}
+          visible={activeDateField !== null && Platform.OS !== "android"}
           onRequestClose={closeDatePicker}
         >
           <Pressable style={styles.bottomSheetOverlay} onPress={closeDatePicker}>
@@ -274,7 +280,7 @@ export function CreateBudgetModal({
                   <Text style={[styles.datePickerAction, { color: theme.textSubtle }]}>Hủy</Text>
                 </Pressable>
                 <Text style={styles.datePickerTitle}>
-                  {activeDateField === 'startDate' ? 'Chọn ngày bắt đầu' : 'Chọn ngày kết thúc'}
+                  {activeDateField === "startDate" ? "Chọn ngày bắt đầu" : "Chọn ngày kết thúc"}
                 </Text>
                 <Pressable onPress={closeDatePicker} hitSlop={10}>
                   <Text style={[styles.datePickerAction, { color: theme.primary }]}>Xong</Text>
@@ -282,9 +288,9 @@ export function CreateBudgetModal({
               </View>
               <DateTimePicker
                 accentColor={theme.primary}
-                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                maximumDate={activeDateField === 'startDate' ? endDateLimit : undefined}
-                minimumDate={activeDateField === 'endDate' ? startDateLimit : undefined}
+                display={Platform.OS === "ios" ? "spinner" : "default"}
+                maximumDate={activeDateField === "startDate" ? endDateLimit : undefined}
+                minimumDate={activeDateField === "endDate" ? startDateLimit : undefined}
                 mode="date"
                 onChange={handlePickDate}
                 style={styles.datePicker}

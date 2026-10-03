@@ -51,7 +51,7 @@ export default function AccountScreen() {
   // `view` điều khiển ba trạng thái màn hình: danh sách ví, chọn loại ví và form tạo ví.
   const [view, setView] = useState<AccountView>("wallets");
   const [accounts, setAccounts] = useState<FinancialAccount[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [name, setName] = useState("");
   const [type, setType] = useState<AccountType>("Cash");
@@ -63,7 +63,7 @@ export default function AccountScreen() {
 
   // Số dư hiện tại do BE tính sẵn trong currentBalance.
   const totalBalance = useMemo(
-    () => accounts.reduce((total, account) => total + getAccountCurrentBalance(account), 0),
+    () => (accounts ?? []).reduce((total, account) => total + getAccountCurrentBalance(account), 0),
     [accounts],
   );
 
@@ -77,7 +77,7 @@ export default function AccountScreen() {
       }
 
       const accountResponse = await financialAccountApi.list();
-      setAccounts(accountResponse.data);
+      setAccounts(Array.isArray(accountResponse.data) ? accountResponse.data : []);
     } catch (error) {
       Alert.alert("Không tải được ví", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
     } finally {
@@ -225,90 +225,90 @@ export default function AccountScreen() {
     return (
       <FocusedScreenTransition style={styles.screen} triggerKey={view} variant="slide-left">
         <KeyboardAvoidingView behavior={Platform.select({ ios: "padding", default: undefined })} style={styles.screen}>
-        <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          <View style={styles.topBar}>
-            <Pressable onPress={handleCloseForm} hitSlop={12}>
-              <Text style={styles.closeText}>×</Text>
-            </Pressable>
-            <Text style={styles.topTitle}>{editingAccount ? "Sửa ví" : "Thêm ví"}</Text>
-            <Pressable onPress={handleSaveAccount} disabled={isSubmitting}>
-              <Text style={styles.saveText}>LƯU</Text>
-            </Pressable>
-          </View>
-
-          <View style={styles.form}>
-            <View style={styles.field}>
-              <Text style={styles.label}>Tên Ví</Text>
-              <TextInput
-                placeholder="Cash wallet"
-                placeholderTextColor={theme.inputPlaceholder}
-                style={styles.input}
-                value={name}
-                onChangeText={setName}
-              />
+          <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+            <View style={styles.topBar}>
+              <Pressable onPress={handleCloseForm} hitSlop={12}>
+                <Text style={styles.closeText}>×</Text>
+              </Pressable>
+              <Text style={styles.topTitle}>{editingAccount ? "Sửa ví" : "Thêm ví"}</Text>
+              <Pressable onPress={handleSaveAccount} disabled={isSubmitting}>
+                <Text style={styles.saveText}>LƯU</Text>
+              </Pressable>
             </View>
 
-            <View style={styles.field}>
-              <Text style={styles.label}>Loại tài khoản</Text>
-              <View style={styles.typeGrid}>
-                {accountTypes.map((accountType) => {
-                  const isSelected = accountType.value === type;
-
-                  return (
-                    <Pressable
-                      key={accountType.value}
-                      style={[styles.typeOption, isSelected && styles.typeOptionSelected]}
-                      onPress={() => setType(accountType.value)}
-                    >
-                      <Text style={[styles.typeOptionText, isSelected && styles.typeOptionTextSelected]}>
-                        {accountType.label}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-            </View>
-
-            <View style={styles.row}>
-              <View style={[styles.field, styles.currencyField]}>
-                <Text style={styles.label}>Tiền tệ</Text>
+            <View style={styles.form}>
+              <View style={styles.field}>
+                <Text style={styles.label}>Tên Ví</Text>
                 <TextInput
-                  autoCapitalize="characters"
-                  maxLength={3}
-                  placeholder="VND"
+                  placeholder="Cash wallet"
                   placeholderTextColor={theme.inputPlaceholder}
                   style={styles.input}
-                  value={currency}
-                  onChangeText={setCurrency}
+                  value={name}
+                  onChangeText={setName}
                 />
               </View>
 
-              <View style={[styles.field, styles.balanceField]}>
-                <Text style={styles.label}>Số dư ban đầu</Text>
-                <TextInput
-                  editable={!editingAccount}
-                  keyboardType="decimal-pad"
-                  placeholder="1000000"
-                  placeholderTextColor={theme.inputPlaceholder}
-                  style={[styles.input, editingAccount && styles.inputDisabled]}
-                  value={initialBalance}
-                  onChangeText={setInitialBalance}
-                />
+              <View style={styles.field}>
+                <Text style={styles.label}>Loại tài khoản</Text>
+                <View style={styles.typeGrid}>
+                  {accountTypes.map((accountType) => {
+                    const isSelected = accountType.value === type;
+
+                    return (
+                      <Pressable
+                        key={accountType.value}
+                        style={[styles.typeOption, isSelected && styles.typeOptionSelected]}
+                        onPress={() => setType(accountType.value)}
+                      >
+                        <Text style={[styles.typeOptionText, isSelected && styles.typeOptionTextSelected]}>
+                          {accountType.label}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
+
+              <View style={styles.row}>
+                <View style={[styles.field, styles.currencyField]}>
+                  <Text style={styles.label}>Tiền tệ</Text>
+                  <TextInput
+                    autoCapitalize="characters"
+                    maxLength={3}
+                    placeholder="VND"
+                    placeholderTextColor={theme.inputPlaceholder}
+                    style={styles.input}
+                    value={currency}
+                    onChangeText={setCurrency}
+                  />
+                </View>
+
+                <View style={[styles.field, styles.balanceField]}>
+                  <Text style={styles.label}>Số dư ban đầu</Text>
+                  <TextInput
+                    editable={!editingAccount}
+                    keyboardType="decimal-pad"
+                    placeholder="1000000"
+                    placeholderTextColor={theme.inputPlaceholder}
+                    style={[styles.input, editingAccount && styles.inputDisabled]}
+                    value={initialBalance}
+                    onChangeText={setInitialBalance}
+                  />
+                </View>
+              </View>
+
+              <View style={styles.formHint}>
+                <Text style={styles.formHintTitle}>
+                  {editingAccount ? "Đang chỉnh sửa ví" : `Đang tạo ${type === "Savings" ? "Ví tiết kiệm" : "Ví mới"}`}
+                </Text>
+                <Text style={styles.formHintText}>
+                  {editingAccount
+                    ? "Số dư ban đầu không thay đổi khi cập nhật thông tin ví."
+                    : "Thông tin sẽ được lưu vào FinancialAccounts."}
+                </Text>
               </View>
             </View>
-
-            <View style={styles.formHint}>
-              <Text style={styles.formHintTitle}>
-                {editingAccount ? "Đang chỉnh sửa ví" : `Đang tạo ${type === "Savings" ? "Ví tiết kiệm" : "Ví mới"}`}
-              </Text>
-              <Text style={styles.formHintText}>
-                {editingAccount
-                  ? "Số dư ban đầu không thay đổi khi cập nhật thông tin ví."
-                  : "Thông tin sẽ được lưu vào FinancialAccounts."}
-              </Text>
-            </View>
-          </View>
-        </ScrollView>
+          </ScrollView>
         </KeyboardAvoidingView>
       </FocusedScreenTransition>
     );
@@ -332,7 +332,11 @@ export default function AccountScreen() {
         <ScrollView
           contentContainerStyle={styles.walletList}
           refreshControl={
-            <RefreshControl refreshing={isRefreshing} onRefresh={() => loadAccounts("refreshing")} tintColor={theme.text} />
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={() => loadAccounts("refreshing")}
+              tintColor={theme.text}
+            />
           }
         >
           {openAccountMenu !== null ? (
@@ -355,7 +359,7 @@ export default function AccountScreen() {
             <Text style={styles.emptyText}>Chưa có Ví nào. Bấm + để thêm Ví đầu tiên.</Text>
           ) : (
             // Menu thao tác của từng ví được mở độc lập theo `account.id`.
-            accounts.map((account) => (
+            (accounts ?? []).map((account) => (
               <View
                 key={account.id}
                 style={[styles.walletCard, openAccountMenu === account.id && styles.walletCardOpen]}
@@ -368,7 +372,9 @@ export default function AccountScreen() {
                   <Text style={styles.walletType}>{account.type}</Text>
                 </View>
                 <View style={styles.walletRight}>
-                  <Text style={styles.walletBalance}>{formatMoney(getAccountCurrentBalance(account), account.currency)}</Text>
+                  <Text style={styles.walletBalance}>
+                    {formatMoney(getAccountCurrentBalance(account), account.currency)}
+                  </Text>
                   <Pressable
                     style={styles.moreButton}
                     onPress={() => setOpenAccountMenu(openAccountMenu === account.id ? null : account.id)}
@@ -420,180 +426,180 @@ export default function AccountScreen() {
 
 function createStyles(theme: AppTheme) {
   return StyleSheet.create({
-  screen: { flex: 1, backgroundColor: theme.screen },
-  content: { padding: 24, paddingBottom: 96 },
-  walletHeader: {
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingBottom: 16,
-    paddingHorizontal: 20,
-    paddingTop: 56,
-  },
-  backText: { color: theme.primary, fontSize: 17, fontWeight: "700" },
-  closeText: { color: theme.text, fontSize: 32, fontWeight: "300", lineHeight: 34 },
-  saveText: { color: theme.text, fontSize: 14, fontWeight: "800" },
-  topTitle: { color: theme.text, fontSize: 22, fontWeight: "700" },
-  topBar: {
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 12,
-    marginTop: 32,
-  },
-  topSpacer: { width: 82 },
-  headerTools: { alignItems: "center", flexDirection: "row", gap: 22, width: 72 },
-  filterIcon: { color: theme.text, fontSize: 21, transform: [{ rotate: "90deg" }] },
-  searchIcon: { color: theme.text, fontSize: 27 },
-  walletList: { flexGrow: 1, gap: 14, padding: 20, paddingBottom: 96, position: "relative" },
-  balanceSummary: { paddingBottom: 0, paddingTop: 0 },
-  summaryLabel: { color: theme.textMuted, fontSize: 14, marginBottom: 4 },
-  summaryValue: { color: theme.text, fontSize: 26, fontWeight: "700" },
-  walletCard: {
-    alignItems: "center",
-    backgroundColor: theme.card,
-    borderColor: theme.border,
-    borderRadius: 8,
-    borderWidth: 1,
-    flexDirection: "row",
-    minHeight: 78,
-    padding: 16,
-    position: "relative",
-  },
-  walletCardOpen: {
-    borderColor: theme.primary,
-    elevation: 8,
-    shadowOpacity: 0.1,
-    zIndex: 10,
-  },
-  walletIcon: {
-    alignItems: "center",
-    backgroundColor: theme.cardAlt,
-    borderColor: theme.border,
-    borderRadius: 20,
-    borderWidth: 1,
-    justifyContent: "center",
-    marginRight: 14,
-    width: 40,
-  },
-  walletIconText: { color: theme.text, fontSize: 20 },
-  walletInfo: { flex: 1 },
-  walletName: { color: theme.text, fontSize: 18, fontWeight: "700" },
-  walletType: { color: theme.textMuted, fontSize: 14, marginTop: 3 },
-  walletBalance: { color: theme.text, fontSize: 16, fontWeight: "700" },
-  walletRight: { alignItems: "flex-end", gap: 12 },
-  moreButton: {
-    alignItems: "center",
-    backgroundColor: theme.cardAlt,
-    borderColor: theme.border,
-    borderRadius: 12,
-    borderWidth: 1,
-    height: 24,
-    justifyContent: "center",
-    width: 24,
-  },
-  moreText: { color: theme.text, fontSize: 22, lineHeight: 17 },
-  accountMenu: {
-    backgroundColor: theme.sheet,
-    borderColor: theme.border,
-    borderRadius: 10,
-    borderWidth: 1,
-    elevation: 12,
-    minWidth: 236,
-    paddingVertical: 6,
-    position: "absolute",
-    right: 8,
-    shadowColor: "#000",
-    shadowOpacity: 0.16,
-    shadowRadius: 8,
-    top: 62,
-    zIndex: 20,
-  },
-  accountMenuDismissLayer: {
-    bottom: 0,
-    left: 0,
-    position: "absolute",
-    right: 0,
-    top: 0,
-    zIndex: 5,
-  },
-  accountMenuItem: { minHeight: 42, justifyContent: "center", paddingHorizontal: 16 },
-  accountMenuItemPressed: { backgroundColor: theme.primaryPressed },
-  accountMenuText: { color: theme.text, fontSize: 15, lineHeight: 19 },
-  deleteMenuText: { color: theme.dangerText },
-  floatingAddButton: {
-    alignItems: "center",
-    backgroundColor: theme.primary,
-    borderRadius: 28,
-    bottom: 34,
-    elevation: 8,
-    height: 56,
-    justifyContent: "center",
-    position: "absolute",
-    right: 18,
-    shadowColor: "#000",
-    shadowOffset: { height: 3, width: 0 },
-    shadowOpacity: 0.35,
-    shadowRadius: 5,
-    width: 56,
-  },
-  floatingAddText: { color: theme.textInverse, fontSize: 32, fontWeight: "300", lineHeight: 36 },
-  addOptionsPanel: { backgroundColor: theme.card, marginTop: 322, padding: 16 },
-  addOptionsTitle: { color: theme.text, fontSize: 20, fontWeight: "800", marginBottom: 28 },
-  addOptionsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 5 },
-  addOption: {
-    borderRadius: 8,
-    height: 95,
-    justifyContent: "space-between",
-    overflow: "hidden",
-    padding: 14,
-    width: "49%",
-  },
-  addOptionTitle: { color: theme.textInverse, fontSize: 19, fontWeight: "800", maxWidth: 120 },
-  addOptionIcon: { alignSelf: "flex-end", color: "#ffffff55", fontSize: 42, lineHeight: 42 },
-  formHint: {
-    backgroundColor: theme.card,
-    borderColor: theme.border,
-    borderRadius: 8,
-    borderWidth: 1,
-    marginTop: 10,
-    padding: 16,
-  },
-  formHintTitle: { color: theme.text, fontSize: 15, fontWeight: "700" },
-  formHintText: { color: theme.textMuted, fontSize: 13, marginTop: 5 },
-  emptyText: { color: theme.textMuted, fontSize: 16, lineHeight: 23, marginTop: 18, textAlign: "center" },
-  form: { gap: 18, paddingTop: 28 },
-  field: { gap: 8 },
-  label: { color: theme.text, fontSize: 14, fontWeight: "700" },
-  input: {
-    backgroundColor: theme.card,
-    borderColor: theme.border,
-    borderRadius: 8,
-    borderWidth: 1,
-    color: theme.text,
-    fontSize: 16,
-    paddingHorizontal: 14,
-    paddingVertical: 13,
-  },
-  inputDisabled: { backgroundColor: theme.cardAlt, color: theme.textMuted },
-  typeGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  typeOption: {
-    alignItems: "center",
-    backgroundColor: theme.card,
-    borderColor: theme.border,
-    borderRadius: 8,
-    borderWidth: 1,
-    justifyContent: "center",
-    minHeight: 44,
-    minWidth: 104,
-    paddingHorizontal: 14,
-  },
-  typeOptionSelected: { backgroundColor: theme.primary, borderColor: theme.primary },
-  typeOptionText: { color: theme.textSoft, fontWeight: "700" },
-  typeOptionTextSelected: { color: theme.textInverse },
-  row: { flexDirection: "row", gap: 12 },
-  currencyField: { flex: 0.8 },
-  balanceField: { flex: 1.4 },
-  buttonDisabled: { opacity: 0.7 },
+    screen: { flex: 1, backgroundColor: theme.screen },
+    content: { padding: 24, paddingBottom: 96 },
+    walletHeader: {
+      alignItems: "center",
+      flexDirection: "row",
+      justifyContent: "space-between",
+      paddingBottom: 16,
+      paddingHorizontal: 20,
+      paddingTop: 56,
+    },
+    backText: { color: theme.primary, fontSize: 17, fontWeight: "700" },
+    closeText: { color: theme.text, fontSize: 32, fontWeight: "300", lineHeight: 34 },
+    saveText: { color: theme.text, fontSize: 14, fontWeight: "800" },
+    topTitle: { color: theme.text, fontSize: 22, fontWeight: "700" },
+    topBar: {
+      alignItems: "center",
+      flexDirection: "row",
+      justifyContent: "space-between",
+      marginBottom: 12,
+      marginTop: 32,
+    },
+    topSpacer: { width: 82 },
+    headerTools: { alignItems: "center", flexDirection: "row", gap: 22, width: 72 },
+    filterIcon: { color: theme.text, fontSize: 21, transform: [{ rotate: "90deg" }] },
+    searchIcon: { color: theme.text, fontSize: 27 },
+    walletList: { flexGrow: 1, gap: 14, padding: 20, paddingBottom: 96, position: "relative" },
+    balanceSummary: { paddingBottom: 0, paddingTop: 0 },
+    summaryLabel: { color: theme.textMuted, fontSize: 14, marginBottom: 4 },
+    summaryValue: { color: theme.text, fontSize: 26, fontWeight: "700" },
+    walletCard: {
+      alignItems: "center",
+      backgroundColor: theme.card,
+      borderColor: theme.border,
+      borderRadius: 8,
+      borderWidth: 1,
+      flexDirection: "row",
+      minHeight: 78,
+      padding: 16,
+      position: "relative",
+    },
+    walletCardOpen: {
+      borderColor: theme.primary,
+      elevation: 8,
+      shadowOpacity: 0.1,
+      zIndex: 10,
+    },
+    walletIcon: {
+      alignItems: "center",
+      backgroundColor: theme.cardAlt,
+      borderColor: theme.border,
+      borderRadius: 20,
+      borderWidth: 1,
+      justifyContent: "center",
+      marginRight: 14,
+      width: 40,
+    },
+    walletIconText: { color: theme.text, fontSize: 20 },
+    walletInfo: { flex: 1 },
+    walletName: { color: theme.text, fontSize: 18, fontWeight: "700" },
+    walletType: { color: theme.textMuted, fontSize: 14, marginTop: 3 },
+    walletBalance: { color: theme.text, fontSize: 16, fontWeight: "700" },
+    walletRight: { alignItems: "flex-end", gap: 12 },
+    moreButton: {
+      alignItems: "center",
+      backgroundColor: theme.cardAlt,
+      borderColor: theme.border,
+      borderRadius: 12,
+      borderWidth: 1,
+      height: 24,
+      justifyContent: "center",
+      width: 24,
+    },
+    moreText: { color: theme.text, fontSize: 22, lineHeight: 17 },
+    accountMenu: {
+      backgroundColor: theme.sheet,
+      borderColor: theme.border,
+      borderRadius: 10,
+      borderWidth: 1,
+      elevation: 12,
+      minWidth: 236,
+      paddingVertical: 6,
+      position: "absolute",
+      right: 8,
+      shadowColor: "#000",
+      shadowOpacity: 0.16,
+      shadowRadius: 8,
+      top: 62,
+      zIndex: 20,
+    },
+    accountMenuDismissLayer: {
+      bottom: 0,
+      left: 0,
+      position: "absolute",
+      right: 0,
+      top: 0,
+      zIndex: 5,
+    },
+    accountMenuItem: { minHeight: 42, justifyContent: "center", paddingHorizontal: 16 },
+    accountMenuItemPressed: { backgroundColor: theme.primaryPressed },
+    accountMenuText: { color: theme.text, fontSize: 15, lineHeight: 19 },
+    deleteMenuText: { color: theme.dangerText },
+    floatingAddButton: {
+      alignItems: "center",
+      backgroundColor: theme.primary,
+      borderRadius: 28,
+      bottom: 34,
+      elevation: 8,
+      height: 56,
+      justifyContent: "center",
+      position: "absolute",
+      right: 18,
+      shadowColor: "#000",
+      shadowOffset: { height: 3, width: 0 },
+      shadowOpacity: 0.35,
+      shadowRadius: 5,
+      width: 56,
+    },
+    floatingAddText: { color: theme.textInverse, fontSize: 32, fontWeight: "300", lineHeight: 36 },
+    addOptionsPanel: { backgroundColor: theme.card, marginTop: 322, padding: 16 },
+    addOptionsTitle: { color: theme.text, fontSize: 20, fontWeight: "800", marginBottom: 28 },
+    addOptionsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 5 },
+    addOption: {
+      borderRadius: 8,
+      height: 95,
+      justifyContent: "space-between",
+      overflow: "hidden",
+      padding: 14,
+      width: "49%",
+    },
+    addOptionTitle: { color: theme.textInverse, fontSize: 19, fontWeight: "800", maxWidth: 120 },
+    addOptionIcon: { alignSelf: "flex-end", color: "#ffffff55", fontSize: 42, lineHeight: 42 },
+    formHint: {
+      backgroundColor: theme.card,
+      borderColor: theme.border,
+      borderRadius: 8,
+      borderWidth: 1,
+      marginTop: 10,
+      padding: 16,
+    },
+    formHintTitle: { color: theme.text, fontSize: 15, fontWeight: "700" },
+    formHintText: { color: theme.textMuted, fontSize: 13, marginTop: 5 },
+    emptyText: { color: theme.textMuted, fontSize: 16, lineHeight: 23, marginTop: 18, textAlign: "center" },
+    form: { gap: 18, paddingTop: 28 },
+    field: { gap: 8 },
+    label: { color: theme.text, fontSize: 14, fontWeight: "700" },
+    input: {
+      backgroundColor: theme.card,
+      borderColor: theme.border,
+      borderRadius: 8,
+      borderWidth: 1,
+      color: theme.text,
+      fontSize: 16,
+      paddingHorizontal: 14,
+      paddingVertical: 13,
+    },
+    inputDisabled: { backgroundColor: theme.cardAlt, color: theme.textMuted },
+    typeGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+    typeOption: {
+      alignItems: "center",
+      backgroundColor: theme.card,
+      borderColor: theme.border,
+      borderRadius: 8,
+      borderWidth: 1,
+      justifyContent: "center",
+      minHeight: 44,
+      minWidth: 104,
+      paddingHorizontal: 14,
+    },
+    typeOptionSelected: { backgroundColor: theme.primary, borderColor: theme.primary },
+    typeOptionText: { color: theme.textSoft, fontWeight: "700" },
+    typeOptionTextSelected: { color: theme.textInverse },
+    row: { flexDirection: "row", gap: 12 },
+    currencyField: { flex: 0.8 },
+    balanceField: { flex: 1.4 },
+    buttonDisabled: { opacity: 0.7 },
   });
 }

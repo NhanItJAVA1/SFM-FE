@@ -1,25 +1,25 @@
-import { useFocusEffect } from 'expo-router';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Animated, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
+import { useFocusEffect } from "expo-router";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ActivityIndicator, Alert, Animated, Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
 
-import { budgetsApi } from '@/api/budgetsApi';
-import { categoriesApi } from '@/api/categoriesApi';
-import type { Category } from '@/api/categoriesApi';
-import { FocusedScreenTransition } from '@/components/screen-transition';
-import { useAppTheme } from '@/hooks/use-app-theme';
-import { useAIAnalysis } from '@/hooks/use-ai-analysis';
-import { BudgetCategoryItem } from '@/screens/budgets/budget-category-item';
-import { BudgetSummaryCard } from '@/screens/budgets/budget-summary-card';
-import { BudgetTransactionList } from '@/screens/budgets/budget-transaction-list';
-import { useBudgetStyles } from '@/screens/budgets/budgets.styles';
-import { CreateBudgetModal } from '@/screens/budgets/create-budget-modal';
+import { budgetsApi } from "@/api/budgetsApi";
+import type { Category } from "@/api/categoriesApi";
+import { categoriesApi } from "@/api/categoriesApi";
+import { FocusedScreenTransition } from "@/components/screen-transition";
+import { useAIAnalysis } from "@/hooks/use-ai-analysis";
+import { useAppTheme } from "@/hooks/use-app-theme";
+import { BudgetCategoryItem } from "@/screens/budgets/budget-category-item";
+import { BudgetSummaryCard } from "@/screens/budgets/budget-summary-card";
+import { BudgetTransactionList } from "@/screens/budgets/budget-transaction-list";
+import { useBudgetStyles } from "@/screens/budgets/budgets.styles";
+import { CreateBudgetModal } from "@/screens/budgets/create-budget-modal";
 import {
   buildBudgetPayload,
   getBudgetSummary,
   getDefaultBudgetFormState,
   sortBudgetsForCategoryTab,
-} from '@/screens/budgets/helpers';
-import type { BudgetsTab, BudgetFormState, BudgetWithProgress } from '@/screens/budgets/types';
+} from "@/screens/budgets/helpers";
+import type { BudgetFormState, BudgetsTab, BudgetWithProgress } from "@/screens/budgets/types";
 
 const TAB_ANIMATION_DURATION = 260;
 const TAB_INDEX: Record<BudgetsTab, number> = {
@@ -36,7 +36,7 @@ export default function BudgetsScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isCreateVisible, setIsCreateVisible] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [activeTab, setActiveTab] = useState<BudgetsTab>('month');
+  const [activeTab, setActiveTab] = useState<BudgetsTab>("month");
   const [selectedBudgetId, setSelectedBudgetId] = useState<number | null>(null);
   const [isLoadingSelectedBudgetDetail, setIsLoadingSelectedBudgetDetail] = useState(false);
   const [isCategoryScrollEnabled, setIsCategoryScrollEnabled] = useState(true);
@@ -47,14 +47,17 @@ export default function BudgetsScreen() {
   const hasLoadedBudgetsRef = useRef(false);
   const { analysis, isLoading: isAILoading, refresh: refreshAI } = useAIAnalysis();
 
-  const expenseCategories = useMemo(() => categories.filter((category) => category.type === 'Expense'), [categories]);
+  const expenseCategories = useMemo(
+    () => (categories ?? []).filter((category) => category.type === "Expense"),
+    [categories],
+  );
   const sortedBudgets = useMemo(() => sortBudgetsForCategoryTab(budgets), [budgets]);
   const selectedBudget = useMemo(
-    () => budgets.find((budget) => budget.id === selectedBudgetId) ?? sortedBudgets[0] ?? null,
+    () => (budgets ?? []).find((budget) => budget.id === selectedBudgetId) ?? sortedBudgets[0] ?? null,
     [budgets, selectedBudgetId, sortedBudgets],
   );
   const selectedBudgetCategory = useMemo(
-    () => categories.find((category) => category.id === selectedBudget?.categoryId),
+    () => (categories ?? []).find((category) => category.id === selectedBudget?.categoryId),
     [categories, selectedBudget],
   );
   const selectedBudgetSummary = useMemo(
@@ -62,44 +65,49 @@ export default function BudgetsScreen() {
     [selectedBudget],
   );
 
-  const loadBudgets = useCallback(async (mode: 'loading' | 'refreshing' | 'silent' = 'loading') => {
-    try {
-      if (mode === 'refreshing') {
-        setIsRefreshing(true);
-      } else if (mode === 'loading') {
-        setIsLoading(true);
-      }
-
-      const [budgetResponse, categoryResponse] = await Promise.all([
-        budgetsApi.progressSummary(),
-        categoriesApi.list(),
-        ...(mode === 'refreshing' ? [refreshAI()] : []),
-      ]);
-      const budgetProgressEntries = budgetResponse.data.map<BudgetWithProgress>((progress) => ({
-        ...progress,
-        id: progress.id ?? progress.budgetId,
-        progress,
-        progressDetail: null,
-      }));
-
-      setBudgets(budgetProgressEntries);
-      setCategories(categoryResponse.data);
-      setSelectedBudgetId((currentBudgetId) => {
-        if (currentBudgetId && budgetProgressEntries.some((budget) => budget.id === currentBudgetId)) {
-          return currentBudgetId;
+  const loadBudgets = useCallback(
+    async (mode: "loading" | "refreshing" | "silent" = "loading") => {
+      try {
+        if (mode === "refreshing") {
+          setIsRefreshing(true);
+        } else if (mode === "loading") {
+          setIsLoading(true);
         }
 
-        return sortBudgetsForCategoryTab(budgetProgressEntries)[0]?.id ?? null;
-      });
-      setDetailReloadKey((current) => current + 1);
-    } catch (error) {
-      Alert.alert('Không tải được ngân sách', error instanceof Error ? error.message : 'Vui lòng thử lại sau.');
-    } finally {
-      hasLoadedBudgetsRef.current = true;
-      setIsLoading(false);
-      setIsRefreshing(false);
-    }
-  }, [refreshAI]);
+        const [budgetResponse, categoryResponse] = await Promise.all([
+          budgetsApi.progressSummary(),
+          categoriesApi.list(),
+          ...(mode === "refreshing" ? [refreshAI()] : []),
+        ]);
+        const budgetProgressEntries = (
+          Array.isArray(budgetResponse.data) ? budgetResponse.data : []
+        ).map<BudgetWithProgress>((progress) => ({
+          ...progress,
+          id: progress.id ?? progress.budgetId,
+          progress,
+          progressDetail: null,
+        }));
+
+        setBudgets(budgetProgressEntries);
+        setCategories(Array.isArray(categoryResponse.data) ? categoryResponse.data : []);
+        setSelectedBudgetId((currentBudgetId) => {
+          if (currentBudgetId && budgetProgressEntries.some((budget) => budget.id === currentBudgetId)) {
+            return currentBudgetId;
+          }
+
+          return sortBudgetsForCategoryTab(budgetProgressEntries)[0]?.id ?? null;
+        });
+        setDetailReloadKey((current) => current + 1);
+      } catch (error) {
+        Alert.alert("Không tải được ngân sách", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
+      } finally {
+        hasLoadedBudgetsRef.current = true;
+        setIsLoading(false);
+        setIsRefreshing(false);
+      }
+    },
+    [refreshAI],
+  );
 
   const loadSelectedBudgetDetail = useCallback(async (budgetId: number) => {
     try {
@@ -107,7 +115,7 @@ export default function BudgetsScreen() {
       const response = await budgetsApi.getProgressDetail(budgetId);
 
       setBudgets((currentBudgets) =>
-        currentBudgets.map((budget) =>
+        (currentBudgets ?? []).map((budget) =>
           budget.id === budgetId
             ? {
                 ...budget,
@@ -118,7 +126,10 @@ export default function BudgetsScreen() {
         ),
       );
     } catch (error) {
-      Alert.alert('Không tải được chi tiết ngân sách', error instanceof Error ? error.message : 'Vui lòng thử lại sau.');
+      Alert.alert(
+        "Không tải được chi tiết ngân sách",
+        error instanceof Error ? error.message : "Vui lòng thử lại sau.",
+      );
     } finally {
       setIsLoadingSelectedBudgetDetail(false);
     }
@@ -126,8 +137,9 @@ export default function BudgetsScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      loadBudgets(hasLoadedBudgetsRef.current ? 'silent' : 'loading');
-    }, [loadBudgets]),
+      void refreshAI();
+      loadBudgets(hasLoadedBudgetsRef.current ? "silent" : "loading");
+    }, [loadBudgets, refreshAI]),
   );
 
   useEffect(() => {
@@ -164,17 +176,17 @@ export default function BudgetsScreen() {
     const payload = buildBudgetPayload(form);
 
     if (!payload.name) {
-      Alert.alert('Thiếu tên ngân sách', 'Vui lòng nhập tên ngân sách.');
+      Alert.alert("Thiếu tên ngân sách", "Vui lòng nhập tên ngân sách.");
       return;
     }
 
     if (!Number.isFinite(payload.amount) || payload.amount <= 0) {
-      Alert.alert('Hạn mức không hợp lệ', 'Vui lòng nhập hạn mức lớn hơn 0.');
+      Alert.alert("Hạn mức không hợp lệ", "Vui lòng nhập hạn mức lớn hơn 0.");
       return;
     }
 
     if (!Number.isFinite(payload.alertThreshold) || payload.alertThreshold < 0 || payload.alertThreshold > 100) {
-      Alert.alert('Ngưỡng cảnh báo không hợp lệ', 'Ngưỡng cảnh báo nên nằm trong khoảng 0-100%.');
+      Alert.alert("Ngưỡng cảnh báo không hợp lệ", "Ngưỡng cảnh báo nên nằm trong khoảng 0-100%.");
       return;
     }
 
@@ -184,7 +196,7 @@ export default function BudgetsScreen() {
       setIsCreateVisible(false);
       await loadBudgets();
     } catch (error) {
-      Alert.alert('Tạo ngân sách thất bại', error instanceof Error ? error.message : 'Vui lòng thử lại.');
+      Alert.alert("Tạo ngân sách thất bại", error instanceof Error ? error.message : "Vui lòng thử lại.");
     } finally {
       setIsSubmitting(false);
     }
@@ -192,28 +204,28 @@ export default function BudgetsScreen() {
 
   function handleSelectBudget(budgetId: number) {
     setSelectedBudgetId(budgetId);
-    changeTab('month');
+    changeTab("month");
   }
 
   function handleRequestDeleteBudget(budget: BudgetWithProgress, resetSwipe: () => void) {
-    Alert.alert('Xóa ngân sách', `Bạn muốn xóa "${budget.name}"?`, [
+    Alert.alert("Xóa ngân sách", `Bạn muốn xóa "${budget.name}"?`, [
       {
         onPress: resetSwipe,
-        style: 'cancel',
-        text: 'Hủy',
+        style: "cancel",
+        text: "Hủy",
       },
       {
         onPress: async () => {
           try {
             await budgetsApi.remove(budget.id);
-            await loadBudgets('refreshing');
+            await loadBudgets("refreshing");
           } catch (error) {
             resetSwipe();
-            Alert.alert('Xóa ngân sách thất bại', error instanceof Error ? error.message : 'Vui lòng thử lại.');
+            Alert.alert("Xóa ngân sách thất bại", error instanceof Error ? error.message : "Vui lòng thử lại.");
           }
         },
-        style: 'destructive',
-        text: 'Xóa',
+        style: "destructive",
+        text: "Xóa",
       },
     ]);
   }
@@ -233,16 +245,16 @@ export default function BudgetsScreen() {
 
       <View style={styles.periodTabs}>
         <Pressable
-          style={[styles.periodTabButton, activeTab === 'month' && styles.periodTabButtonActive]}
-          onPress={() => changeTab('month')}
+          style={[styles.periodTabButton, activeTab === "month" && styles.periodTabButtonActive]}
+          onPress={() => changeTab("month")}
         >
-          <Text style={activeTab === 'month' ? styles.periodTabActive : styles.periodTab}>Tháng này</Text>
+          <Text style={activeTab === "month" ? styles.periodTabActive : styles.periodTab}>Tháng này</Text>
         </Pressable>
         <Pressable
-          style={[styles.periodTabButton, activeTab === 'category' && styles.periodTabButtonActive]}
-          onPress={() => changeTab('category')}
+          style={[styles.periodTabButton, activeTab === "category" && styles.periodTabButtonActive]}
+          onPress={() => changeTab("category")}
         >
-          <Text style={activeTab === 'category' ? styles.periodTabActive : styles.periodTab}>Danh mục</Text>
+          <Text style={activeTab === "category" ? styles.periodTabActive : styles.periodTab}>Danh mục</Text>
         </Pressable>
       </View>
 
@@ -286,14 +298,14 @@ export default function BudgetsScreen() {
                   refreshControl={
                     <RefreshControl
                       refreshing={isRefreshing}
-                      onRefresh={() => loadBudgets('refreshing')}
+                      onRefresh={() => loadBudgets("refreshing")}
                       tintColor={theme.text}
                     />
                   }
                 >
                   <BudgetSummaryCard
                     categoryName={
-                      selectedBudget.progress?.categoryName ?? selectedBudgetCategory?.name ?? 'Tất cả danh mục'
+                      selectedBudget.progress?.categoryName ?? selectedBudgetCategory?.name ?? "Tất cả danh mục"
                     }
                     name={selectedBudget.name}
                     summary={selectedBudgetSummary}
@@ -312,11 +324,11 @@ export default function BudgetsScreen() {
             <View style={[styles.tabPage, tabWidth > 0 ? { width: tabWidth } : null]}>
               <ScrollView
                 contentContainerStyle={styles.content}
-                scrollEnabled={activeTab === 'category' && isCategoryScrollEnabled}
+                scrollEnabled={activeTab === "category" && isCategoryScrollEnabled}
                 refreshControl={
                   <RefreshControl
                     refreshing={isRefreshing}
-                    onRefresh={() => loadBudgets('refreshing')}
+                    onRefresh={() => loadBudgets("refreshing")}
                     tintColor={theme.text}
                   />
                 }
@@ -351,4 +363,3 @@ export default function BudgetsScreen() {
     </FocusedScreenTransition>
   );
 }
-

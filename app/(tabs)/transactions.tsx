@@ -19,13 +19,6 @@ const periodLabels: Record<Period, string> = {
   future: "Tương lai",
 };
 
-const typeLabels: Record<TransactionType, string> = {
-  Income: "Thu nhập",
-  Expense: "Chi tiêu",
-  TransferIn: "Chuyển vào",
-  TransferOut: "Chuyển ra",
-};
-
 function useTransactionStyles() {
   const theme = useAppTheme();
 
@@ -75,8 +68,8 @@ export default function TransactionsScreen() {
           transactionsApi.list({ accountId: selectedAccountId }),
           ...(refresh ? [refreshAI()] : []),
         ]);
-        setAccounts(accountResponse.data);
-        setTransactions(transactionResponse.data);
+        setAccounts(Array.isArray(accountResponse.data) ? accountResponse.data : []);
+        setTransactions(Array.isArray(transactionResponse.data) ? transactionResponse.data : []);
         hasLoadedDataRef.current = true;
       } catch (error) {
         const message = error instanceof Error ? error.message : "Vui lòng thử lại sau.";
@@ -98,8 +91,9 @@ export default function TransactionsScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      void refreshAI();
       loadData({ silent: hasLoadedDataRef.current });
-    }, [loadData]),
+    }, [loadData, refreshAI]),
   );
 
   const anomalyIds = useMemo(
@@ -112,7 +106,7 @@ export default function TransactionsScreen() {
 
   const filteredTransactions = useMemo(() => {
     const { start, end } = getPeriodRange(period);
-    return transactions
+    return (transactions ?? [])
       .filter((transaction) => {
         const date = new Date(transaction.transactionDate);
         return (
@@ -144,8 +138,8 @@ export default function TransactionsScreen() {
     return [...groups.entries()];
   }, [anomalyIds, filteredTransactions, showAnomaliesOnly]);
 
-  const selectedAccount = accounts.find((account) => account.id === selectedAccountId);
-  const currency = selectedAccount?.currency ?? accounts[0]?.currency ?? "VND";
+  const selectedAccount = (accounts ?? []).find((account) => account.id === selectedAccountId);
+  const currency = selectedAccount?.currency ?? (accounts ?? [])[0]?.currency ?? "VND";
   const netRatio = summary.incoming ? Math.min(100, Math.max(0, (summary.net / summary.incoming) * 100)) : 0;
   const currentMonth = new Date().getMonth() + 1;
   const visibleAnomalyCount = filteredTransactions.filter((transaction) => anomalyIds.has(transaction.id)).length;
@@ -199,7 +193,7 @@ export default function TransactionsScreen() {
                   setIsAccountPickerOpen(false);
                 }}
               />
-              {accounts.map((account) => (
+              {(accounts ?? []).map((account) => (
                 <AccountOption
                   key={account.id}
                   label={account.name}
@@ -360,7 +354,7 @@ function TransactionDay({
   const theme = useAppTheme();
   const styles = useTransactionStyles();
 
-  const movement = transactions.reduce(
+  const movement = (transactions ?? []).reduce(
     (sum, transaction) => sum + (isPositive(transaction.type) ? transaction.amount : -transaction.amount),
     0,
   );
@@ -374,7 +368,7 @@ function TransactionDay({
           {formatMoney(movement, currency)}
         </Text>
       </View>
-      {transactions.map((transaction) => (
+      {(transactions ?? []).map((transaction) => (
         <View key={transaction.id} style={styles.transactionRow}>
           <View
             style={[
@@ -388,7 +382,7 @@ function TransactionDay({
           </View>
           <View style={styles.transactionCopy}>
             <View style={styles.transactionTitleRow}>
-              <Text style={styles.transactionTitle}>{typeLabels[transaction.type]}</Text>
+              <Text style={styles.transactionTitle}>{transaction.categoryName}</Text>
               {anomalyIds.has(transaction.id) ? (
                 <View style={styles.anomalyTag}>
                   <Text style={styles.anomalyIcon}>⚡</Text>
