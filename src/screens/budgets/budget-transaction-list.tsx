@@ -1,12 +1,12 @@
-import { useState } from 'react';
-import { Modal, Pressable, ScrollView, Text, View } from 'react-native';
+import { useState } from "react";
+import { Modal, Pressable, ScrollView, Text, View } from "react-native";
 
-import type { BudgetDailySpending } from '@/api/budgetsApi';
+import type { BudgetDailySpending } from "@/api/budgetsApi";
 
-import { useBudgetStyles } from './budgets.styles';
-import { formatMoney } from './helpers';
+import { useBudgetStyles } from "./budgets.styles";
+import { formatMoney } from "./helpers";
 
-export function BudgetTransactionList({ dailySpendings }: { dailySpendings: BudgetDailySpending[] }) {
+export function BudgetTransactionList({ dailySpendings = [] }: { dailySpendings?: BudgetDailySpending[] }) {
   const styles = useBudgetStyles();
   const [selectedDay, setSelectedDay] = useState<BudgetDailySpending | null>(null);
 
@@ -36,11 +36,11 @@ function DailyBudgetSpendingRow({ day, onPress }: { day: BudgetDailySpending; on
   return (
     <Pressable style={styles.dailySpendingRow} onPress={onPress}>
       <View style={styles.budgetIcon}>
-        <Text style={styles.budgetIconText}>{isToday ? 'N' : 'D'}</Text>
+        <Text style={styles.budgetIconText}>{isToday ? "N" : "D"}</Text>
       </View>
       <View style={styles.budgetInfo}>
         <View style={styles.budgetTopRow}>
-          <Text style={styles.budgetName}>{isToday ? 'Hôm nay' : formatDayLabel(day.date)}</Text>
+          <Text style={styles.budgetName}>{isToday ? "Hôm nay" : formatDayLabel(day.date)}</Text>
           <Text style={styles.budgetAmount}>{formatMoney(day.amount)}</Text>
         </View>
         <View style={styles.budgetTopRow}>
@@ -60,13 +60,7 @@ function DailyBudgetSpendingRow({ day, onPress }: { day: BudgetDailySpending; on
   );
 }
 
-function BudgetDayTransactionsSheet({
-  day,
-  onClose,
-}: {
-  day: BudgetDailySpending | null;
-  onClose: () => void;
-}) {
+function BudgetDayTransactionsSheet({ day, onClose }: { day: BudgetDailySpending | null; onClose: () => void }) {
   const styles = useBudgetStyles();
 
   return (
@@ -77,7 +71,9 @@ function BudgetDayTransactionsSheet({
             <>
               <View style={styles.sheetHeader}>
                 <View>
-                  <Text style={styles.sheetTitle}>{isSameDate(new Date(day.date), new Date()) ? 'Hôm nay' : formatDayLabel(day.date)}</Text>
+                  <Text style={styles.sheetTitle}>
+                    {isSameDate(new Date(day.date), new Date()) ? "Hôm nay" : formatDayLabel(day.date)}
+                  </Text>
                   <Text style={styles.sheetSubtitle}>
                     {day.transactionCount} giao dịch · {formatMoney(day.amount)}
                   </Text>
@@ -87,14 +83,14 @@ function BudgetDayTransactionsSheet({
                 </Pressable>
               </View>
               <ScrollView contentContainerStyle={styles.sheetTransactionList}>
-                {day.transactions.map((transaction) => (
+                {(day.transactions ?? []).map((transaction) => (
                   <View key={transaction.id} style={styles.sheetTransactionRow}>
                     <View style={styles.transactionCopy}>
-                      <Text style={styles.transactionDescription}>{transaction.description || 'Không có ghi chú'}</Text>
+                      <Text style={styles.transactionDescription}>{transaction.description || "Không có ghi chú"}</Text>
                       <Text style={styles.transactionDate}>
-                        {new Intl.DateTimeFormat('vi-VN', {
-                          hour: '2-digit',
-                          minute: '2-digit',
+                        {new Intl.DateTimeFormat("vi-VN", {
+                          hour: "2-digit",
+                          minute: "2-digit",
                         }).format(new Date(transaction.transactionDate))}
                       </Text>
                     </View>
@@ -111,9 +107,9 @@ function BudgetDayTransactionsSheet({
 }
 
 function formatDayLabel(date: string) {
-  return new Intl.DateTimeFormat('vi-VN', {
-    day: '2-digit',
-    month: '2-digit',
+  return new Intl.DateTimeFormat("vi-VN", {
+    day: "2-digit",
+    month: "2-digit",
   }).format(new Date(date));
 }
 

@@ -6,8 +6,9 @@ import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, Text, TextIn
 
 import { authApi } from "@/api/authApi";
 import { FocusedScreenTransition } from "@/components/screen-transition";
-import { getAuthAccessToken } from "@/stores/authSession";
+import { getAuthAccessToken, getAuthUser } from "@/stores/authSession";
 import { saveAuthSession } from "@/stores/persistedAuthSession";
+import { isAdminUser } from "@/utils/authRole";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -19,6 +20,32 @@ const googleClientIdForPlatform = Platform.select({
   android: googleAndroidClientId,
   default: googleWebClientId,
 });
+
+function decodeJwtPayload(token: string) {
+  const [, payload] = token.split(".");
+
+  if (!payload) {
+    return null;
+  }
+
+  try {
+    if (typeof atob !== "function") {
+      return null;
+    }
+
+    const normalizedPayload = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const paddedPayload = normalizedPayload.padEnd(Math.ceil(normalizedPayload.length / 4) * 4, "=");
+    const decodedPayload = atob(paddedPayload);
+
+    return JSON.parse(decodedPayload) as { aud?: string; email?: string; exp?: number; iss?: string };
+  } catch {
+    return null;
+  }
+}
+
+function getPostLoginRoute(user: Parameters<typeof isAdminUser>[0]) {
+  return (isAdminUser(user) ? "/admin" : "/(tabs)/home") as never;
+}
 
 export default function LoginScreen() {
   const [username, setUsername] = useState("");
@@ -34,7 +61,7 @@ export default function LoginScreen() {
 
   useEffect(() => {
     if (getAuthAccessToken()) {
-      router.replace("/(tabs)/home");
+      router.replace(getPostLoginRoute(getAuthUser()));
     }
   }, []);
 
@@ -46,7 +73,7 @@ export default function LoginScreen() {
           token,
         });
         await saveAuthSession(response.data);
-        router.replace("/(tabs)/home");
+        router.replace(getPostLoginRoute(response.data.user));
       } catch (error) {
         Alert.alert("Google sign in failed", error instanceof Error ? error.message : "Unable to sign in with Google.");
       } finally {
@@ -58,15 +85,24 @@ export default function LoginScreen() {
       return;
     }
 
-    const token = googleResponse.params.id_token ?? googleResponse.params.access_token;
+    const idToken = googleResponse.params.id_token;
+    const tokenPayload = idToken ? decodeJwtPayload(idToken) : null;
+    console.log("Google token debug:", {
+      hasIdToken: Boolean(idToken),
+      hasAccessToken: Boolean(googleResponse.params.access_token),
+      tokenParts: idToken ? idToken.split(".").length : 0,
+      aud: tokenPayload?.aud,
+      iss: tokenPayload?.iss,
+      exp: tokenPayload?.exp,
+    });
 
-    if (!token) {
-      Alert.alert("Google sign in failed", "Google did not return a token.");
+    if (!idToken) {
+      Alert.alert("Google sign in failed", "Google did not return an ID token.");
       setTimeout(() => setIsGoogleSubmitting(false), 0);
       return;
     }
 
-    loginWithGoogleToken(token);
+    loginWithGoogleToken(idToken);
   }, [googleResponse]);
 
   async function handleLogin() {
@@ -74,7 +110,7 @@ export default function LoginScreen() {
       setIsSubmitting(true);
       const response = await authApi.login({ username: username.trim(), password });
       await saveAuthSession(response.data);
-      router.replace("/(tabs)/home");
+      router.replace(getPostLoginRoute(response.data.user));
     } catch (error) {
       Alert.alert("Sign in failed", error instanceof Error ? error.message : "Unable to connect to the server.");
     } finally {

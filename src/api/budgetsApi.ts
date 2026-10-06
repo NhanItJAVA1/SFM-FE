@@ -25,7 +25,9 @@ export type BudgetPayload = {
 };
 
 export type BudgetProgress = {
+  id: number;
   budgetId: number;
+  userId: number;
   name: string;
   categoryId: number | null;
   categoryName: string | null;
@@ -35,8 +37,11 @@ export type BudgetProgress = {
   usedPercentage: number;
   alertThreshold: number;
   isAlert: boolean;
+  isRecurring: boolean;
   startDate: string;
   endDate: string;
+  createdAt: string;
+  updatedAt: string | null;
 };
 
 export type BudgetProgressTransaction = {
@@ -78,6 +83,7 @@ export const budgetsApi = {
   create: (payload: BudgetPayload) => axiosClient.post('/budgets', payload),
   update: (id: number, payload: BudgetPayload) => axiosClient.put(`/budgets/${id}`, payload),
   remove: (id: number) => axiosClient.delete(`/budgets/${id}`),
+  progressSummary: () => axiosClient.get<BudgetProgress[]>('/budgets/progress-summary'),
   getProgress: (budgetId: number) => axiosClient.get<BudgetProgress>(`/budgets/${budgetId}/progress`),
   getProgressDetail: (budgetId: number) =>
     axiosClient.get<BudgetProgressDetail>(`/budgets/${budgetId}/progress-detail`),

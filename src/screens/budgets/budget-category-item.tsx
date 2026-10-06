@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { Animated, PanResponder, Pressable, Text, View } from 'react-native';
 
 import type { Category } from '@/api/categoriesApi';
+import type { AIRecommendation } from '@/api/aiApi';
 
 import { useBudgetStyles } from './budgets.styles';
 import { describeCategory, formatMoney, isBudgetExpired } from './helpers';
@@ -14,6 +15,7 @@ const DELETE_VELOCITY = -0.85;
 const DELETE_VELOCITY_DISTANCE_RATIO = 0.18;
 
 export function BudgetCategoryItem({
+  aiRecommendations,
   budget,
   categories,
   isSelected,
@@ -21,6 +23,7 @@ export function BudgetCategoryItem({
   onPress,
   onRequestDelete,
 }: {
+  aiRecommendations: AIRecommendation[];
   budget: BudgetWithProgress;
   categories: Category[];
   isSelected: boolean;
@@ -36,6 +39,12 @@ export function BudgetCategoryItem({
   const categoryName = progress?.categoryName ?? describeCategory(category);
   const remainingAmount = progress?.remainingAmount ?? budget.amount;
   const usedPercentage = progress?.usedPercentage ?? 0;
+  const isWarning = usedPercentage >= 80;
+  const isCritical = usedPercentage >= 100;
+  const budgetRecommendation = aiRecommendations.find(
+    (recommendation) => recommendation.category.trim() === String(budget.categoryId),
+  );
+  const warningText = budgetRecommendation?.message ?? (isWarning ? `Đã sử dụng ${usedPercentage.toFixed(0)}% ngân sách.` : null);
   const isExpired = isBudgetExpired(budget);
   const resetSwipe = useCallback(() => {
     animateSwipe(translateX, 0);
@@ -93,6 +102,17 @@ export function BudgetCategoryItem({
               </Text>
             </View>
             <Text style={styles.budgetCategory}>{categoryName}</Text>
+            <View style={styles.progressTrack}>
+              <View
+                style={[
+                  styles.progressFill,
+                  isWarning && styles.progressFillWarning,
+                  isCritical && styles.progressFillCritical,
+                  { width: `${Math.min(100, Math.max(0, usedPercentage))}%` },
+                ]}
+              />
+            </View>
+            {warningText ? <Text style={styles.budgetWarning}>{warningText}</Text> : null}
             <View style={styles.budgetTopRow}>
               <Text style={styles.budgetRemaining}>Còn lại {formatMoney(remainingAmount)}</Text>
               <Text style={styles.progressMeta}>{usedPercentage.toFixed(0)}%</Text>
