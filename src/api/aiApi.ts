@@ -38,6 +38,21 @@ export type AIRecommendation = {
   action: string;
 };
 
+export type AIChatPayload = {
+  question: string;
+};
+
+export type AIChatSource = {
+  source: string;
+  chunk: number;
+};
+
+export type AIChatResponse = {
+  answer: string;
+  sources: AIChatSource[];
+};
+
 export const aiApi = {
   analysis: () => axiosClient.post<AIAnalysis>('/FinancialAdvisor/analyze'),
+  chat: (payload: AIChatPayload) => axiosClient.post<AIChatResponse>('/AI/chat', payload),
 };

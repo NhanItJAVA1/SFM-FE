@@ -266,13 +266,22 @@ export default function HomeScreen() {
                 {displayName}
               </Text>
             </View>
-            <Pressable
-              style={styles.iconButton}
-              onPress={() => loadHomeData({ refresh: true })}
-              accessibilityLabel="Làm mới tổng quan"
-            >
-              <Text style={styles.iconButtonText}>↻</Text>
-            </Pressable>
+            <View style={styles.headerActions}>
+              <Pressable
+                style={styles.aiChatButton}
+                onPress={() => router.push('/ai-chat')}
+                accessibilityLabel="Mở trợ lý tài chính AI"
+              >
+                <Text style={styles.aiChatButtonText}>AI</Text>
+              </Pressable>
+              <Pressable
+                style={styles.iconButton}
+                onPress={() => loadHomeData({ refresh: true })}
+                accessibilityLabel="Làm mới tổng quan"
+              >
+                <Text style={styles.iconButtonText}>↻</Text>
+              </Pressable>
+            </View>
           </View>
 
           <View style={styles.heroCard}>
@@ -655,8 +664,18 @@ function createStyles(theme: AppTheme) {
       paddingTop: 14,
     },
     headerCopy: { flex: 1, paddingRight: 12 },
+    headerActions: { alignItems: "center", flexDirection: "row", gap: 8 },
     greeting: { color: theme.textMuted, fontSize: 13, fontWeight: "600" },
     userName: { color: theme.text, fontSize: 24, fontWeight: "900", marginTop: 3 },
+    aiChatButton: {
+      alignItems: "center",
+      backgroundColor: theme.primary,
+      borderRadius: 20,
+      height: 40,
+      justifyContent: "center",
+      width: 40,
+    },
+    aiChatButtonText: { color: theme.textInverse, fontSize: 13, fontWeight: "900" },
     iconButton: {
       alignItems: "center",
       backgroundColor: theme.card,
