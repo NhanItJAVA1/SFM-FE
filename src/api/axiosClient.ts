@@ -304,8 +304,6 @@ httpClient.interceptors.response.use(
   },
 
   async (error: AxiosError) => {
-    logError(error);
-
     const originalRequest = error.config as
       | (InternalAxiosRequestConfig & {
           _retry?: boolean;
@@ -316,6 +314,8 @@ httpClient.interceptors.response.use(
      * No original request -> just reject.
      */
     if (!originalRequest) {
+      logError(error);
+
       return Promise.reject(error);
     }
 
@@ -329,6 +329,8 @@ httpClient.interceptors.response.use(
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
 
+      console.log("🔐 Access token rejected. Trying refresh token flow.");
+
       const refreshed = await refreshAccessTokenOnce();
 
       if (refreshed) {
@@ -341,6 +343,8 @@ httpClient.interceptors.response.use(
         return httpClient.request(originalRequest);
       }
     }
+
+    logError(error);
 
     return Promise.reject(error);
   },
