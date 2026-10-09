@@ -1,5 +1,7 @@
+import * as DocumentPicker from "expo-document-picker";
 import { router, useFocusEffect } from "expo-router";
-import { useCallback, useMemo, useState } from "react";
+import { CheckCircle2, Eye, MoreVertical, Pencil, RotateCw, Trash2 } from "lucide-react-native";
+import { type ReactNode, useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -20,6 +22,7 @@ import { adminApi } from "@/api/adminApi";
 import type { AuthUser } from "@/api/authApi";
 import { authApi } from "@/api/authApi";
 import { type Category, type CategoryType } from "@/api/categoriesApi";
+import { ragDocumentsApi, type RagDocument } from "@/api/ragDocumentsApi";
 import { transactionsApi, type Transaction } from "@/api/transactionsApi";
 import { usersApi } from "@/api/usersApi";
 import { FocusedScreenTransition } from "@/components/screen-transition";
@@ -29,11 +32,24 @@ import { clearAuthSession } from "@/stores/persistedAuthSession";
 import type { AppTheme } from "@/theme/appTheme";
 import { isAdminUser } from "@/utils/authRole";
 
-type AdminView = "dashboard" | "users" | "categories";
+type AdminView = "dashboard" | "users" | "categories" | "documents";
 type CategoryFormState = {
   icon: string;
   name: string;
   type: CategoryType;
+};
+type RagUploadFormState = {
+  title: string;
+  description: string;
+  fileName: string;
+  fileType: string;
+  ragCategory: string;
+  asset: DocumentPicker.DocumentPickerAsset | null;
+};
+type RagMetadataFormState = {
+  title: string;
+  description: string;
+  ragCategory: string;
 };
 
 const emptyCategoryForm: CategoryFormState = {
@@ -41,6 +57,20 @@ const emptyCategoryForm: CategoryFormState = {
   name: "",
   type: "Expense",
 };
+const emptyRagUploadForm: RagUploadFormState = {
+  asset: null,
+  description: "",
+  fileName: "",
+  fileType: "",
+  ragCategory: "General",
+  title: "",
+};
+const emptyRagMetadataForm: RagMetadataFormState = {
+  description: "",
+  ragCategory: "General",
+  title: "",
+};
+const supportedRagFileExtensions = new Set(["txt", "docs", "md", "pdf"]);
 
 function useAdminStyles() {
   const theme = useAppTheme();
@@ -64,6 +94,32 @@ function getCategoryTypeLabel(type: Category["type"]) {
   return type === "Income" ? "Thu nhập" : "Chi tiêu";
 }
 
+function getFileExtension(fileName: string) {
+  const extension = fileName.split(".").pop()?.trim().toLowerCase();
+
+  return extension && extension !== fileName.toLowerCase() ? extension : "txt";
+}
+
+function isSupportedRagFileType(fileType: string) {
+  return supportedRagFileExtensions.has(fileType.toLowerCase());
+}
+
+function getRagDocumentStatusLabel(document: RagDocument) {
+  return document.statusName || document.status;
+}
+
+function formatFileSize(size?: number) {
+  if (!size) {
+    return "Không rõ dung lượng";
+  }
+
+  if (size < 1024 * 1024) {
+    return `${Math.max(1, Math.round(size / 1024))} KB`;
+  }
+
+  return `${(size / 1024 / 1024).toFixed(1)} MB`;
+}
+
 export default function AdminScreen() {
   const theme = useAppTheme();
   const styles = useAdminStyles();
@@ -72,11 +128,24 @@ export default function AdminScreen() {
   const [users, setUsers] = useState<AuthUser[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [ragDocuments, setRagDocuments] = useState<RagDocument[]>([]);
   const [selectedUser, setSelectedUser] = useState<AuthUser | null>(null);
+  const [selectedRagDocument, setSelectedRagDocument] = useState<RagDocument | null>(null);
+  const [actionMenuRagDocument, setActionMenuRagDocument] = useState<RagDocument | null>(null);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
+  const [editingRagDocument, setEditingRagDocument] = useState<RagDocument | null>(null);
   const [categoryForm, setCategoryForm] = useState<CategoryFormState>(emptyCategoryForm);
+  const [ragUploadForm, setRagUploadForm] = useState<RagUploadFormState>(emptyRagUploadForm);
+  const [ragMetadataForm, setRagMetadataForm] = useState<RagMetadataFormState>(emptyRagMetadataForm);
   const [isCategoryFormVisible, setIsCategoryFormVisible] = useState(false);
+  const [isRagDetailVisible, setIsRagDetailVisible] = useState(false);
+  const [isRagUploadVisible, setIsRagUploadVisible] = useState(false);
+  const [isRagMetadataVisible, setIsRagMetadataVisible] = useState(false);
   const [isSavingCategory, setIsSavingCategory] = useState(false);
+  const [isLoadingRagDetail, setIsLoadingRagDetail] = useState(false);
+  const [isUploadingRagDocument, setIsUploadingRagDocument] = useState(false);
+  const [isSavingRagMetadata, setIsSavingRagMetadata] = useState(false);
+  const [processingDocumentId, setProcessingDocumentId] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -91,15 +160,17 @@ export default function AdminScreen() {
         setIsLoading(true);
       }
 
-      const [usersResponse, categoriesResponse, transactionsResponse] = await Promise.all([
+      const [usersResponse, categoriesResponse, transactionsResponse, ragDocumentsResponse] = await Promise.all([
         usersApi.list(),
         adminApi.listDefaultCategories(),
         transactionsApi.list({ filter: "All" }),
+        ragDocumentsApi.list(),
       ]);
 
       setUsers(Array.isArray(usersResponse.data) ? usersResponse.data : []);
       setCategories(Array.isArray(categoriesResponse.data) ? categoriesResponse.data : []);
       setTransactions(Array.isArray(transactionsResponse.data) ? transactionsResponse.data : []);
+      setRagDocuments(Array.isArray(ragDocumentsResponse.data) ? ragDocumentsResponse.data : []);
     } catch (error) {
       if (silent) {
         console.warn("Không tải được admin dashboard", error);
@@ -117,9 +188,11 @@ export default function AdminScreen() {
   useFocusEffect(
     useCallback(() => {
       if (isAdminUser(currentUser)) {
-        loadAdminData({ silent: users.length > 0 || categories.length > 0 || transactions.length > 0 });
+        loadAdminData({
+          silent: users.length > 0 || categories.length > 0 || transactions.length > 0 || ragDocuments.length > 0,
+        });
       }
-    }, [categories.length, currentUser, loadAdminData, transactions.length, users.length]),
+    }, [categories.length, currentUser, loadAdminData, ragDocuments.length, transactions.length, users.length]),
   );
 
   function openUserDetail(user: AuthUser) {
@@ -209,6 +282,216 @@ export default function AdminScreen() {
       setCategories((current) => (current ?? []).filter((item) => item.id !== category.id));
     } catch (error) {
       Alert.alert("Không xóa được category", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
+    }
+  }
+
+  function openRagUpload() {
+    setRagUploadForm(emptyRagUploadForm);
+    setIsRagUploadVisible(true);
+  }
+
+  async function pickRagDocumentFile() {
+    const result = await DocumentPicker.getDocumentAsync({
+      copyToCacheDirectory: true,
+      multiple: false,
+      type: "*/*",
+    });
+
+    if (result.canceled) {
+      return;
+    }
+
+    const asset = result.assets[0];
+    const fileType = getFileExtension(asset.name);
+
+    if (!isSupportedRagFileType(fileType)) {
+      Alert.alert("Định dạng chưa hỗ trợ", "Hiện chỉ hỗ trợ .txt, .docs, .md và .pdf.");
+      return;
+    }
+
+    const title = ragUploadForm.title.trim() || asset.name.replace(/\.[^/.]+$/, "");
+
+    setRagUploadForm((current) => ({
+      ...current,
+      asset,
+      fileName: asset.name,
+      fileType,
+      title,
+    }));
+  }
+
+  async function uploadRagDocument() {
+    const title = ragUploadForm.title.trim();
+    const description = ragUploadForm.description.trim();
+    const ragCategory = ragUploadForm.ragCategory.trim() || "General";
+    const asset = ragUploadForm.asset;
+    const fileType = ragUploadForm.fileType || (asset ? getFileExtension(asset.name) : "");
+
+    if (!asset) {
+      Alert.alert("Chưa chọn file", "Vui lòng chọn tài liệu cần upload.");
+      return;
+    }
+
+    if (!title) {
+      Alert.alert("Thiếu tiêu đề", "Vui lòng nhập tiêu đề tài liệu.");
+      return;
+    }
+
+    if (!isSupportedRagFileType(fileType)) {
+      Alert.alert("Định dạng chưa hỗ trợ", "Hiện chỉ hỗ trợ .txt, .docs, .md và .pdf.");
+      return;
+    }
+
+    try {
+      setIsUploadingRagDocument(true);
+      const uploadUrlResponse = await ragDocumentsApi.createUploadUrl({
+        description: description || null,
+        fileName: ragUploadForm.fileName || asset.name,
+        fileType,
+        ragCategory: ragCategory || null,
+        title,
+      });
+
+      await ragDocumentsApi.uploadFileToPresignedUrl(uploadUrlResponse.data.uploadUrl, asset.uri, asset.file ?? null);
+      await ragDocumentsApi.confirm(uploadUrlResponse.data.documentId);
+      setIsRagUploadVisible(false);
+      setRagUploadForm(emptyRagUploadForm);
+      await loadAdminData({ refresh: true });
+      Alert.alert("Upload thành công", "Tài liệu đã được upload và gửi yêu cầu indexing.");
+    } catch (error) {
+      Alert.alert("Upload tài liệu thất bại", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
+    } finally {
+      setIsUploadingRagDocument(false);
+    }
+  }
+
+  function openEditRagMetadata(document: RagDocument) {
+    setEditingRagDocument(document);
+    setRagMetadataForm({
+      description: document.description ?? "",
+      ragCategory: document.ragCategory ?? "General",
+      title: document.title,
+    });
+    setIsRagMetadataVisible(true);
+  }
+
+  async function saveRagMetadata() {
+    if (!editingRagDocument) {
+      return;
+    }
+
+    const title = ragMetadataForm.title.trim();
+    const description = ragMetadataForm.description.trim();
+    const ragCategory = ragMetadataForm.ragCategory.trim() || "General";
+
+    if (!title) {
+      Alert.alert("Thiếu tiêu đề", "Vui lòng nhập tiêu đề tài liệu.");
+      return;
+    }
+
+    try {
+      setIsSavingRagMetadata(true);
+      await ragDocumentsApi.updateMetadata(editingRagDocument.id, {
+        description,
+        ragCategory,
+        title,
+      });
+      const response = await ragDocumentsApi.get(editingRagDocument.id);
+
+      setRagDocuments((current) =>
+        (current ?? []).map((document) => (document.id === editingRagDocument.id ? response.data : document)),
+      );
+      setSelectedRagDocument((current) => (current?.id === editingRagDocument.id ? response.data : current));
+      setIsRagMetadataVisible(false);
+      setEditingRagDocument(null);
+      setRagMetadataForm(emptyRagMetadataForm);
+      Alert.alert("Đã lưu metadata", "Thông tin tài liệu đã được cập nhật.");
+    } catch (error) {
+      Alert.alert("Không lưu được metadata", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
+    } finally {
+      setIsSavingRagMetadata(false);
+    }
+  }
+
+  function requestDeleteRagDocument(document: RagDocument) {
+    setActionMenuRagDocument(null);
+    Alert.alert("Xóa tài liệu RAG", `Bạn muốn xóa "${document.title}"?`, [
+      { style: "cancel", text: "Hủy" },
+      {
+        onPress: () => void deleteRagDocument(document),
+        style: "destructive",
+        text: "Xóa",
+      },
+    ]);
+  }
+
+  async function deleteRagDocument(document: RagDocument) {
+    try {
+      setProcessingDocumentId(document.id);
+      await ragDocumentsApi.remove(document.id);
+      setRagDocuments((current) => (current ?? []).filter((item) => item.id !== document.id));
+      if (selectedRagDocument?.id === document.id) {
+        setSelectedRagDocument(null);
+        setIsRagDetailVisible(false);
+      }
+      Alert.alert("Đã xóa tài liệu", "Tài liệu RAG đã được xóa.");
+    } catch (error) {
+      Alert.alert("Không xóa được tài liệu", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
+    } finally {
+      setProcessingDocumentId(null);
+    }
+  }
+
+  async function openRagDocumentDetail(document: RagDocument) {
+    try {
+      setSelectedRagDocument(document);
+      setIsRagDetailVisible(true);
+      setIsLoadingRagDetail(true);
+      const response = await ragDocumentsApi.get(document.id);
+
+      setSelectedRagDocument(response.data);
+      setRagDocuments((current) =>
+        (current ?? []).map((item) => (item.id === document.id ? response.data : item)),
+      );
+    } catch (error) {
+      Alert.alert("Không tải được chi tiết tài liệu", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
+    } finally {
+      setIsLoadingRagDetail(false);
+    }
+  }
+
+  async function confirmRagDocument(document: RagDocument) {
+    try {
+      setProcessingDocumentId(document.id);
+      await ragDocumentsApi.confirm(document.id);
+      const response = await ragDocumentsApi.get(document.id);
+
+      setRagDocuments((current) =>
+        (current ?? []).map((item) => (item.id === document.id ? response.data : item)),
+      );
+      setSelectedRagDocument((current) => (current?.id === document.id ? response.data : current));
+      Alert.alert("Đã xác nhận tài liệu", "Yêu cầu confirm/indexing đã hoàn tất.");
+    } catch (error) {
+      Alert.alert("Không xác nhận được tài liệu", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
+    } finally {
+      setProcessingDocumentId(null);
+    }
+  }
+
+  async function reindexRagDocument(document: RagDocument) {
+    try {
+      setProcessingDocumentId(document.id);
+      await ragDocumentsApi.reindex(document.id);
+      const response = await ragDocumentsApi.get(document.id);
+      setRagDocuments((current) =>
+        (current ?? []).map((item) => (item.id === document.id ? response.data : item)),
+      );
+      setSelectedRagDocument((current) => (current?.id === document.id ? response.data : current));
+      Alert.alert("Đã chạy reindex", "Yêu cầu indexing lại đã hoàn tất.");
+    } catch (error) {
+      Alert.alert("Không chạy lại indexing", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
+    } finally {
+      setProcessingDocumentId(null);
     }
   }
 
@@ -395,6 +678,149 @@ export default function AdminScreen() {
     );
   }
 
+  if (view === "documents") {
+    return (
+      <FocusedScreenTransition style={styles.screen} triggerKey={view} variant="slide-left">
+        <SafeAreaView style={styles.screen} edges={["top"]}>
+          <View style={styles.header}>
+            <Pressable onPress={() => setView("dashboard")} hitSlop={12}>
+              <Text style={styles.backText}>‹ Admin</Text>
+            </Pressable>
+            <Text style={styles.headerTitle}>Tài liệu RAG</Text>
+            <Pressable style={styles.addButton} onPress={openRagUpload}>
+              <Text style={styles.addButtonText}>+</Text>
+            </Pressable>
+          </View>
+
+          <ScrollView
+            contentContainerStyle={styles.documentContent}
+            refreshControl={
+              <RefreshControl
+                refreshing={isRefreshing}
+                onRefresh={() => loadAdminData({ refresh: true })}
+                tintColor={theme.primary}
+              />
+            }
+          >
+            {ragDocuments.length === 0 ? (
+              <View style={styles.emptyDocumentCard}>
+                <Text style={styles.emptyDocumentTitle}>Chưa có tài liệu</Text>
+                <Text style={styles.emptyDocumentText}>Upload tài liệu đầu tiên để tạo nguồn dữ liệu RAG.</Text>
+                <Pressable style={styles.fullSaveButton} onPress={openRagUpload}>
+                  <Text style={styles.fullSaveButtonText}>Upload tài liệu</Text>
+                </Pressable>
+              </View>
+            ) : (
+              ragDocuments.map((document) => (
+                <RagDocumentRow
+                  key={document.id}
+                  document={document}
+                  isProcessing={processingDocumentId === document.id}
+                  onConfirm={() => confirmRagDocument(document)}
+                  onDelete={() => requestDeleteRagDocument(document)}
+                  onMore={() => setActionMenuRagDocument(document)}
+                />
+              ))
+            )}
+          </ScrollView>
+
+          <RagUploadModal
+            form={ragUploadForm}
+            isUploading={isUploadingRagDocument}
+            onChange={setRagUploadForm}
+            onClose={() => {
+              if (!isUploadingRagDocument) {
+                setIsRagUploadVisible(false);
+              }
+            }}
+            onPickFile={pickRagDocumentFile}
+            onSubmit={uploadRagDocument}
+            theme={theme}
+            visible={isRagUploadVisible}
+          />
+          <RagActionMenuModal
+            document={actionMenuRagDocument}
+            isProcessing={actionMenuRagDocument ? processingDocumentId === actionMenuRagDocument.id : false}
+            onClose={() => setActionMenuRagDocument(null)}
+            onDelete={() => {
+              if (actionMenuRagDocument) {
+                requestDeleteRagDocument(actionMenuRagDocument);
+              }
+            }}
+            onDetail={() => {
+              if (actionMenuRagDocument) {
+                const document = actionMenuRagDocument;
+
+                setActionMenuRagDocument(null);
+                void openRagDocumentDetail(document);
+              }
+            }}
+            onEdit={() => {
+              if (actionMenuRagDocument) {
+                const document = actionMenuRagDocument;
+
+                setActionMenuRagDocument(null);
+                openEditRagMetadata(document);
+              }
+            }}
+            onReindex={() => {
+              if (actionMenuRagDocument) {
+                const document = actionMenuRagDocument;
+
+                setActionMenuRagDocument(null);
+                void reindexRagDocument(document);
+              }
+            }}
+          />
+          <RagDetailModal
+            document={selectedRagDocument}
+            isLoading={isLoadingRagDetail}
+            isProcessing={selectedRagDocument ? processingDocumentId === selectedRagDocument.id : false}
+            onClose={() => {
+              setIsRagDetailVisible(false);
+              setSelectedRagDocument(null);
+            }}
+            onConfirm={() => {
+              if (selectedRagDocument) {
+                void confirmRagDocument(selectedRagDocument);
+              }
+            }}
+            onDelete={() => {
+              if (selectedRagDocument) {
+                requestDeleteRagDocument(selectedRagDocument);
+              }
+            }}
+            onEdit={() => {
+              if (selectedRagDocument) {
+                openEditRagMetadata(selectedRagDocument);
+              }
+            }}
+            onReindex={() => {
+              if (selectedRagDocument) {
+                void reindexRagDocument(selectedRagDocument);
+              }
+            }}
+            visible={isRagDetailVisible}
+          />
+          <RagMetadataModal
+            form={ragMetadataForm}
+            isSaving={isSavingRagMetadata}
+            onChange={setRagMetadataForm}
+            onClose={() => {
+              if (!isSavingRagMetadata) {
+                setIsRagMetadataVisible(false);
+                setEditingRagDocument(null);
+              }
+            }}
+            onSubmit={saveRagMetadata}
+            theme={theme}
+            visible={isRagMetadataVisible}
+          />
+        </SafeAreaView>
+      </FocusedScreenTransition>
+    );
+  }
+
   return (
     <FocusedScreenTransition style={styles.screen} triggerKey={view} variant="slide-right">
       <SafeAreaView style={styles.screen} edges={["top"]}>
@@ -454,6 +880,13 @@ export default function AdminScreen() {
                   note="Danh mục mặc định"
                   onPress={() => setView("categories")}
                 />
+                <AdminTile
+                  color="#8b5cf6"
+                  label="RAG Docs"
+                  metric={ragDocuments.length}
+                  note="Tài liệu tri thức AI"
+                  onPress={() => setView("documents")}
+                />
               </View>
 
               <Text style={styles.sectionLabel}>Thống kê hệ thống</Text>
@@ -461,6 +894,7 @@ export default function AdminScreen() {
                 <StatRow label="Tổng user" value={String(users.length)} />
                 <StatRow label="Tổng giao dịch" value={String(transactions.length)} />
                 <StatRow label="Category mặc định" value={String(defaultCategories.length)} />
+                <StatRow label="Tài liệu RAG" value={String(ragDocuments.length)} />
               </View>
             </>
           )}
@@ -491,6 +925,459 @@ function AdminTile({
       <Text style={styles.tileMetric}>{metric}</Text>
       <Text style={styles.tileNote}>{note}</Text>
     </Pressable>
+  );
+}
+
+function RagDocumentRow({
+  document,
+  isProcessing,
+  onConfirm,
+  onDelete,
+  onMore,
+}: {
+  document: RagDocument;
+  isProcessing: boolean;
+  onConfirm: () => void;
+  onDelete: () => void;
+  onMore: () => void;
+}) {
+  const theme = useAppTheme();
+  const styles = useAdminStyles();
+
+  return (
+    <View style={styles.documentListCard}>
+      <View style={styles.documentListMain}>
+        <View style={styles.documentTopRow}>
+          <View style={styles.rowCopy}>
+            <Text style={styles.rowTitle}>{document.title}</Text>
+            <Text style={styles.rowSubtitle}>
+              {document.fileName} · v{document.version} · {document.chunkCount} chunks
+            </Text>
+          </View>
+        </View>
+
+        <Text numberOfLines={2} style={styles.documentDescription}>
+          {document.description || "Không có mô tả"}
+        </Text>
+        <View style={styles.documentMetaRow}>
+          <Text style={styles.documentMetaText}>{document.ragCategory ?? "General"}</Text>
+          <Text style={styles.documentMetaText}>{document.fileType}</Text>
+          <Text style={styles.documentMetaText}>{formatDate(document.updatedAt ?? document.createdAt)}</Text>
+        </View>
+        {document.errorMessage ? <Text style={styles.documentError}>{document.errorMessage}</Text> : null}
+      </View>
+
+      <View style={styles.documentActionRail}>
+        <Pressable
+          accessibilityLabel="Confirm tài liệu"
+          style={styles.documentIconButton}
+          onPress={onConfirm}
+          disabled={isProcessing}
+        >
+          <CheckCircle2 color={theme.primary} size={18} strokeWidth={2.4} />
+        </Pressable>
+        <Pressable
+          accessibilityLabel="Xóa tài liệu"
+          style={[styles.documentIconDeleteButton, isProcessing && styles.disabledText]}
+          onPress={onDelete}
+          disabled={isProcessing}
+        >
+          <Trash2 color={theme.dangerText} size={18} strokeWidth={2.4} />
+        </Pressable>
+        <Pressable
+          accessibilityLabel="Mở thêm thao tác tài liệu"
+          style={styles.documentIconButton}
+          onPress={onMore}
+          disabled={isProcessing}
+        >
+          <MoreVertical color={theme.primary} size={18} strokeWidth={2.4} />
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+function RagActionMenuModal({
+  document,
+  isProcessing,
+  onClose,
+  onDelete,
+  onDetail,
+  onEdit,
+  onReindex,
+}: {
+  document: RagDocument | null;
+  isProcessing: boolean;
+  onClose: () => void;
+  onDelete: () => void;
+  onDetail: () => void;
+  onEdit: () => void;
+  onReindex: () => void;
+}) {
+  const theme = useAppTheme();
+  const styles = useAdminStyles();
+  const statusLabel = document ? getRagDocumentStatusLabel(document) : "";
+  const canReindex = statusLabel.toLowerCase() !== "draft";
+
+  return (
+    <Modal animationType="fade" transparent visible={Boolean(document)} onRequestClose={onClose}>
+      <View style={styles.actionMenuOverlay}>
+        <Pressable style={styles.modalBackdrop} onPress={onClose} />
+        <View style={styles.actionMenuSheet}>
+          <Text numberOfLines={1} style={styles.actionMenuTitle}>
+            {document?.title ?? "Tài liệu RAG"}
+          </Text>
+          <ActionMenuItem
+            icon={<Eye color={theme.primary} size={18} strokeWidth={2.4} />}
+            label="Xem chi tiết"
+            onPress={onDetail}
+          />
+          <ActionMenuItem
+            disabled={!canReindex || isProcessing}
+            icon={
+              isProcessing ? (
+                <ActivityIndicator color={theme.primary} size="small" />
+              ) : (
+                <RotateCw color={theme.primary} size={18} strokeWidth={2.4} />
+              )
+            }
+            label="Reindex"
+            onPress={onReindex}
+          />
+          <ActionMenuItem
+            disabled={isProcessing}
+            icon={<Pencil color={theme.primary} size={18} strokeWidth={2.4} />}
+            label="Sửa metadata"
+            onPress={onEdit}
+          />
+          <ActionMenuItem
+            danger
+            disabled={isProcessing}
+            icon={<Trash2 color={theme.dangerText} size={18} strokeWidth={2.4} />}
+            label="Xóa"
+            onPress={onDelete}
+          />
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+function ActionMenuItem({
+  danger = false,
+  disabled = false,
+  icon,
+  label,
+  onPress,
+}: {
+  danger?: boolean;
+  disabled?: boolean;
+  icon: ReactNode;
+  label: string;
+  onPress: () => void;
+}) {
+  const styles = useAdminStyles();
+
+  return (
+    <Pressable
+      accessibilityLabel={label}
+      disabled={disabled}
+      onPress={onPress}
+      style={[styles.actionMenuItem, disabled && styles.disabledText]}
+    >
+      <View style={styles.actionMenuIcon}>{icon}</View>
+      <Text style={[styles.actionMenuLabel, danger && styles.actionMenuDangerLabel]}>{label}</Text>
+    </Pressable>
+  );
+}
+
+function RagDetailModal({
+  document,
+  isLoading,
+  isProcessing,
+  onClose,
+  onConfirm,
+  onDelete,
+  onEdit,
+  onReindex,
+  visible,
+}: {
+  document: RagDocument | null;
+  isLoading: boolean;
+  isProcessing: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+  onDelete: () => void;
+  onEdit: () => void;
+  onReindex: () => void;
+  visible: boolean;
+}) {
+  const styles = useAdminStyles();
+  const statusLabel = document ? getRagDocumentStatusLabel(document) : "";
+  const canReindex = statusLabel.toLowerCase() !== "draft";
+
+  return (
+    <Modal animationType="slide" transparent visible={visible} onRequestClose={onClose}>
+      <View style={styles.modalOverlay}>
+        <Pressable style={styles.modalBackdrop} onPress={onClose} />
+        <View style={styles.categoryFormSheet}>
+          <View style={styles.formHeader}>
+            <Pressable onPress={onClose} hitSlop={10}>
+              <Text style={styles.formClose}>Đóng</Text>
+            </Pressable>
+            <Text style={styles.formTitle}>Chi tiết RAG</Text>
+            <View style={styles.headerSpacer} />
+          </View>
+
+          {isLoading && !document ? (
+            <View style={styles.detailLoadingState}>
+              <ActivityIndicator />
+            </View>
+          ) : document ? (
+            <ScrollView contentContainerStyle={styles.detailContent}>
+              <View style={styles.documentCard}>
+                <View style={styles.documentTopRow}>
+                  <View style={styles.rowCopy}>
+                    <Text style={styles.rowTitle}>{document.title}</Text>
+                    <Text style={styles.rowSubtitle}>{document.fileName}</Text>
+                  </View>
+                  <View style={styles.documentStatusBadge}>
+                    <Text style={styles.documentStatusText}>{statusLabel}</Text>
+                  </View>
+                </View>
+                <Text style={styles.documentDescription}>{document.description || "Không có mô tả"}</Text>
+                {document.errorMessage ? <Text style={styles.documentError}>{document.errorMessage}</Text> : null}
+              </View>
+
+              <View style={styles.infoCard}>
+                <InfoRow label="ID" value={String(document.id)} />
+                <InfoRow label="S3 Key" value={document.s3Key} />
+                <InfoRow label="File type" value={document.fileType} />
+                <InfoRow label="RAG category" value={document.ragCategory ?? "General"} />
+                <InfoRow label="Version" value={String(document.version)} />
+                <InfoRow label="Chunk count" value={String(document.chunkCount)} />
+                <InfoRow label="Created by" value={String(document.createdBy)} />
+                <InfoRow label="Ngày tạo" value={formatDate(document.createdAt)} />
+                <InfoRow label="Cập nhật" value={formatDate(document.updatedAt)} />
+              </View>
+
+              <View style={styles.documentActions}>
+                <Pressable style={styles.documentActionButton} onPress={onConfirm} disabled={isProcessing}>
+                  <Text style={styles.documentActionText}>Confirm</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.documentActionButton, (!canReindex || isProcessing) && styles.disabledText]}
+                  onPress={onReindex}
+                  disabled={!canReindex || isProcessing}
+                >
+                  {isProcessing ? (
+                    <ActivityIndicator size="small" />
+                  ) : (
+                    <Text style={styles.documentActionText}>Reindex</Text>
+                  )}
+                </Pressable>
+                <Pressable style={styles.documentActionButton} onPress={onEdit} disabled={isProcessing}>
+                  <Text style={styles.documentActionText}>Sửa metadata</Text>
+                </Pressable>
+                <Pressable style={styles.documentDeleteButton} onPress={onDelete} disabled={isProcessing}>
+                  <Text style={styles.documentDeleteText}>Xóa</Text>
+                </Pressable>
+              </View>
+            </ScrollView>
+          ) : null}
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+function RagUploadModal({
+  form,
+  isUploading,
+  onChange,
+  onClose,
+  onPickFile,
+  onSubmit,
+  theme,
+  visible,
+}: {
+  form: RagUploadFormState;
+  isUploading: boolean;
+  onChange: (form: RagUploadFormState) => void;
+  onClose: () => void;
+  onPickFile: () => void;
+  onSubmit: () => void;
+  theme: AppTheme;
+  visible: boolean;
+}) {
+  const styles = useAdminStyles();
+
+  return (
+    <Modal animationType="slide" transparent visible={visible} onRequestClose={onClose}>
+      <KeyboardAvoidingView
+        behavior={Platform.select({ ios: "padding", default: undefined })}
+        style={styles.modalOverlay}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={onClose} />
+        <View style={styles.categoryFormSheet}>
+          <View style={styles.formHeader}>
+            <Pressable onPress={onClose} hitSlop={10}>
+              <Text style={styles.formClose}>Hủy</Text>
+            </Pressable>
+            <Text style={styles.formTitle}>Upload tài liệu RAG</Text>
+            <Pressable onPress={onSubmit} disabled={isUploading} hitSlop={10}>
+              <Text style={[styles.formSave, isUploading && styles.disabledText]}>Lưu</Text>
+            </Pressable>
+          </View>
+
+          <ScrollView contentContainerStyle={styles.formBody}>
+            <Pressable style={styles.filePickerButton} onPress={onPickFile} disabled={isUploading}>
+              <Text style={styles.filePickerTitle}>{form.asset ? form.asset.name : "Chọn file tài liệu"}</Text>
+              <Text style={styles.filePickerSubtitle}>
+                {form.asset ? `${formatFileSize(form.asset.size)} · ${form.fileType}` : ".txt, .docs, .md hoặc .pdf"}
+              </Text>
+            </Pressable>
+
+            <View style={styles.formField}>
+              <Text style={styles.formLabel}>Tiêu đề</Text>
+              <TextInput
+                editable={!isUploading}
+                onChangeText={(title) => onChange({ ...form, title })}
+                placeholder="Tiết kiệm và lãi suất"
+                placeholderTextColor={theme.inputPlaceholder}
+                style={styles.formInput}
+                value={form.title}
+              />
+            </View>
+
+            <View style={styles.formField}>
+              <Text style={styles.formLabel}>Mô tả</Text>
+              <TextInput
+                editable={!isUploading}
+                multiline
+                onChangeText={(description) => onChange({ ...form, description })}
+                placeholder="File tài liệu kiến thức tài chính"
+                placeholderTextColor={theme.inputPlaceholder}
+                style={[styles.formInput, styles.multilineInput]}
+                value={form.description}
+              />
+            </View>
+
+            <View style={styles.formField}>
+              <Text style={styles.formLabel}>RAG category</Text>
+              <TextInput
+                autoCapitalize="none"
+                editable={!isUploading}
+                onChangeText={(ragCategory) => onChange({ ...form, ragCategory })}
+                placeholder="General"
+                placeholderTextColor={theme.inputPlaceholder}
+                style={styles.formInput}
+                value={form.ragCategory}
+              />
+            </View>
+
+            <Pressable
+              style={[styles.fullSaveButton, isUploading && styles.disabledText]}
+              onPress={onSubmit}
+              disabled={isUploading}
+            >
+              {isUploading ? (
+                <ActivityIndicator color={theme.textInverse} />
+              ) : (
+                <Text style={styles.fullSaveButtonText}>Upload và index</Text>
+              )}
+            </Pressable>
+          </ScrollView>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
+function RagMetadataModal({
+  form,
+  isSaving,
+  onChange,
+  onClose,
+  onSubmit,
+  theme,
+  visible,
+}: {
+  form: RagMetadataFormState;
+  isSaving: boolean;
+  onChange: (form: RagMetadataFormState) => void;
+  onClose: () => void;
+  onSubmit: () => void;
+  theme: AppTheme;
+  visible: boolean;
+}) {
+  const styles = useAdminStyles();
+
+  return (
+    <Modal animationType="slide" transparent visible={visible} onRequestClose={onClose}>
+      <KeyboardAvoidingView
+        behavior={Platform.select({ ios: "padding", default: undefined })}
+        style={styles.modalOverlay}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={onClose} />
+        <View style={styles.categoryFormSheet}>
+          <View style={styles.formHeader}>
+            <Pressable onPress={onClose} hitSlop={10}>
+              <Text style={styles.formClose}>Hủy</Text>
+            </Pressable>
+            <Text style={styles.formTitle}>Sửa metadata</Text>
+            <Pressable onPress={onSubmit} disabled={isSaving} hitSlop={10}>
+              <Text style={[styles.formSave, isSaving && styles.disabledText]}>Lưu</Text>
+            </Pressable>
+          </View>
+
+          <View style={styles.formBody}>
+            <View style={styles.formField}>
+              <Text style={styles.formLabel}>Tiêu đề</Text>
+              <TextInput
+                editable={!isSaving}
+                onChangeText={(title) => onChange({ ...form, title })}
+                placeholder="Tiêu đề tài liệu"
+                placeholderTextColor={theme.inputPlaceholder}
+                style={styles.formInput}
+                value={form.title}
+              />
+            </View>
+            <View style={styles.formField}>
+              <Text style={styles.formLabel}>Mô tả</Text>
+              <TextInput
+                editable={!isSaving}
+                multiline
+                onChangeText={(description) => onChange({ ...form, description })}
+                placeholder="Mô tả tài liệu"
+                placeholderTextColor={theme.inputPlaceholder}
+                style={[styles.formInput, styles.multilineInput]}
+                value={form.description}
+              />
+            </View>
+            <View style={styles.formField}>
+              <Text style={styles.formLabel}>RAG category</Text>
+              <TextInput
+                autoCapitalize="none"
+                editable={!isSaving}
+                onChangeText={(ragCategory) => onChange({ ...form, ragCategory })}
+                placeholder="General"
+                placeholderTextColor={theme.inputPlaceholder}
+                style={styles.formInput}
+                value={form.ragCategory}
+              />
+            </View>
+            <Pressable style={[styles.fullSaveButton, isSaving && styles.disabledText]} onPress={onSubmit}>
+              {isSaving ? (
+                <ActivityIndicator color={theme.textInverse} />
+              ) : (
+                <Text style={styles.fullSaveButtonText}>Lưu metadata</Text>
+              )}
+            </Pressable>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
   );
 }
 
@@ -656,11 +1543,13 @@ function createStyles(theme: AppTheme) {
       paddingHorizontal: 12,
     },
     logoutButtonText: { color: theme.textInverse, fontSize: 13, fontWeight: "900" },
-    tileGrid: { flexDirection: "row", gap: 12 },
+    tileGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
     tile: {
       borderRadius: 8,
-      flex: 1,
+      flexBasis: "30%",
+      flexGrow: 1,
       minHeight: 128,
+      minWidth: 120,
       padding: 14,
       shadowColor: "#000",
       shadowOpacity: 0.14,
@@ -734,6 +1623,7 @@ function createStyles(theme: AppTheme) {
     roleBadgeText: { color: theme.textMuted, fontSize: 11, fontWeight: "900" },
     roleBadgeTextAdmin: { color: theme.primary },
     categoryContent: { gap: 10, padding: 18, paddingBottom: 96 },
+    documentContent: { gap: 10, padding: 18, paddingBottom: 96 },
     categoryRow: {
       alignItems: "center",
       backgroundColor: theme.card,
@@ -762,6 +1652,122 @@ function createStyles(theme: AppTheme) {
       paddingVertical: 7,
     },
     deleteCategoryText: { color: theme.dangerText, fontSize: 12, fontWeight: "900" },
+    documentCard: {
+      backgroundColor: theme.card,
+      borderColor: theme.border,
+      borderRadius: 8,
+      borderWidth: 1,
+      gap: 10,
+      padding: 14,
+    },
+    documentListCard: {
+      backgroundColor: theme.card,
+      borderColor: theme.border,
+      borderRadius: 8,
+      borderWidth: 1,
+      flexDirection: "row",
+      gap: 12,
+      padding: 14,
+    },
+    documentListMain: { flex: 1, gap: 10, minWidth: 0 },
+    documentTopRow: { alignItems: "flex-start", flexDirection: "row", gap: 10, justifyContent: "space-between" },
+    documentDescription: { color: theme.textMuted, fontSize: 13, fontWeight: "700", lineHeight: 19 },
+    documentMetaRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+    documentMetaText: {
+      backgroundColor: theme.cardAlt,
+      borderRadius: 8,
+      color: theme.textMuted,
+      fontSize: 11,
+      fontWeight: "900",
+      paddingHorizontal: 8,
+      paddingVertical: 5,
+    },
+    documentError: { color: theme.dangerText, fontSize: 12, fontWeight: "800", lineHeight: 18 },
+    documentStatusBadge: {
+      backgroundColor: theme.cardAlt,
+      borderRadius: 12,
+      paddingHorizontal: 9,
+      paddingVertical: 5,
+    },
+    documentStatusGood: { backgroundColor: theme.goodBackground },
+    documentStatusDanger: { backgroundColor: `${theme.danger}22` },
+    documentStatusWarning: { backgroundColor: theme.warningBackground },
+    documentStatusText: { color: theme.text, fontSize: 11, fontWeight: "900" },
+    documentActionRail: { alignItems: "center", gap: 8 },
+    documentIconButton: {
+      alignItems: "center",
+      backgroundColor: theme.primaryPressed,
+      borderRadius: 8,
+      height: 36,
+      justifyContent: "center",
+      width: 36,
+    },
+    documentIconDeleteButton: {
+      alignItems: "center",
+      backgroundColor: theme.warningBackground,
+      borderRadius: 8,
+      height: 36,
+      justifyContent: "center",
+      width: 36,
+    },
+    actionMenuOverlay: { flex: 1, justifyContent: "flex-end" },
+    actionMenuSheet: {
+      backgroundColor: theme.sheet,
+      borderTopLeftRadius: 8,
+      borderTopRightRadius: 8,
+      gap: 4,
+      padding: 16,
+      paddingBottom: 26,
+    },
+    actionMenuTitle: {
+      color: theme.text,
+      fontSize: 16,
+      fontWeight: "900",
+      marginBottom: 8,
+    },
+    actionMenuItem: {
+      alignItems: "center",
+      borderRadius: 8,
+      flexDirection: "row",
+      gap: 12,
+      minHeight: 48,
+      paddingHorizontal: 10,
+    },
+    actionMenuIcon: {
+      alignItems: "center",
+      height: 28,
+      justifyContent: "center",
+      width: 28,
+    },
+    actionMenuLabel: { color: theme.text, fontSize: 15, fontWeight: "800" },
+    actionMenuDangerLabel: { color: theme.dangerText },
+    documentActions: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+    documentActionButton: {
+      backgroundColor: theme.primaryPressed,
+      borderRadius: 8,
+      minHeight: 34,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+    },
+    documentActionText: { color: theme.primary, fontSize: 12, fontWeight: "900" },
+    documentDeleteButton: {
+      backgroundColor: theme.warningBackground,
+      borderRadius: 8,
+      minHeight: 34,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+    },
+    documentDeleteText: { color: theme.dangerText, fontSize: 12, fontWeight: "900" },
+    emptyDocumentCard: {
+      backgroundColor: theme.card,
+      borderColor: theme.border,
+      borderRadius: 8,
+      borderWidth: 1,
+      gap: 12,
+      padding: 20,
+    },
+    emptyDocumentTitle: { color: theme.text, fontSize: 18, fontWeight: "900" },
+    emptyDocumentText: { color: theme.textMuted, fontSize: 13, fontWeight: "700", lineHeight: 20 },
     addButton: {
       alignItems: "center",
       backgroundColor: theme.primary,
@@ -772,6 +1778,12 @@ function createStyles(theme: AppTheme) {
     },
     addButtonText: { color: theme.textInverse, fontSize: 24, fontWeight: "800", lineHeight: 27 },
     detailContent: { gap: 14, padding: 18, paddingBottom: 96 },
+    detailLoadingState: {
+      alignItems: "center",
+      justifyContent: "center",
+      minHeight: 180,
+      padding: 24,
+    },
     userDetailCard: {
       alignItems: "center",
       backgroundColor: theme.card,
@@ -849,6 +1861,18 @@ function createStyles(theme: AppTheme) {
       paddingHorizontal: 14,
       paddingVertical: 13,
     },
+    multilineInput: { minHeight: 92, textAlignVertical: "top" },
+    filePickerButton: {
+      backgroundColor: theme.card,
+      borderColor: theme.border,
+      borderRadius: 8,
+      borderStyle: "dashed",
+      borderWidth: 1,
+      gap: 4,
+      padding: 16,
+    },
+    filePickerTitle: { color: theme.text, fontSize: 15, fontWeight: "900" },
+    filePickerSubtitle: { color: theme.textMuted, fontSize: 12, fontWeight: "700" },
     typeToggleRow: { flexDirection: "row", gap: 10 },
     typeToggle: {
       alignItems: "center",
