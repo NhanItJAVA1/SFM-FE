@@ -1,7 +1,29 @@
 import * as DocumentPicker from "expo-document-picker";
 import { router, useFocusEffect } from "expo-router";
-import { CheckCircle2, Eye, MoreVertical, Pencil, RotateCw, Trash2 } from "lucide-react-native";
-import { type ReactNode, useCallback, useMemo, useState } from "react";
+import {
+  Banknote,
+  Briefcase,
+  Car,
+  CircleDollarSign,
+  Eye,
+  Gamepad2,
+  Gift,
+  GraduationCap,
+  HeartPulse,
+  Home,
+  MoreHorizontal,
+  MoreVertical,
+  Pencil,
+  PiggyBank,
+  Plane,
+  Receipt,
+  RotateCw,
+  ShoppingBag,
+  Trash2,
+  Utensils,
+  Wallet,
+} from "lucide-react-native";
+import { type ComponentType, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -18,13 +40,16 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { adminApi } from "@/api/adminApi";
-import type { AuthUser } from "@/api/authApi";
+import {
+  adminApi,
+  type AdminUser,
+  type AdminUserRole,
+  type AdminUserStatus,
+} from "@/api/adminApi";
 import { authApi } from "@/api/authApi";
 import { type Category, type CategoryType } from "@/api/categoriesApi";
 import { ragDocumentsApi, type RagDocument } from "@/api/ragDocumentsApi";
 import { transactionsApi, type Transaction } from "@/api/transactionsApi";
-import { usersApi } from "@/api/usersApi";
 import { FocusedScreenTransition } from "@/components/screen-transition";
 import { useAppTheme } from "@/hooks/use-app-theme";
 import { getAuthRefreshToken, getAuthUser } from "@/stores/authSession";
@@ -37,6 +62,16 @@ type CategoryFormState = {
   icon: string;
   name: string;
   type: CategoryType;
+};
+type CategoryIconComponent = ComponentType<{
+  color?: string;
+  size?: number;
+  strokeWidth?: number;
+}>;
+type CategoryIconOption = {
+  Icon: CategoryIconComponent;
+  key: string;
+  label: string;
 };
 type RagUploadFormState = {
   title: string;
@@ -53,7 +88,7 @@ type RagMetadataFormState = {
 };
 
 const emptyCategoryForm: CategoryFormState = {
-  icon: "other",
+  icon: "",
   name: "",
   type: "Expense",
 };
@@ -71,6 +106,26 @@ const emptyRagMetadataForm: RagMetadataFormState = {
   title: "",
 };
 const supportedRagFileExtensions = new Set(["txt", "docs", "md", "pdf"]);
+const userStatusOptions: AdminUserStatus[] = ["Active", "Inactive", "Suspended"];
+const userRoleOptions: AdminUserRole[] = ["User", "Admin"];
+const categoryIconOptions: CategoryIconOption[] = [
+  { Icon: Utensils, key: "food", label: "Ăn uống" },
+  { Icon: Car, key: "transport", label: "Di chuyển" },
+  { Icon: Home, key: "home", label: "Nhà cửa" },
+  { Icon: ShoppingBag, key: "shopping", label: "Mua sắm" },
+  { Icon: HeartPulse, key: "health", label: "Sức khỏe" },
+  { Icon: GraduationCap, key: "education", label: "Học tập" },
+  { Icon: Gamepad2, key: "entertainment", label: "Giải trí" },
+  { Icon: Receipt, key: "bill", label: "Hóa đơn" },
+  { Icon: Wallet, key: "wallet", label: "Ví tiền" },
+  { Icon: Briefcase, key: "work", label: "Công việc" },
+  { Icon: Gift, key: "gift", label: "Quà tặng" },
+  { Icon: CircleDollarSign, key: "income", label: "Thu nhập" },
+  { Icon: PiggyBank, key: "saving", label: "Tiết kiệm" },
+  { Icon: Plane, key: "travel", label: "Du lịch" },
+  { Icon: Banknote, key: "cash", label: "Tiền mặt" },
+  { Icon: MoreHorizontal, key: "other", label: "Khác" },
+];
 
 function useAdminStyles() {
   const theme = useAppTheme();
@@ -92,6 +147,30 @@ function formatDate(value: string | null | undefined) {
 
 function getCategoryTypeLabel(type: Category["type"]) {
   return type === "Income" ? "Thu nhập" : "Chi tiêu";
+}
+
+function getUserStatusLabel(status: AdminUserStatus | string) {
+  if (status === "Active") {
+    return "Đang hoạt động";
+  }
+
+  if (status === "Inactive") {
+    return "Không hoạt động";
+  }
+
+  if (status === "Suspended") {
+    return "Bị đình chỉ";
+  }
+
+  return status;
+}
+
+function getCategoryIconOption(icon: string | null | undefined) {
+  if (!icon) {
+    return null;
+  }
+
+  return categoryIconOptions.find((option) => option.key === icon) ?? null;
 }
 
 function getFileExtension(fileName: string) {
@@ -125,11 +204,18 @@ export default function AdminScreen() {
   const styles = useAdminStyles();
   const currentUser = getAuthUser();
   const [view, setView] = useState<AdminView>("dashboard");
-  const [users, setUsers] = useState<AuthUser[]>([]);
+  const [users, setUsers] = useState<AdminUser[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [ragDocuments, setRagDocuments] = useState<RagDocument[]>([]);
-  const [selectedUser, setSelectedUser] = useState<AuthUser | null>(null);
+  const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
+  const [userSearch, setUserSearch] = useState("");
+  const [userRoleFilter, setUserRoleFilter] = useState<AdminUserRole | "All">("All");
+  const [userStatusFilter, setUserStatusFilter] = useState<AdminUserStatus | "All">("All");
+  const [userPage, setUserPage] = useState(1);
+  const [userPageSize] = useState(20);
+  const [userTotalCount, setUserTotalCount] = useState(0);
+  const [processingUserId, setProcessingUserId] = useState<number | null>(null);
   const [selectedRagDocument, setSelectedRagDocument] = useState<RagDocument | null>(null);
   const [actionMenuRagDocument, setActionMenuRagDocument] = useState<RagDocument | null>(null);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
@@ -138,6 +224,7 @@ export default function AdminScreen() {
   const [ragUploadForm, setRagUploadForm] = useState<RagUploadFormState>(emptyRagUploadForm);
   const [ragMetadataForm, setRagMetadataForm] = useState<RagMetadataFormState>(emptyRagMetadataForm);
   const [isCategoryFormVisible, setIsCategoryFormVisible] = useState(false);
+  const [isCategoryIconPickerVisible, setIsCategoryIconPickerVisible] = useState(false);
   const [isRagDetailVisible, setIsRagDetailVisible] = useState(false);
   const [isRagUploadVisible, setIsRagUploadVisible] = useState(false);
   const [isRagMetadataVisible, setIsRagMetadataVisible] = useState(false);
@@ -149,8 +236,18 @@ export default function AdminScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const ragMetadataOpenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const defaultCategories = categories;
+  const userTotalPages = Math.max(1, Math.ceil(userTotalCount / userPageSize));
+
+  useEffect(() => {
+    return () => {
+      if (ragMetadataOpenTimerRef.current) {
+        clearTimeout(ragMetadataOpenTimerRef.current);
+      }
+    };
+  }, []);
 
   const loadAdminData = useCallback(async ({ refresh = false, silent = false } = {}) => {
     try {
@@ -161,13 +258,21 @@ export default function AdminScreen() {
       }
 
       const [usersResponse, categoriesResponse, transactionsResponse, ragDocumentsResponse] = await Promise.all([
-        usersApi.list(),
+        adminApi.listUsers({
+          page: userPage,
+          pageSize: userPageSize,
+          role: userRoleFilter === "All" ? undefined : userRoleFilter,
+          search: userSearch.trim() || undefined,
+          status: userStatusFilter === "All" ? undefined : userStatusFilter,
+        }),
         adminApi.listDefaultCategories(),
         transactionsApi.list({ filter: "All" }),
         ragDocumentsApi.list(),
       ]);
 
-      setUsers(Array.isArray(usersResponse.data) ? usersResponse.data : []);
+      setUsers(Array.isArray(usersResponse.data.items) ? usersResponse.data.items : []);
+      setUserTotalCount(usersResponse.data.totalCount ?? 0);
+      setUserPage(usersResponse.data.page ?? userPage);
       setCategories(Array.isArray(categoriesResponse.data) ? categoriesResponse.data : []);
       setTransactions(Array.isArray(transactionsResponse.data) ? transactionsResponse.data : []);
       setRagDocuments(Array.isArray(ragDocumentsResponse.data) ? ragDocumentsResponse.data : []);
@@ -183,7 +288,7 @@ export default function AdminScreen() {
       }
       setIsRefreshing(false);
     }
-  }, []);
+  }, [userPage, userPageSize, userRoleFilter, userSearch, userStatusFilter]);
 
   useFocusEffect(
     useCallback(() => {
@@ -195,13 +300,96 @@ export default function AdminScreen() {
     }, [categories.length, currentUser, loadAdminData, ragDocuments.length, transactions.length, users.length]),
   );
 
-  function openUserDetail(user: AuthUser) {
-    setSelectedUser(user);
+  async function openUserDetail(user: AdminUser) {
+    try {
+      setSelectedUser(user);
+      setProcessingUserId(user.id);
+      const response = await adminApi.getUser(user.id);
+
+      setSelectedUser(response.data);
+      setUsers((current) => (current ?? []).map((item) => (item.id === user.id ? response.data : item)));
+    } catch (error) {
+      Alert.alert("Không tải được thông tin user", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
+    } finally {
+      setProcessingUserId(null);
+    }
+  }
+
+  function updateUserSearch(nextSearch: string) {
+    setUserSearch(nextSearch);
+    setUserPage(1);
+  }
+
+  function updateUserRoleFilter(nextRole: AdminUserRole | "All") {
+    setUserRoleFilter(nextRole);
+    setUserPage(1);
+  }
+
+  function updateUserStatusFilter(nextStatus: AdminUserStatus | "All") {
+    setUserStatusFilter(nextStatus);
+    setUserPage(1);
+  }
+
+  function requestUpdateUserStatus(user: AdminUser, status: AdminUserStatus) {
+    if (user.status === status) {
+      return;
+    }
+
+    Alert.alert("Cập nhật trạng thái", `Đổi trạng thái ${user.username} thành "${getUserStatusLabel(status)}"?`, [
+      { style: "cancel", text: "Hủy" },
+      {
+        onPress: () => void updateUserStatus(user, status),
+        text: "Cập nhật",
+      },
+    ]);
+  }
+
+  async function updateUserStatus(user: AdminUser, status: AdminUserStatus) {
+    try {
+      setProcessingUserId(user.id);
+      const response = await adminApi.updateUserStatus(user.id, { status });
+
+      setUsers((current) => (current ?? []).map((item) => (item.id === user.id ? response.data : item)));
+      setSelectedUser((current) => (current?.id === user.id ? response.data : current));
+    } catch (error) {
+      Alert.alert("Không cập nhật được trạng thái", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
+    } finally {
+      setProcessingUserId(null);
+    }
+  }
+
+  function requestUpdateUserRole(user: AdminUser, role: AdminUserRole) {
+    if (user.role === role) {
+      return;
+    }
+
+    Alert.alert("Cập nhật vai trò", `Đổi vai trò ${user.username} thành "${role}"?`, [
+      { style: "cancel", text: "Hủy" },
+      {
+        onPress: () => void updateUserRole(user, role),
+        text: "Cập nhật",
+      },
+    ]);
+  }
+
+  async function updateUserRole(user: AdminUser, role: AdminUserRole) {
+    try {
+      setProcessingUserId(user.id);
+      const response = await adminApi.updateUserRole(user.id, { role });
+
+      setUsers((current) => (current ?? []).map((item) => (item.id === user.id ? response.data : item)));
+      setSelectedUser((current) => (current?.id === user.id ? response.data : current));
+    } catch (error) {
+      Alert.alert("Không cập nhật được vai trò", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
+    } finally {
+      setProcessingUserId(null);
+    }
   }
 
   function openAddDefaultCategory() {
     setEditingCategory(null);
     setCategoryForm(emptyCategoryForm);
+    setIsCategoryIconPickerVisible(false);
     setIsCategoryFormVisible(true);
   }
 
@@ -212,6 +400,7 @@ export default function AdminScreen() {
       name: category.name,
       type: category.type,
     });
+    setIsCategoryIconPickerVisible(false);
     setIsCategoryFormVisible(true);
   }
 
@@ -221,13 +410,14 @@ export default function AdminScreen() {
     }
 
     setIsCategoryFormVisible(false);
+    setIsCategoryIconPickerVisible(false);
     setEditingCategory(null);
     setCategoryForm(emptyCategoryForm);
   }
 
   async function saveDefaultCategory() {
     const name = categoryForm.name.trim();
-    const icon = categoryForm.icon.trim() || null;
+    const icon = categoryForm.icon.trim() || "other";
 
     if (!name) {
       Alert.alert("Thiếu tên danh mục", "Vui lòng nhập tên category mặc định.");
@@ -326,6 +516,7 @@ export default function AdminScreen() {
     const ragCategory = ragUploadForm.ragCategory.trim() || "General";
     const asset = ragUploadForm.asset;
     const fileType = ragUploadForm.fileType || (asset ? getFileExtension(asset.name) : "");
+    let createdDocumentId: number | null = null;
 
     if (!asset) {
       Alert.alert("Chưa chọn file", "Vui lòng chọn tài liệu cần upload.");
@@ -352,14 +543,23 @@ export default function AdminScreen() {
         title,
       });
 
+      createdDocumentId = uploadUrlResponse.data.documentId;
+
       await ragDocumentsApi.uploadFileToPresignedUrl(uploadUrlResponse.data.uploadUrl, asset.uri, asset.file ?? null);
-      await ragDocumentsApi.confirm(uploadUrlResponse.data.documentId);
+      await ragDocumentsApi.confirm(createdDocumentId);
       setIsRagUploadVisible(false);
       setRagUploadForm(emptyRagUploadForm);
       await loadAdminData({ refresh: true });
       Alert.alert("Upload thành công", "Tài liệu đã được upload và gửi yêu cầu indexing.");
     } catch (error) {
-      Alert.alert("Upload tài liệu thất bại", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
+      if (createdDocumentId !== null) {
+        await loadAdminData({ refresh: true });
+      }
+
+      Alert.alert(
+        createdDocumentId === null ? "Tạo tài liệu thất bại" : "Upload hoặc confirm thất bại",
+        error instanceof Error ? error.message : "Vui lòng thử lại sau.",
+      );
     } finally {
       setIsUploadingRagDocument(false);
     }
@@ -373,6 +573,23 @@ export default function AdminScreen() {
       title: document.title,
     });
     setIsRagMetadataVisible(true);
+  }
+
+  function queueOpenEditRagMetadata(document: RagDocument, { closeDetail = false } = {}) {
+    if (ragMetadataOpenTimerRef.current) {
+      clearTimeout(ragMetadataOpenTimerRef.current);
+    }
+
+    setActionMenuRagDocument(null);
+
+    if (closeDetail) {
+      setIsRagDetailVisible(false);
+    }
+
+    ragMetadataOpenTimerRef.current = setTimeout(() => {
+      ragMetadataOpenTimerRef.current = null;
+      openEditRagMetadata(document);
+    }, 250);
   }
 
   async function saveRagMetadata() {
@@ -460,24 +677,6 @@ export default function AdminScreen() {
     }
   }
 
-  async function confirmRagDocument(document: RagDocument) {
-    try {
-      setProcessingDocumentId(document.id);
-      await ragDocumentsApi.confirm(document.id);
-      const response = await ragDocumentsApi.get(document.id);
-
-      setRagDocuments((current) =>
-        (current ?? []).map((item) => (item.id === document.id ? response.data : item)),
-      );
-      setSelectedRagDocument((current) => (current?.id === document.id ? response.data : current));
-      Alert.alert("Đã xác nhận tài liệu", "Yêu cầu confirm/indexing đã hoàn tất.");
-    } catch (error) {
-      Alert.alert("Không xác nhận được tài liệu", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
-    } finally {
-      setProcessingDocumentId(null);
-    }
-  }
-
   async function reindexRagDocument(document: RagDocument) {
     try {
       setProcessingDocumentId(document.id);
@@ -557,10 +756,52 @@ export default function AdminScreen() {
               <InfoRow label="ID" value={String(selectedUser.id)} />
               <InfoRow label="Username" value={selectedUser.username} />
               <InfoRow label="Email" value={selectedUser.email} />
+              <InfoRow label="Display name" value={selectedUser.displayName ?? "Chưa có"} />
               <InfoRow label="Role" value={selectedUser.role} />
+              <InfoRow label="Status" value={getUserStatusLabel(selectedUser.status)} />
               <InfoRow label="Ngày tạo" value={formatDate(selectedUser.createdAt)} />
-              <InfoRow label="Cập nhật" value={formatDate(selectedUser.updatedAt)} />
               <InfoRow label="Avatar" value={selectedUser.avatarUrl ? "Có" : "Không"} />
+            </View>
+
+            <View style={styles.userControlCard}>
+              <Text style={styles.sectionLabel}>Trạng thái</Text>
+              <View style={styles.typeToggleRow}>
+                {userStatusOptions.map((status) => (
+                  <Pressable
+                    key={status}
+                    disabled={processingUserId === selectedUser.id}
+                    onPress={() => requestUpdateUserStatus(selectedUser, status)}
+                    style={[styles.typeToggle, selectedUser.status === status && styles.typeToggleSelected]}
+                  >
+                    <Text
+                      style={[
+                        styles.typeToggleText,
+                        selectedUser.status === status && styles.typeToggleTextSelected,
+                      ]}
+                    >
+                      {getUserStatusLabel(status)}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+
+              <Text style={styles.sectionLabel}>Vai trò</Text>
+              <View style={styles.typeToggleRow}>
+                {userRoleOptions.map((role) => (
+                  <Pressable
+                    key={role}
+                    disabled={processingUserId === selectedUser.id}
+                    onPress={() => requestUpdateUserRole(selectedUser, role)}
+                    style={[styles.typeToggle, selectedUser.role === role && styles.typeToggleSelected]}
+                  >
+                    <Text
+                      style={[styles.typeToggleText, selectedUser.role === role && styles.typeToggleTextSelected]}
+                    >
+                      {role}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
             </View>
           </ScrollView>
         </SafeAreaView>
@@ -577,7 +818,7 @@ export default function AdminScreen() {
               <Text style={styles.backText}>‹ Admin</Text>
             </Pressable>
             <Text style={styles.headerTitle}>Users</Text>
-            <Text style={styles.headerCount}>{users.length}</Text>
+            <Text style={styles.headerCount}>{userTotalCount}</Text>
           </View>
 
           <ScrollView
@@ -590,7 +831,49 @@ export default function AdminScreen() {
               />
             }
           >
-            {(users ?? []).map((user) => (
+            <View style={styles.userFilterCard}>
+              <TextInput
+                autoCapitalize="none"
+                onChangeText={updateUserSearch}
+                placeholder="Tìm username, email, display name"
+                placeholderTextColor={theme.inputPlaceholder}
+                style={styles.formInput}
+                value={userSearch}
+              />
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
+                {(["All", ...userRoleOptions] as (AdminUserRole | "All")[]).map((role) => (
+                  <FilterChip
+                    key={role}
+                    label={role === "All" ? "Tất cả role" : role}
+                    selected={userRoleFilter === role}
+                    onPress={() => updateUserRoleFilter(role)}
+                  />
+                ))}
+              </ScrollView>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
+                {(["All", ...userStatusOptions] as (AdminUserStatus | "All")[]).map((status) => (
+                  <FilterChip
+                    key={status}
+                    label={status === "All" ? "Tất cả trạng thái" : getUserStatusLabel(status)}
+                    selected={userStatusFilter === status}
+                    onPress={() => updateUserStatusFilter(status)}
+                  />
+                ))}
+              </ScrollView>
+            </View>
+
+            {isLoading ? (
+              <View style={styles.loadingCard}>
+                <ActivityIndicator color={theme.primary} />
+                <Text style={styles.loadingText}>Đang tải user...</Text>
+              </View>
+            ) : users.length === 0 ? (
+              <View style={styles.emptyDocumentCard}>
+                <Text style={styles.emptyDocumentTitle}>Không có user</Text>
+                <Text style={styles.emptyDocumentText}>Thử đổi từ khóa tìm kiếm hoặc bộ lọc.</Text>
+              </View>
+            ) : (
+            (users ?? []).map((user) => (
               <Pressable key={user.id} style={styles.userRow} onPress={() => openUserDetail(user)}>
                 <View style={styles.userMiniAvatar}>
                   <Text style={styles.userMiniAvatarText}>
@@ -599,15 +882,44 @@ export default function AdminScreen() {
                 </View>
                 <View style={styles.rowCopy}>
                   <Text style={styles.rowTitle}>{user.displayName ?? user.username}</Text>
-                  <Text style={styles.rowSubtitle}>{user.email}</Text>
+                  <Text style={styles.rowSubtitle}>
+                    @{user.username} · {user.email}
+                  </Text>
+                  <Text style={styles.rowSubtitle}>
+                    {getUserStatusLabel(user.status)} · {formatDate(user.createdAt)}
+                  </Text>
                 </View>
-                <View style={[styles.roleBadge, isAdminUser(user) && styles.roleBadgeAdmin]}>
-                  <Text style={[styles.roleBadgeText, isAdminUser(user) && styles.roleBadgeTextAdmin]}>
+                <View style={[styles.roleBadge, user.role === "Admin" && styles.roleBadgeAdmin]}>
+                  <Text style={[styles.roleBadgeText, user.role === "Admin" && styles.roleBadgeTextAdmin]}>
                     {user.role}
                   </Text>
                 </View>
               </Pressable>
-            ))}
+            ))
+            )}
+
+            <View style={styles.paginationRow}>
+              <Pressable
+                disabled={userPage <= 1 || isRefreshing}
+                onPress={() => setUserPage((page) => Math.max(1, page - 1))}
+                style={[styles.paginationButton, (userPage <= 1 || isRefreshing) && styles.disabledText]}
+              >
+                <Text style={styles.paginationButtonText}>Trước</Text>
+              </Pressable>
+              <Text style={styles.paginationText}>
+                Trang {userPage}/{userTotalPages}
+              </Text>
+              <Pressable
+                disabled={userPage >= userTotalPages || isRefreshing}
+                onPress={() => setUserPage((page) => Math.min(userTotalPages, page + 1))}
+                style={[
+                  styles.paginationButton,
+                  (userPage >= userTotalPages || isRefreshing) && styles.disabledText,
+                ]}
+              >
+                <Text style={styles.paginationButtonText}>Sau</Text>
+              </Pressable>
+            </View>
           </ScrollView>
         </SafeAreaView>
       </FocusedScreenTransition>
@@ -641,7 +953,7 @@ export default function AdminScreen() {
             {(defaultCategories ?? []).map((category) => (
               <Pressable key={category.id} style={styles.categoryRow} onPress={() => openEditDefaultCategory(category)}>
                 <View style={styles.categoryIcon}>
-                  <Text style={styles.categoryIconText}>{category.icon?.charAt(0).toUpperCase() ?? "C"}</Text>
+                  <CategoryIconMark icon={category.icon} />
                 </View>
                 <View style={styles.rowCopy}>
                   <Text style={styles.rowTitle}>{category.name}</Text>
@@ -665,9 +977,16 @@ export default function AdminScreen() {
 
           <CategoryFormModal
             form={categoryForm}
+            iconPickerVisible={isCategoryIconPickerVisible}
             isSaving={isSavingCategory}
             onChange={setCategoryForm}
             onClose={closeCategoryForm}
+            onCloseIconPicker={() => setIsCategoryIconPickerVisible(false)}
+            onOpenIconPicker={() => setIsCategoryIconPickerVisible(true)}
+            onSelectIcon={(icon) => {
+              setCategoryForm((current) => ({ ...current, icon }));
+              setIsCategoryIconPickerVisible(false);
+            }}
             onSubmit={saveDefaultCategory}
             theme={theme}
             title={editingCategory ? "Sửa category mặc định" : "Thêm category mặc định"}
@@ -716,7 +1035,6 @@ export default function AdminScreen() {
                   key={document.id}
                   document={document}
                   isProcessing={processingDocumentId === document.id}
-                  onConfirm={() => confirmRagDocument(document)}
                   onDelete={() => requestDeleteRagDocument(document)}
                   onMore={() => setActionMenuRagDocument(document)}
                 />
@@ -757,10 +1075,7 @@ export default function AdminScreen() {
             }}
             onEdit={() => {
               if (actionMenuRagDocument) {
-                const document = actionMenuRagDocument;
-
-                setActionMenuRagDocument(null);
-                openEditRagMetadata(document);
+                queueOpenEditRagMetadata(actionMenuRagDocument);
               }
             }}
             onReindex={() => {
@@ -780,11 +1095,6 @@ export default function AdminScreen() {
               setIsRagDetailVisible(false);
               setSelectedRagDocument(null);
             }}
-            onConfirm={() => {
-              if (selectedRagDocument) {
-                void confirmRagDocument(selectedRagDocument);
-              }
-            }}
             onDelete={() => {
               if (selectedRagDocument) {
                 requestDeleteRagDocument(selectedRagDocument);
@@ -792,7 +1102,7 @@ export default function AdminScreen() {
             }}
             onEdit={() => {
               if (selectedRagDocument) {
-                openEditRagMetadata(selectedRagDocument);
+                queueOpenEditRagMetadata(selectedRagDocument, { closeDetail: true });
               }
             }}
             onReindex={() => {
@@ -931,13 +1241,11 @@ function AdminTile({
 function RagDocumentRow({
   document,
   isProcessing,
-  onConfirm,
   onDelete,
   onMore,
 }: {
   document: RagDocument;
   isProcessing: boolean;
-  onConfirm: () => void;
   onDelete: () => void;
   onMore: () => void;
 }) {
@@ -968,14 +1276,6 @@ function RagDocumentRow({
       </View>
 
       <View style={styles.documentActionRail}>
-        <Pressable
-          accessibilityLabel="Confirm tài liệu"
-          style={styles.documentIconButton}
-          onPress={onConfirm}
-          disabled={isProcessing}
-        >
-          <CheckCircle2 color={theme.primary} size={18} strokeWidth={2.4} />
-        </Pressable>
         <Pressable
           accessibilityLabel="Xóa tài liệu"
           style={[styles.documentIconDeleteButton, isProcessing && styles.disabledText]}
@@ -1096,7 +1396,6 @@ function RagDetailModal({
   isLoading,
   isProcessing,
   onClose,
-  onConfirm,
   onDelete,
   onEdit,
   onReindex,
@@ -1106,7 +1405,6 @@ function RagDetailModal({
   isLoading: boolean;
   isProcessing: boolean;
   onClose: () => void;
-  onConfirm: () => void;
   onDelete: () => void;
   onEdit: () => void;
   onReindex: () => void;
@@ -1162,9 +1460,6 @@ function RagDetailModal({
               </View>
 
               <View style={styles.documentActions}>
-                <Pressable style={styles.documentActionButton} onPress={onConfirm} disabled={isProcessing}>
-                  <Text style={styles.documentActionText}>Confirm</Text>
-                </Pressable>
                 <Pressable
                   style={[styles.documentActionButton, (!canReindex || isProcessing) && styles.disabledText]}
                   onPress={onReindex}
@@ -1331,7 +1626,7 @@ function RagMetadataModal({
             </Pressable>
           </View>
 
-          <View style={styles.formBody}>
+          <ScrollView contentContainerStyle={styles.formBody} keyboardShouldPersistTaps="handled">
             <View style={styles.formField}>
               <Text style={styles.formLabel}>Tiêu đề</Text>
               <TextInput
@@ -1374,7 +1669,7 @@ function RagMetadataModal({
                 <Text style={styles.fullSaveButtonText}>Lưu metadata</Text>
               )}
             </Pressable>
-          </View>
+          </ScrollView>
         </View>
       </KeyboardAvoidingView>
     </Modal>
@@ -1392,6 +1687,16 @@ function StatRow({ label, value }: { label: string; value: string }) {
   );
 }
 
+function FilterChip({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
+  const styles = useAdminStyles();
+
+  return (
+    <Pressable style={[styles.filterChip, selected && styles.filterChipSelected]} onPress={onPress}>
+      <Text style={[styles.filterChipText, selected && styles.filterChipTextSelected]}>{label}</Text>
+    </Pressable>
+  );
+}
+
 function InfoRow({ label, value }: { label: string; value: string }) {
   const styles = useAdminStyles();
 
@@ -1403,45 +1708,125 @@ function InfoRow({ label, value }: { label: string; value: string }) {
   );
 }
 
+function CategoryIconMark({ icon }: { icon: string | null | undefined }) {
+  const theme = useAppTheme();
+  const styles = useAdminStyles();
+  const iconOption = getCategoryIconOption(icon);
+
+  if (iconOption) {
+    const Icon = iconOption.Icon;
+
+    return <Icon color={theme.primary} size={18} strokeWidth={2.4} />;
+  }
+
+  return <Text style={styles.categoryIconText}>{icon?.charAt(0).toUpperCase() ?? "C"}</Text>;
+}
+
+function CategoryIconPickerContent({
+  onSelect,
+  selectedIcon,
+}: {
+  onSelect: (icon: string) => void;
+  selectedIcon: string;
+}) {
+  const theme = useAppTheme();
+  const styles = useAdminStyles();
+
+  return (
+    <ScrollView contentContainerStyle={styles.iconPickerContent}>
+      <Pressable
+        style={[styles.iconPickerOption, !selectedIcon && styles.iconPickerOptionSelected]}
+        onPress={() => onSelect("")}
+      >
+        <View style={styles.iconPickerBubble}>
+          <Text style={styles.iconSelectPreviewText}>C</Text>
+        </View>
+        <Text style={styles.iconPickerLabel}>Mặc định</Text>
+      </Pressable>
+
+      {categoryIconOptions.map((option) => {
+        const Icon = option.Icon;
+        const isSelected = selectedIcon === option.key;
+
+        return (
+          <Pressable
+            key={option.key}
+            style={[styles.iconPickerOption, isSelected && styles.iconPickerOptionSelected]}
+            onPress={() => onSelect(option.key)}
+          >
+            <View style={styles.iconPickerBubble}>
+              <Icon color={theme.primary} size={20} strokeWidth={2.4} />
+            </View>
+            <Text numberOfLines={1} style={styles.iconPickerLabel}>
+              {option.label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </ScrollView>
+  );
+}
+
 function CategoryFormModal({
   form,
+  iconPickerVisible,
   isSaving,
   onChange,
   onClose,
+  onCloseIconPicker,
+  onOpenIconPicker,
+  onSelectIcon,
   onSubmit,
   theme,
   title,
   visible,
 }: {
   form: CategoryFormState;
+  iconPickerVisible: boolean;
   isSaving: boolean;
   onChange: (form: CategoryFormState) => void;
   onClose: () => void;
+  onCloseIconPicker: () => void;
+  onOpenIconPicker: () => void;
+  onSelectIcon: (icon: string) => void;
   onSubmit: () => void;
   theme: AppTheme;
   title: string;
   visible: boolean;
 }) {
   const styles = useAdminStyles();
+  const selectedIconOption = getCategoryIconOption(form.icon);
 
   return (
-    <Modal animationType="slide" transparent visible={visible} onRequestClose={onClose}>
+    <Modal
+      animationType="slide"
+      transparent
+      visible={visible}
+      onRequestClose={iconPickerVisible ? onCloseIconPicker : onClose}
+    >
       <KeyboardAvoidingView
         behavior={Platform.select({ ios: "padding", default: undefined })}
         style={styles.modalOverlay}
       >
-        <Pressable style={styles.modalBackdrop} onPress={onClose} />
+        <Pressable style={styles.modalBackdrop} onPress={iconPickerVisible ? onCloseIconPicker : onClose} />
         <View style={styles.categoryFormSheet}>
           <View style={styles.formHeader}>
-            <Pressable onPress={onClose} hitSlop={10}>
-              <Text style={styles.formClose}>Hủy</Text>
+            <Pressable onPress={iconPickerVisible ? onCloseIconPicker : onClose} hitSlop={10}>
+              <Text style={styles.formClose}>{iconPickerVisible ? "‹ Form" : "Hủy"}</Text>
             </Pressable>
-            <Text style={styles.formTitle}>{title}</Text>
-            <Pressable onPress={onSubmit} disabled={isSaving} hitSlop={10}>
-              <Text style={[styles.formSave, isSaving && styles.disabledText]}>Lưu</Text>
-            </Pressable>
+            <Text style={styles.formTitle}>{iconPickerVisible ? "Chọn icon" : title}</Text>
+            {iconPickerVisible ? (
+              <View style={styles.headerSpacer} />
+            ) : (
+              <Pressable onPress={onSubmit} disabled={isSaving} hitSlop={10}>
+                <Text style={[styles.formSave, isSaving && styles.disabledText]}>Lưu</Text>
+              </Pressable>
+            )}
           </View>
 
+          {iconPickerVisible ? (
+            <CategoryIconPickerContent onSelect={onSelectIcon} selectedIcon={form.icon} />
+          ) : (
           <View style={styles.formBody}>
             <View style={styles.formField}>
               <Text style={styles.formLabel}>Tên category</Text>
@@ -1479,15 +1864,26 @@ function CategoryFormModal({
 
             <View style={styles.formField}>
               <Text style={styles.formLabel}>Icon</Text>
-              <TextInput
-                autoCapitalize="none"
-                editable={!isSaving}
-                onChangeText={(icon) => onChange({ ...form, icon })}
-                placeholder="food"
-                placeholderTextColor={theme.inputPlaceholder}
-                style={styles.formInput}
-                value={form.icon}
-              />
+              <Pressable
+                disabled={isSaving}
+                onPress={onOpenIconPicker}
+                style={[styles.iconSelectButton, isSaving && styles.disabledText]}
+              >
+                <View style={styles.iconSelectPreview}>
+                  {selectedIconOption ? (
+                    <selectedIconOption.Icon color={theme.primary} size={18} strokeWidth={2.4} />
+                  ) : (
+                    <Text style={styles.iconSelectPreviewText}>C</Text>
+                  )}
+                </View>
+                <View style={styles.iconSelectCopy}>
+                  <Text style={styles.iconSelectTitle}>{selectedIconOption?.label ?? "Mặc định"}</Text>
+                  <Text style={styles.iconSelectSubtitle}>
+                    {selectedIconOption ? selectedIconOption.key : "Dùng icon mặc định"}
+                  </Text>
+                </View>
+                <Text style={styles.iconSelectChevron}>›</Text>
+              </Pressable>
             </View>
 
             <Pressable
@@ -1502,6 +1898,7 @@ function CategoryFormModal({
               )}
             </Pressable>
           </View>
+          )}
         </View>
       </KeyboardAvoidingView>
     </Modal>
@@ -1590,6 +1987,26 @@ function createStyles(theme: AppTheme) {
     headerSpacer: { width: 74 },
     headerCount: { color: theme.textMuted, fontSize: 14, fontWeight: "900", minWidth: 74, textAlign: "right" },
     listContent: { gap: 10, padding: 18, paddingBottom: 96 },
+    userFilterCard: {
+      backgroundColor: theme.card,
+      borderColor: theme.border,
+      borderRadius: 8,
+      borderWidth: 1,
+      gap: 10,
+      padding: 12,
+    },
+    filterRow: { gap: 8 },
+    filterChip: {
+      backgroundColor: theme.cardAlt,
+      borderColor: theme.border,
+      borderRadius: 18,
+      borderWidth: 1,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+    },
+    filterChipSelected: { backgroundColor: theme.primary, borderColor: theme.primary },
+    filterChipText: { color: theme.textMuted, fontSize: 12, fontWeight: "900" },
+    filterChipTextSelected: { color: theme.textInverse },
     userRow: {
       alignItems: "center",
       backgroundColor: theme.card,
@@ -1811,6 +2228,14 @@ function createStyles(theme: AppTheme) {
       borderWidth: 1,
       overflow: "hidden",
     },
+    userControlCard: {
+      backgroundColor: theme.card,
+      borderColor: theme.border,
+      borderRadius: 8,
+      borderWidth: 1,
+      gap: 12,
+      padding: 16,
+    },
     infoRow: {
       borderBottomColor: theme.border,
       borderBottomWidth: StyleSheet.hairlineWidth,
@@ -1848,6 +2273,20 @@ function createStyles(theme: AppTheme) {
     formTitle: { color: theme.text, fontSize: 17, fontWeight: "900" },
     formSave: { color: theme.primary, fontSize: 15, fontWeight: "900" },
     disabledText: { opacity: 0.55 },
+    paginationRow: {
+      alignItems: "center",
+      flexDirection: "row",
+      justifyContent: "space-between",
+      marginTop: 6,
+    },
+    paginationButton: {
+      backgroundColor: theme.primaryPressed,
+      borderRadius: 8,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+    },
+    paginationButtonText: { color: theme.primary, fontSize: 13, fontWeight: "900" },
+    paginationText: { color: theme.textMuted, fontSize: 13, fontWeight: "900" },
     formBody: { gap: 16, padding: 18 },
     formField: { gap: 8 },
     formLabel: { color: theme.text, fontSize: 13, fontWeight: "900" },
@@ -1861,6 +2300,58 @@ function createStyles(theme: AppTheme) {
       paddingHorizontal: 14,
       paddingVertical: 13,
     },
+    iconSelectButton: {
+      alignItems: "center",
+      backgroundColor: theme.card,
+      borderColor: theme.border,
+      borderRadius: 8,
+      borderWidth: 1,
+      flexDirection: "row",
+      gap: 12,
+      minHeight: 58,
+      paddingHorizontal: 12,
+    },
+    iconSelectPreview: {
+      alignItems: "center",
+      backgroundColor: theme.primaryPressed,
+      borderRadius: 18,
+      height: 36,
+      justifyContent: "center",
+      width: 36,
+    },
+    iconSelectPreviewText: { color: theme.primary, fontSize: 15, fontWeight: "900" },
+    iconSelectCopy: { flex: 1 },
+    iconSelectTitle: { color: theme.text, fontSize: 14, fontWeight: "900" },
+    iconSelectSubtitle: { color: theme.textMuted, fontSize: 11, fontWeight: "700", marginTop: 3 },
+    iconSelectChevron: { color: theme.textMuted, fontSize: 24, fontWeight: "800" },
+    iconPickerContent: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 10,
+      padding: 18,
+      paddingBottom: 26,
+    },
+    iconPickerOption: {
+      alignItems: "center",
+      backgroundColor: theme.card,
+      borderColor: theme.border,
+      borderRadius: 8,
+      borderWidth: 1,
+      gap: 7,
+      minHeight: 86,
+      padding: 10,
+      width: "30%",
+    },
+    iconPickerOptionSelected: { backgroundColor: theme.primaryPressed, borderColor: theme.primary },
+    iconPickerBubble: {
+      alignItems: "center",
+      backgroundColor: theme.primaryPressed,
+      borderRadius: 20,
+      height: 40,
+      justifyContent: "center",
+      width: 40,
+    },
+    iconPickerLabel: { color: theme.text, fontSize: 11, fontWeight: "800", textAlign: "center" },
     multilineInput: { minHeight: 92, textAlignVertical: "top" },
     filePickerButton: {
       backgroundColor: theme.card,

@@ -30,8 +30,8 @@ export type FinancialAccount = {
 };
 
 export const financialAccountApi = {
-  list: () => axiosClient.get<FinancialAccount[]>("/accounts"),
-  create: (payload: CreateFinancialAccountPayload) => axiosClient.post("/accounts", payload),
-  update: (id: number, payload: UpdateFinancialAccountPayload) => axiosClient.put(`/accounts/${id}`, payload),
-  delete: (id: number) => axiosClient.delete(`/accounts/${id}`),
+  list: () => axiosClient.get<FinancialAccount[]>("/v1/accounts"),
+  create: (payload: CreateFinancialAccountPayload) => axiosClient.post("/v1/accounts", payload),
+  update: (id: number, payload: UpdateFinancialAccountPayload) => axiosClient.put(`/v1/accounts/${id}`, payload),
+  delete: (id: number) => axiosClient.delete(`/v1/accounts/${id}`),
 };

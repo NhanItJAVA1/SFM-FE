@@ -27,5 +27,5 @@ function buildQuery(params: FinancialInsightsParams) {
 
 export const financialInsightsApi = {
   get: (params: FinancialInsightsParams) =>
-    axiosClient.get<FinancialInsightsResponse>(`/financial-insights${buildQuery(params)}`),
+    axiosClient.get<FinancialInsightsResponse>(`/v1/financial-insights${buildQuery(params)}`),
 };

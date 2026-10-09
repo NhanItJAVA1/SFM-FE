@@ -21,6 +21,6 @@ export type CreateCategoryPayload = {
 };
 
 export const categoriesApi = {
-  list: () => axiosClient.get<Category[]>('/categories'),
-  create: (payload: CreateCategoryPayload) => axiosClient.post('/categories', payload),
+  list: () => axiosClient.get<Category[]>('/v1/categories'),
+  create: (payload: CreateCategoryPayload) => axiosClient.post('/v1/categories', payload),
 };

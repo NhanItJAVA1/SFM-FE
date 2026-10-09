@@ -59,8 +59,18 @@ async function listDocuments() {
   };
 }
 
+async function getUploadBody(fileUri: string, file?: Blob | null) {
+  if (file) {
+    return file.arrayBuffer();
+  }
+
+  const response = await fetch(fileUri);
+
+  return response.arrayBuffer();
+}
+
 async function uploadFileToPresignedUrl(uploadUrl: string, fileUri: string, file?: Blob | null) {
-  const body = file ?? (await (await fetch(fileUri)).blob());
+  const body = await getUploadBody(fileUri, file);
   const response = await fetch(uploadUrl, {
     body,
     headers: {
@@ -70,7 +80,10 @@ async function uploadFileToPresignedUrl(uploadUrl: string, fileUri: string, file
   });
 
   if (!response.ok) {
-    throw new Error(`Upload S3 thất bại (${response.status}).`);
+    const errorText = await response.text().catch(() => "");
+    const message = errorText ? `Upload S3 thất bại (${response.status}): ${errorText}` : `Upload S3 thất bại (${response.status}).`;
+
+    throw new Error(message);
   }
 }
 

@@ -183,7 +183,7 @@ async function refreshAccessToken() {
      * the normal authentication / retry flow.
      */
     const response = await axios.post<RefreshTokenResponse>(
-      "/auth/refresh-token",
+      "/v1/auth/refresh-token",
       {
         refreshToken,
       },
@@ -444,6 +444,12 @@ export const axiosClient = {
   put: <T = unknown>(path: string, body?: unknown) =>
     request<T>(path, {
       method: "PUT",
+      body,
+    }),
+
+  patch: <T = unknown>(path: string, body?: unknown) =>
+    request<T>(path, {
+      method: "PATCH",
       body,
     }),
 
