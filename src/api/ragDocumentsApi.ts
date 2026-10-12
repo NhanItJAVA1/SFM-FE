@@ -1,5 +1,7 @@
 import { axiosClient } from "./axiosClient";
 
+export const RAG_DOCUMENT_UPLOAD_CONTENT_TYPE = "application/octet-stream";
+
 export type RagDocumentStatus = "Draft" | "Processing" | "Indexed" | "Failed";
 
 export type RagDocument = {
@@ -25,6 +27,7 @@ export type CreateRagDocumentUploadUrlPayload = {
   description: string | null;
   fileName: string;
   fileType: string;
+  contentType: typeof RAG_DOCUMENT_UPLOAD_CONTENT_TYPE;
   ragCategory: string | null;
 };
 
@@ -74,7 +77,7 @@ async function uploadFileToPresignedUrl(uploadUrl: string, fileUri: string, file
   const response = await fetch(uploadUrl, {
     body,
     headers: {
-      "Content-Type": "application/octet-stream",
+      "Content-Type": RAG_DOCUMENT_UPLOAD_CONTENT_TYPE,
     },
     method: "PUT",
   });

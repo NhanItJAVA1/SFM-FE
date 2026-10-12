@@ -48,7 +48,7 @@ import {
 } from "@/api/adminApi";
 import { authApi } from "@/api/authApi";
 import { type Category, type CategoryType } from "@/api/categoriesApi";
-import { ragDocumentsApi, type RagDocument } from "@/api/ragDocumentsApi";
+import { RAG_DOCUMENT_UPLOAD_CONTENT_TYPE, ragDocumentsApi, type RagDocument } from "@/api/ragDocumentsApi";
 import { transactionsApi, type Transaction } from "@/api/transactionsApi";
 import { FocusedScreenTransition } from "@/components/screen-transition";
 import { useAppTheme } from "@/hooks/use-app-theme";
@@ -536,6 +536,7 @@ export default function AdminScreen() {
     try {
       setIsUploadingRagDocument(true);
       const uploadUrlResponse = await ragDocumentsApi.createUploadUrl({
+        contentType: RAG_DOCUMENT_UPLOAD_CONTENT_TYPE,
         description: description || null,
         fileName: ragUploadForm.fileName || asset.name,
         fileType,
