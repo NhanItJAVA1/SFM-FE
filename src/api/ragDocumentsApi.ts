@@ -1,5 +1,7 @@
 import { axiosClient } from "./axiosClient";
 
+export const RAG_DOCUMENT_UPLOAD_CONTENT_TYPE = "application/octet-stream";
+
 export type RagDocumentStatus = "Draft" | "Processing" | "Indexed" | "Failed";
 
 export type RagDocument = {
@@ -25,6 +27,7 @@ export type CreateRagDocumentUploadUrlPayload = {
   description: string | null;
   fileName: string;
   fileType: string;
+  contentType: typeof RAG_DOCUMENT_UPLOAD_CONTENT_TYPE;
   ragCategory: string | null;
 };
 
@@ -59,18 +62,31 @@ async function listDocuments() {
   };
 }
 
+async function getUploadBody(fileUri: string, file?: Blob | null) {
+  if (file) {
+    return file.arrayBuffer();
+  }
+
+  const response = await fetch(fileUri);
+
+  return response.arrayBuffer();
+}
+
 async function uploadFileToPresignedUrl(uploadUrl: string, fileUri: string, file?: Blob | null) {
-  const body = file ?? (await (await fetch(fileUri)).blob());
+  const body = await getUploadBody(fileUri, file);
   const response = await fetch(uploadUrl, {
     body,
     headers: {
-      "Content-Type": "application/octet-stream",
+      "Content-Type": RAG_DOCUMENT_UPLOAD_CONTENT_TYPE,
     },
     method: "PUT",
   });
 
   if (!response.ok) {
-    throw new Error(`Upload S3 thất bại (${response.status}).`);
+    const errorText = await response.text().catch(() => "");
+    const message = errorText ? `Upload S3 thất bại (${response.status}): ${errorText}` : `Upload S3 thất bại (${response.status}).`;
+
+    throw new Error(message);
   }
 }
 

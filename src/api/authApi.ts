@@ -26,8 +26,8 @@ export type LoginResponse = {
 };
 
 export const authApi = {
-    login: (payload: LoginPayload) => axiosClient.post<LoginResponse>('/auth/login', payload),
-    register: (payload: RegisterPayload) => axiosClient.post('/auth/register', payload),
-    externalLogin: (payload: ExternalLoginPayload) => axiosClient.post<LoginResponse>('/auth/external-login', payload),
-    logout: (payload?: LogoutPayload) => axiosClient.post('/auth/logout', payload),
+    login: (payload: LoginPayload) => axiosClient.post<LoginResponse>('/v1/auth/login', payload),
+    register: (payload: RegisterPayload) => axiosClient.post('/v1/auth/register', payload),
+    externalLogin: (payload: ExternalLoginPayload) => axiosClient.post<LoginResponse>('/v1/auth/external-login', payload),
+    logout: (payload?: LogoutPayload) => axiosClient.post('/v1/auth/logout', payload),
 };

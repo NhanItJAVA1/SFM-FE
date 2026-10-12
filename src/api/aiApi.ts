@@ -53,6 +53,6 @@ export type AIChatResponse = {
 };
 
 export const aiApi = {
-  analysis: () => axiosClient.post<AIAnalysis>('/FinancialAdvisor/analyze'),
-  chat: (payload: AIChatPayload) => axiosClient.post<AIChatResponse>('/AI/chat', payload),
+  analysis: () => axiosClient.post<AIAnalysis>('/v1/FinancialAdvisor/analyze'),
+  chat: (payload: AIChatPayload) => axiosClient.post<AIChatResponse>('/v1/AI/chat', payload),
 };

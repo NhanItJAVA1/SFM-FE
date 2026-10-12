@@ -184,24 +184,24 @@ export const transactionsApi = {
 
     formData.append("image", jpegBlob, `bill-${Date.now()}.jpg`);
 
-    return axiosClient.uploadFormData<ScanBillResponse>("/transactions/scan-bill", formData);
+    return axiosClient.uploadFormData<ScanBillResponse>("/v1/transactions/scan-bill", formData);
   },
   createFromScan: (payload: CreateTransactionFromScanPayload) =>
-    axiosClient.post<CreateTransactionFromScanResponse>("/transactions", payload),
+    axiosClient.post<CreateTransactionFromScanResponse>("/v1/transactions", payload),
   categorySpending: (params: CategorySpendingParams = {}) =>
-    axiosClient.get<CategorySpendingResponse>(`/transactions/category-spending${buildQuery(params)}`),
+    axiosClient.get<CategorySpendingResponse>(`/v1/transactions/category-spending${buildQuery(params)}`),
   list: (params: TransactionListParams = {}) =>
     axiosClient.get<Transaction[]>(
-      `/transactions${buildQuery({ accountId: params.accountId, filter: params.filter })}`,
+      `/v1/transactions${buildQuery({ accountId: params.accountId, filter: params.filter })}`,
     ),
   exportTransactions: (params: ExportTransactionsParams = {}) =>
     axiosClient.getBinary(
-      `/transactions/export${buildQuery({
+      `/v1/transactions/export${buildQuery({
         accountId: params.accountId,
         fromDate: params.fromDate,
         toDate: params.toDate,
       })}`,
     ),
   create: (payload: CreateTransactionPayload) =>
-    axiosClient.post<CreateTransactionFromScanResponse>("/transactions", payload),
+    axiosClient.post<CreateTransactionFromScanResponse>("/v1/transactions", payload),
 };

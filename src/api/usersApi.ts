@@ -24,10 +24,10 @@ export type ResetMyDataPayload = {
 };
 
 export const usersApi = {
-  list: () => axiosClient.get<AuthUser[]>('/Users'),
-  get: (id: number) => axiosClient.get<AuthUser>(`/users/${id}`),
-  update: (id: number, payload: UpdateUserPayload) => axiosClient.put(`/users/${id}`, payload),
+  list: () => axiosClient.get<AuthUser[]>('/v1/Users'),
+  get: (id: number) => axiosClient.get<AuthUser>(`/v1/Users/${id}`),
+  update: (id: number, payload: UpdateUserPayload) => axiosClient.put(`/v1/Users/${id}`, payload),
   createAvatarUploadUrl: (payload: AvatarUploadUrlPayload) =>
-    axiosClient.post<AvatarUploadUrlResponse>('/users/avatar/upload-url', payload),
-  resetMyData: (payload: ResetMyDataPayload) => axiosClient.delete('/Users/me/data', payload),
+    axiosClient.post<AvatarUploadUrlResponse>('/v1/Users/avatar/upload-url', payload),
+  resetMyData: (payload: ResetMyDataPayload) => axiosClient.delete('/v1/Users/me/data', payload),
 };
