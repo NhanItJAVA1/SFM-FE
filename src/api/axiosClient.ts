@@ -149,13 +149,13 @@ function logResponse(response: { status: number; config: InternalAxiosRequestCon
 }
 
 function logError(error: AxiosError) {
-  console.error("=========== API ERROR ===========");
-  console.error("METHOD:", error.config?.method?.toUpperCase());
-  console.error("URL:", `${error.config?.baseURL ?? ""}${error.config?.url ?? ""}`);
-  console.error("STATUS:", error.response?.status);
-  console.error("DATA:", error.response?.data);
-  console.error("MESSAGE:", error.message);
-  console.error("=================================");
+  console.log("=========== API ERROR ===========");
+  console.log("METHOD:", error.config?.method?.toUpperCase());
+  console.log("URL:", `${error.config?.baseURL ?? ""}${error.config?.url ?? ""}`);
+  console.log("STATUS:", error.response?.status);
+  console.log("DATA:", error.response?.data);
+  console.log("MESSAGE:", error.message);
+  console.log("=================================");
 }
 
 /**
