@@ -2,6 +2,7 @@ import { router, useFocusEffect } from "expo-router";
 import { Fragment, useCallback, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Alert, ImageBackground, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { Sparkles } from "lucide-react-native";
 import Svg, { Circle, Defs, LinearGradient, Line, Path, Rect, Stop, Text as SvgText } from "react-native-svg";
 
 import type { AIAnalysis } from "@/api/aiApi";
@@ -243,7 +244,7 @@ export default function HomeScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const hasLoadedDataRef = useRef(false);
-  const { analysis, isLoading: isAILoading, refresh: refreshAI } = useAIAnalysis();
+  const { analysis, isLoading: isAILoading, isRefreshing: isAIRefreshing, refresh: refreshAI } = useAIAnalysis();
 
   const loadHomeData = useCallback(
     async ({ refresh = false, silent = false } = {}) => {
@@ -255,12 +256,15 @@ export default function HomeScreen() {
         }
         setErrorMessage(null);
 
+        if (refresh) {
+          void refreshAI();
+        }
+
         const [accountResponse, transactionResponse, categoryResponse, spendingResponse] = await Promise.all([
           financialAccountApi.list(),
           transactionsApi.list(),
           categoriesApi.list(),
           transactionsApi.categorySpending(),
-          ...(refresh ? [refreshAI()] : []),
         ]);
 
         setAccounts(Array.isArray(accountResponse.data) ? accountResponse.data : []);
@@ -380,7 +384,7 @@ export default function HomeScreen() {
                   onPress={() => router.push('/ai-chat')}
                   accessibilityLabel="Mở trợ lý tài chính AI"
                 >
-                  <Text style={styles.aiChatButtonText}>AI</Text>
+                  <Sparkles color={theme.textInverse} size={19} strokeWidth={2.6} />
                 </Pressable>
               </View>
             </View>
@@ -443,7 +447,14 @@ export default function HomeScreen() {
               </View>
             )}
 
-            <AIWidget analysis={analysis} isLoading={isAILoading} styles={styles} />
+            <AIWidget
+              analysis={analysis}
+              isLoading={isAILoading}
+              isRefreshing={isAIRefreshing}
+              onAnalyze={() => refreshAI({ force: true })}
+              styles={styles}
+              theme={theme}
+            />
 
             {errorMessage ? (
               <View style={styles.errorCard}>
@@ -529,11 +540,17 @@ export default function HomeScreen() {
 function AIWidget({
   analysis,
   isLoading,
+  isRefreshing,
+  onAnalyze,
   styles,
+  theme,
 }: {
   analysis: AIAnalysis | null;
   isLoading: boolean;
+  isRefreshing: boolean;
+  onAnalyze: () => void;
   styles: ReturnType<typeof createStyles>;
+  theme: AppTheme;
 }) {
   if (isLoading) {
     return (
@@ -558,13 +575,29 @@ function AIWidget({
     <View style={styles.aiCard}>
       <View style={styles.aiHeader}>
         <Text style={styles.aiEyebrow}>PHÂN TÍCH AI</Text>
-        <View
-          style={[
-            styles.aiBadge,
-            isHealthy ? styles.aiBadgeHealthy : isCritical ? styles.aiBadgeCritical : styles.aiBadgeWarning,
-          ]}
-        >
-          <Text style={styles.aiBadgeText}>{analysis.health_status}</Text>
+        <View style={styles.aiHeaderActions}>
+          <Pressable
+            accessibilityLabel="Cập nhật phân tích AI"
+            disabled={isRefreshing}
+            hitSlop={8}
+            onPress={onAnalyze}
+            style={[styles.aiAnalyzeButton, isRefreshing && styles.aiAnalyzeButtonDisabled]}
+          >
+            {isRefreshing ? (
+              <ActivityIndicator color={theme.primary} size="small" />
+            ) : (
+              <Sparkles color={theme.primary} size={14} strokeWidth={2.6} />
+            )}
+            <Text style={styles.aiAnalyzeText}>Phân tích</Text>
+          </Pressable>
+          <View
+            style={[
+              styles.aiBadge,
+              isHealthy ? styles.aiBadgeHealthy : isCritical ? styles.aiBadgeCritical : styles.aiBadgeWarning,
+            ]}
+          >
+            <Text style={styles.aiBadgeText}>{analysis.health_status}</Text>
+          </View>
         </View>
       </View>
       <View style={styles.aiStatsRow}>
@@ -1122,7 +1155,6 @@ function createStyles(theme: AppTheme) {
       justifyContent: "center",
       width: 40,
     },
-    aiChatButtonText: { color: theme.textInverse, fontSize: 13, fontWeight: "900" },
     heroLabel: { color: theme.textInverse, fontSize: 14, fontWeight: "800", opacity: 0.82 },
     heroBalance: { color: theme.textInverse, fontSize: 34, fontWeight: "900", letterSpacing: 0, marginTop: 6 },
     heroStats: { flexDirection: "row", gap: 10, marginBottom: 14, marginTop: -32 },
@@ -1171,7 +1203,20 @@ function createStyles(theme: AppTheme) {
       padding: 14,
     },
     aiHeader: { alignItems: "center", flexDirection: "row", justifyContent: "space-between" },
+    aiHeaderActions: { alignItems: "center", flexDirection: "row", gap: 8 },
     aiEyebrow: { color: theme.textMuted, fontSize: 10, fontWeight: "900", letterSpacing: 0.5 },
+    aiAnalyzeButton: {
+      alignItems: "center",
+      backgroundColor: theme.primaryPressed,
+      borderRadius: 14,
+      flexDirection: "row",
+      gap: 5,
+      minHeight: 28,
+      paddingHorizontal: 9,
+      paddingVertical: 6,
+    },
+    aiAnalyzeButtonDisabled: { opacity: 0.68 },
+    aiAnalyzeText: { color: theme.primary, fontSize: 11, fontWeight: "900" },
     aiBadge: { borderRadius: 12, paddingHorizontal: 9, paddingVertical: 5 },
     aiBadgeHealthy: { backgroundColor: theme.goodBackground },
     aiBadgeWarning: { backgroundColor: theme.warningBackground },
