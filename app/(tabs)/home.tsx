@@ -21,7 +21,7 @@ const accountTypeMeta: Record<FinancialAccount["type"], { color: string; icon: s
   Savings: { color: "#d9962b", icon: "◎", label: "Saving" },
 };
 
-const overviewBackground = require("../../assets/expo.icon/Assets/Airy Blue Gradient Waves.png");
+const overviewBackground = require("../../assets/expo.icon/Assets/Serene Blue Abstract Gradient Wallpaper.png");
 
 const forecastChart = {
   bottom: 204,
@@ -363,23 +363,13 @@ export default function HomeScreen() {
   return (
     <FocusedScreenTransition>
       <SafeAreaView style={styles.screen} edges={[]}>
-        <ScrollView
-          contentContainerStyle={styles.content}
-          refreshControl={
-            <RefreshControl
-              refreshing={isRefreshing}
-              onRefresh={() => loadHomeData({ refresh: true })}
-              tintColor={theme.primary}
-            />
-          }
-          showsVerticalScrollIndicator={false}
+        <ImageBackground
+          imageStyle={styles.overviewPanelImage}
+          resizeMode="cover"
+          source={overviewBackground}
+          style={styles.overviewBackground}
         >
-          <ImageBackground
-            imageStyle={styles.overviewPanelImage}
-            resizeMode="cover"
-            source={overviewBackground}
-            style={[styles.overviewPanel, { paddingTop: 12 + insets.top }]}
-          >
+          <View style={[styles.overviewStaticContent, { paddingTop: 12 + insets.top }]}>
             <View style={styles.header}>
               <View style={styles.headerCopy}>
                 <Text numberOfLines={1} style={styles.userName}>Hi, {displayName}!</Text>
@@ -401,6 +391,22 @@ export default function HomeScreen() {
                 {formatMoney(totalBalance, currency)}
               </Text>
             </Pressable>
+          </View>
+        </ImageBackground>
+        <View pointerEvents="none" style={styles.bottomSurfaceGuard} />
+        <ScrollView
+          contentContainerStyle={styles.content}
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={() => loadHomeData({ refresh: true })}
+              tintColor={theme.primary}
+            />
+          }
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={{ height: 202 + insets.top }} />
+          <View style={styles.contentSurface}>
             <View style={styles.heroStats}>
               <MetricPill label="Thu tháng này" tone="good" value={formatMoney(monthlyIncome, currency)} />
               <MetricPill label="Chi tháng này" tone="warn" value={formatMoney(monthlyExpense, currency)} />
@@ -412,62 +418,61 @@ export default function HomeScreen() {
                 value={`${activeAccounts.length} ví`}
               />
             </View>
-          </ImageBackground>
 
-          {isAccountsVisible && (
-            <View style={styles.heroAccountsList}>
-              <View style={styles.heroAccountsHeader}>
-                <Text style={styles.heroAccountsTitle}>Danh sách tài khoản</Text>
-                <Pressable onPress={() => router.push("/account")} hitSlop={8}>
-                  <Text style={styles.heroAccountsAction}>Quản lý ví ➔</Text>
-                </Pressable>
+            {isAccountsVisible && (
+              <View style={styles.heroAccountsList}>
+                <View style={styles.heroAccountsHeader}>
+                  <Text style={styles.heroAccountsTitle}>Danh sách tài khoản</Text>
+                  <Pressable onPress={() => router.push("/account")} hitSlop={8}>
+                    <Text style={styles.heroAccountsAction}>Quản lý ví ➔</Text>
+                  </Pressable>
+                </View>
+                <View style={styles.heroAccountsGrid}>
+                  {activeAccounts.length === 0 ? (
+                    <EmptyState title="Chưa có ví" description="Tạo ví đầu tiên để bắt đầu theo dõi số dư." />
+                  ) : (
+                    activeAccounts.map((account) => (
+                      <HeroAccountRow
+                        key={account.id}
+                        account={account}
+                        currency={currency}
+                      />
+                    ))
+                  )}
+                </View>
               </View>
-              <View style={styles.heroAccountsGrid}>
-                {activeAccounts.length === 0 ? (
-                  <EmptyState title="Chưa có ví" description="Tạo ví đầu tiên để bắt đầu theo dõi số dư." />
-                ) : (
-                  activeAccounts.map((account) => (
-                    <HeroAccountRow
-                      key={account.id}
-                      account={account}
-                      currency={currency}
-                    />
-                  ))
-                )}
+            )}
+
+            <AIWidget analysis={analysis} isLoading={isAILoading} styles={styles} />
+
+            {errorMessage ? (
+              <View style={styles.errorCard}>
+                <Text style={styles.errorTitle}>Dữ liệu chưa sẵn sàng</Text>
+                <Text style={styles.errorText}>{errorMessage}</Text>
               </View>
-            </View>
-          )}
+            ) : null}
 
-          <AIWidget analysis={analysis} isLoading={isAILoading} styles={styles} />
-
-          {errorMessage ? (
-            <View style={styles.errorCard}>
-              <Text style={styles.errorTitle}>Dữ liệu chưa sẵn sàng</Text>
-              <Text style={styles.errorText}>{errorMessage}</Text>
-            </View>
-          ) : null}
-
-          {isLoading ? (
-            <View style={styles.loadingCard}>
-              <ActivityIndicator color={theme.primary} />
-              <Text style={styles.loadingText}>Đang tải dữ liệu tổng quan...</Text>
-            </View>
-          ) : (
-            <>
-              <SectionHeading
-                title="Báo cáo tháng này"
-                action="Xem sổ"
-                onAction={() => router.push("/(tabs)/transactions")}
-              />
-              <View style={styles.reportCard}>
-                <SpendingForecastChart
-                  analysis={analysis}
-                  currency={currency}
-                  dailySpending={dailySpending}
-                  styles={styles}
-                  theme={theme}
+            {isLoading ? (
+              <View style={styles.loadingCard}>
+                <ActivityIndicator color={theme.primary} />
+                <Text style={styles.loadingText}>Đang tải dữ liệu tổng quan...</Text>
+              </View>
+            ) : (
+              <>
+                <SectionHeading
+                  title="Báo cáo tháng này"
+                  action="Xem sổ"
+                  onAction={() => router.push("/(tabs)/transactions")}
                 />
-              </View>
+                <View style={styles.reportCard}>
+                  <SpendingForecastChart
+                    analysis={analysis}
+                    currency={currency}
+                    dailySpending={dailySpending}
+                    styles={styles}
+                    theme={theme}
+                  />
+                </View>
 
               <SectionHeading
                 title="Chi tiêu nhiều nhất"
@@ -512,8 +517,9 @@ export default function HomeScreen() {
                   ))
                 )}
               </View>
-            </>
-          )}
+              </>
+            )}
+          </View>
         </ScrollView>
       </SafeAreaView>
     </FocusedScreenTransition>
@@ -1070,15 +1076,30 @@ function EmptyState({ description, title }: { description: string; title: string
 function createStyles(theme: AppTheme) {
   return StyleSheet.create({
     screen: { backgroundColor: theme.screen, flex: 1 },
-    content: { paddingBottom: 112, paddingHorizontal: 16 },
-    overviewPanel: {
-      backgroundColor: theme.primary,
-      marginBottom: 42,
+    bottomSurfaceGuard: {
+      backgroundColor: theme.screen,
+      bottom: 0,
+      height: 260,
+      left: 0,
+      position: "absolute",
+      right: 0,
+    },
+    content: { paddingHorizontal: 16 },
+    contentSurface: {
+      backgroundColor: theme.screen,
       marginHorizontal: -16,
-      overflow: "visible",
-      paddingBottom: 0,
+      paddingBottom: 112,
+      paddingHorizontal: 16,
+    },
+    overviewBackground: {
+      bottom: 0,
+      left: 0,
+      position: "absolute",
+      right: 0,
+      top: 0,
+    },
+    overviewStaticContent: {
       paddingHorizontal: 32,
-      paddingTop: 12,
     },
     overviewPanelImage: {
       opacity: 1,
@@ -1104,7 +1125,7 @@ function createStyles(theme: AppTheme) {
     aiChatButtonText: { color: theme.textInverse, fontSize: 13, fontWeight: "900" },
     heroLabel: { color: theme.textInverse, fontSize: 14, fontWeight: "800", opacity: 0.82 },
     heroBalance: { color: theme.textInverse, fontSize: 34, fontWeight: "900", letterSpacing: 0, marginTop: 6 },
-    heroStats: { flexDirection: "row", gap: 10, marginBottom: -32, marginTop: 18 },
+    heroStats: { flexDirection: "row", gap: 10, marginBottom: 14, marginTop: -32 },
     metricPill: {
       borderRadius: 8,
       elevation: 3,
