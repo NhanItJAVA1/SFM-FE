@@ -71,9 +71,25 @@ function getMonthRange(date = new Date()) {
   return { end, start };
 }
 
+function formatApiDate(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
 function getDayOfMonth(value?: string | null) {
   if (!value) {
     return new Date().getDate();
+  }
+
+  if (value.includes("T")) {
+    const date = new Date(value);
+
+    if (!Number.isNaN(date.getTime())) {
+      return date.getDate();
+    }
   }
 
   const [, , day] = value.slice(0, 10).split("-").map(Number);
@@ -84,6 +100,14 @@ function getDayOfMonth(value?: string | null) {
 function getDaysInMonthFromDate(value?: string | null, fallback = 31) {
   if (!value) {
     return fallback;
+  }
+
+  if (value.includes("T")) {
+    const date = new Date(value);
+
+    if (!Number.isNaN(date.getTime())) {
+      return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+    }
   }
 
   const [year, month] = value.slice(0, 10).split("-").map(Number);
@@ -260,15 +284,30 @@ export default function HomeScreen() {
           void refreshAI();
         }
 
+        const now = new Date();
+        const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+        const transactionRequest = transactionsApi
+          .dateRange({
+            fromDate: formatApiDate(firstDayOfMonth),
+            toDate: formatApiDate(lastDayOfMonth),
+          })
+          .catch((error) => {
+            console.warn("Không tải được giao dịch theo khoảng ngày", error);
+
+            return null;
+          });
+
         const [accountResponse, transactionResponse, categoryResponse, spendingResponse] = await Promise.all([
           financialAccountApi.list(),
-          transactionsApi.list(),
+          transactionRequest,
           categoriesApi.list(),
           transactionsApi.categorySpending(),
         ]);
 
         setAccounts(Array.isArray(accountResponse.data) ? accountResponse.data : []);
-        setTransactions(Array.isArray(transactionResponse.data) ? transactionResponse.data : []);
+        setTransactions(Array.isArray(transactionResponse?.data) ? transactionResponse.data : []);
         setCategories(Array.isArray(categoryResponse.data) ? categoryResponse.data : []);
         setSpendingStats(spendingResponse.data);
         hasLoadedDataRef.current = true;
@@ -686,18 +725,20 @@ function SpendingForecastChart({
   );
   const dailyForecasts = readArray(forecast, "dailyForecasts", "DailyForecasts");
   const daysInMonth = getDaysInMonthFromDate(forecastAsOf ?? forecastEndDate, dailySpending.length || 31);
-  const asOfDay = Math.min(Math.max(getDayOfMonth(forecastAsOf), 1), daysInMonth);
-  let actualRunningTotal = 0;
-  const actualPoints = dailySpending.slice(0, asOfDay).map((amount, index) => {
-    actualRunningTotal += amount;
+  const now = new Date();
+  const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const isCurrentMonthForecast = (forecastAsOf ?? forecastEndDate)?.slice(0, 7) === currentMonthKey;
+  const asOfDay = Math.min(
+    Math.max(isCurrentMonthForecast ? now.getDate() : getDayOfMonth(forecastAsOf), 1),
+    daysInMonth,
+  );
+  const actualPoints = dailySpending.slice(0, asOfDay).reduce<{ day: number; value: number }[]>((points, amount, index) => {
+    const runningTotal = (points[points.length - 1]?.value ?? 0) + amount;
 
-    return {
-      day: index + 1,
-      value: actualRunningTotal,
-    };
-  });
+    return [...points, { day: index + 1, value: runningTotal }];
+  }, []);
   const actualTotal =
-    actualMonthToDateExpense ?? actualPoints[actualPoints.length - 1]?.value ?? actualRunningTotal;
+    actualMonthToDateExpense ?? actualPoints[actualPoints.length - 1]?.value ?? 0;
   if (actualPoints.length > 0 && actualMonthToDateExpense !== undefined) {
     actualPoints[actualPoints.length - 1] = {
       ...actualPoints[actualPoints.length - 1],

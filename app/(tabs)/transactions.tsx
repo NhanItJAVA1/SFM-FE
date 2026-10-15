@@ -11,9 +11,10 @@ import { useAppTheme } from "@/hooks/use-app-theme";
 import { requestSpendingStatsFromTransactions } from "@/stores/spendingStatsNavigation";
 import type { AppTheme } from "@/theme/appTheme";
 
-type Period = "previous" | "current" | "future";
+type Period = "all" | "previous" | "current" | "future";
 
 const periodLabels: Record<Period, string> = {
+  all: "Tất cả",
   previous: "Tháng trước",
   current: "Tháng này",
   future: "Tương lai",
@@ -30,6 +31,10 @@ function formatMoney(amount: number, currency = "VND") {
 }
 
 function getPeriodRange(period: Period) {
+  if (period === "all") {
+    return null;
+  }
+
   const now = new Date();
   const offset = period === "previous" ? -1 : period === "future" ? 1 : 0;
   const year = now.getFullYear();
@@ -44,9 +49,12 @@ function isPositive(type: TransactionType) {
 export default function TransactionsScreen() {
   const theme = useAppTheme();
   const styles = useTransactionStyles();
-  const [period, setPeriod] = useState<Period>("current");
+  const [period, setPeriod] = useState<Period>("all");
   const [accounts, setAccounts] = useState<FinancialAccount[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [selectedAccountId, setSelectedAccountId] = useState<number | null>(null);
   const [isAccountPickerOpen, setIsAccountPickerOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -65,11 +73,20 @@ export default function TransactionsScreen() {
         }
         const [accountResponse, transactionResponse] = await Promise.all([
           financialAccountApi.list(),
-          transactionsApi.list({ accountId: selectedAccountId }),
+          transactionsApi.list({ accountId: selectedAccountId, page, pageSize: 20 }),
           ...(refresh ? [refreshAI()] : []),
         ]);
         setAccounts(Array.isArray(accountResponse.data) ? accountResponse.data : []);
-        setTransactions(Array.isArray(transactionResponse.data) ? transactionResponse.data : []);
+        setTransactions(Array.isArray(transactionResponse.data.items) ? transactionResponse.data.items : []);
+        setTotalCount(transactionResponse.data.totalCount);
+        setTotalPages(Math.max(1, transactionResponse.data.totalPages));
+        console.log("TRANSACTIONS PAGING:", {
+          receivedCount: transactionResponse.data.items.length,
+          page: transactionResponse.data.page,
+          pageSize: transactionResponse.data.pageSize,
+          totalCount: transactionResponse.data.totalCount,
+          totalPages: transactionResponse.data.totalPages,
+        });
         hasLoadedDataRef.current = true;
       } catch (error) {
         const message = error instanceof Error ? error.message : "Vui lòng thử lại sau.";
@@ -86,7 +103,7 @@ export default function TransactionsScreen() {
         setIsRefreshing(false);
       }
     },
-    [refreshAI, selectedAccountId],
+    [page, refreshAI, selectedAccountId],
   );
 
   useFocusEffect(
@@ -105,15 +122,28 @@ export default function TransactionsScreen() {
   );
 
   const filteredTransactions = useMemo(() => {
-    const { start, end } = getPeriodRange(period);
+    const range = getPeriodRange(period);
+
     return (transactions ?? [])
       .filter((transaction) => {
+        if (!transaction?.transactionDate) {
+          return false;
+        }
+
         const date = new Date(transaction.transactionDate);
-        return (
-          date >= start && date < end && (selectedAccountId === null || transaction.accountId === selectedAccountId)
-        );
+        const matchesAccount = selectedAccountId === null || transaction.accountId === selectedAccountId;
+
+        if (Number.isNaN(date.getTime()) || !matchesAccount) {
+          return false;
+        }
+
+        return range === null || (date >= range.start && date < range.end);
       })
-      .sort((left, right) => new Date(right.transactionDate).getTime() - new Date(left.transactionDate).getTime());
+      .sort((left, right) => {
+        const dateDifference = new Date(right.transactionDate).getTime() - new Date(left.transactionDate).getTime();
+
+        return dateDifference || right.id - left.id;
+      });
   }, [period, selectedAccountId, transactions]);
 
   const summary = useMemo(() => {
@@ -135,7 +165,7 @@ export default function TransactionsScreen() {
       const key = new Date(transaction.transactionDate).toISOString().slice(0, 10);
       groups.set(key, [...(groups.get(key) ?? []), transaction]);
     });
-    return [...groups.entries()];
+    return [...groups.entries()].sort(([leftDate], [rightDate]) => rightDate.localeCompare(leftDate));
   }, [anomalyIds, filteredTransactions, showAnomaliesOnly]);
 
   const selectedAccount = (accounts ?? []).find((account) => account.id === selectedAccountId);
@@ -168,7 +198,7 @@ export default function TransactionsScreen() {
               style={styles.monthOverviewButton}
               onPress={() => {
                 requestSpendingStatsFromTransactions();
-                router.push("/(tabs)/user");
+                router.navigate("/(tabs)/user");
               }}
             >
               <Text style={styles.monthOverviewText}>Tổng Quan Tháng {currentMonth}</Text>
@@ -189,6 +219,7 @@ export default function TransactionsScreen() {
                 label="Tổng cộng"
                 selected={selectedAccountId === null}
                 onPress={() => {
+                  setPage(1);
                   setSelectedAccountId(null);
                   setIsAccountPickerOpen(false);
                 }}
@@ -199,6 +230,7 @@ export default function TransactionsScreen() {
                   label={account.name}
                   selected={selectedAccountId === account.id}
                   onPress={() => {
+                    setPage(1);
                     setSelectedAccountId(account.id);
                     setIsAccountPickerOpen(false);
                   }}
@@ -244,7 +276,9 @@ export default function TransactionsScreen() {
 
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Lịch sử giao dịch</Text>
-            <Text style={styles.sectionMeta}>{displayedTransactionCount} giao dịch</Text>
+            <Text style={styles.sectionMeta}>
+              {displayedTransactionCount}/{totalCount} giao dịch
+            </Text>
           </View>
           {visibleAnomalyCount > 0 ? (
             <View style={styles.anomalyBanner}>
@@ -274,6 +308,27 @@ export default function TransactionsScreen() {
               <TransactionDay key={date} anomalyIds={anomalyIds} currency={currency} date={date} transactions={items} />
             ))
           )}
+          {totalPages > 1 ? (
+            <View style={styles.pagination}>
+              <Pressable
+                disabled={page === 1}
+                onPress={() => setPage((currentPage) => Math.max(1, currentPage - 1))}
+                style={[styles.pageButton, page === 1 && styles.pageButtonDisabled]}
+              >
+                <Text style={styles.pageButtonText}>Trang trước</Text>
+              </Pressable>
+              <Text style={styles.pageLabel}>
+                Trang {page}/{totalPages}
+              </Text>
+              <Pressable
+                disabled={page === totalPages}
+                onPress={() => setPage((currentPage) => Math.min(totalPages, currentPage + 1))}
+                style={[styles.pageButton, page === totalPages && styles.pageButtonDisabled]}
+              >
+                <Text style={styles.pageButtonText}>Trang sau</Text>
+              </Pressable>
+            </View>
+          ) : null}
 
           <View style={styles.netCard}>
             <View style={styles.sectionHeader}>
@@ -657,6 +712,16 @@ function createStyles(theme: AppTheme) {
     anomalyIcon: { color: theme.warning, fontSize: 12, fontWeight: "900" },
     anomalyTagText: { color: theme.warning, fontSize: 9, fontWeight: "900" },
     transactionAmount: { fontSize: 13, fontWeight: "700", marginLeft: 8 },
+    pagination: {
+      alignItems: "center",
+      flexDirection: "row",
+      justifyContent: "space-between",
+      marginTop: 10,
+    },
+    pageButton: { backgroundColor: theme.primary, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 9 },
+    pageButtonDisabled: { opacity: 0.4 },
+    pageButtonText: { color: theme.textInverse, fontSize: 12, fontWeight: "700" },
+    pageLabel: { color: theme.textMuted, fontSize: 12, fontWeight: "700" },
     netCard: {
       backgroundColor: theme.card,
       borderColor: theme.border,

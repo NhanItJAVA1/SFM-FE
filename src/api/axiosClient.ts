@@ -139,12 +139,30 @@ function logRequest(config: InternalAxiosRequestConfig) {
   console.log("=================================");
 }
 
+function summarizeResponseData(data: unknown) {
+  if (Array.isArray(data)) {
+    return { itemCount: data.length, type: "array" };
+  }
+
+  if (typeof data === "object" && data !== null && "items" in data) {
+    const { items, ...metadata } = data as Record<string, unknown>;
+
+    return {
+      ...metadata,
+      itemCount: Array.isArray(items) ? items.length : 0,
+      type: "paged",
+    };
+  }
+
+  return data;
+}
+
 function logResponse(response: { status: number; config: InternalAxiosRequestConfig; data: unknown }) {
   console.log("========== API RESPONSE ==========");
   console.log("METHOD:", response.config.method?.toUpperCase());
   console.log("URL:", `${response.config.baseURL ?? ""}${response.config.url ?? ""}`);
   console.log("STATUS:", response.status);
-  console.log("DATA:", response.data);
+  console.log("DATA:", summarizeResponseData(response.data));
   console.log("==================================");
 }
 
@@ -153,7 +171,7 @@ function logError(error: AxiosError) {
   console.log("METHOD:", error.config?.method?.toUpperCase());
   console.log("URL:", `${error.config?.baseURL ?? ""}${error.config?.url ?? ""}`);
   console.log("STATUS:", error.response?.status);
-  console.log("DATA:", error.response?.data);
+  console.log("DATA:", summarizeResponseData(error.response?.data));
   console.log("MESSAGE:", error.message);
   console.log("=================================");
 }

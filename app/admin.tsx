@@ -274,7 +274,7 @@ export default function AdminScreen() {
       setUserTotalCount(usersResponse.data.totalCount ?? 0);
       setUserPage(usersResponse.data.page ?? userPage);
       setCategories(Array.isArray(categoriesResponse.data) ? categoriesResponse.data : []);
-      setTransactions(Array.isArray(transactionsResponse.data) ? transactionsResponse.data : []);
+      setTransactions(Array.isArray(transactionsResponse.data.items) ? transactionsResponse.data.items : []);
       setRagDocuments(Array.isArray(ragDocumentsResponse.data) ? ragDocumentsResponse.data : []);
     } catch (error) {
       if (silent) {
