@@ -145,7 +145,7 @@ function getCategoryFallback(type: TransactionType) {
   return "Chi tiêu";
 }
 
-function buildLinePath(points: { day: number; value: number }[], daysInMonth: number, maxValue: number) {
+function buildLinePath(points: { day: number; value: number }[], rangeDays: number, maxValue: number) {
   if (points.length === 0) {
     return "";
   }
@@ -156,12 +156,22 @@ function buildLinePath(points: { day: number; value: number }[], daysInMonth: nu
   return points
     .map((point, index) => {
       const x =
-        daysInMonth <= 1 ? forecastChart.left : forecastChart.left + ((point.day - 1) / (daysInMonth - 1)) * xRange;
+        rangeDays <= 1 ? forecastChart.left : forecastChart.left + ((point.day - 1) / (rangeDays - 1)) * xRange;
       const y = forecastChart.bottom - (Math.max(point.value, 0) / maxValue) * yRange;
 
       return `${index === 0 ? "M" : "L"} ${x.toFixed(1)} ${y.toFixed(1)}`;
     })
     .join(" ");
+}
+
+function getDayOffsetFromMonthStart(value: string, year: number, month: number) {
+  const [dateYear, dateMonth, dateDay] = value.slice(0, 10).split("-").map(Number);
+
+  if (!Number.isFinite(dateYear) || !Number.isFinite(dateMonth) || !Number.isFinite(dateDay)) {
+    return undefined;
+  }
+
+  return Math.floor((Date.UTC(dateYear, dateMonth - 1, dateDay) - Date.UTC(year, month, 1)) / 86_400_000) + 1;
 }
 
 function getNiceChartMax(value: number) {
@@ -718,16 +728,14 @@ function SpendingForecastChart({
     "actualMonthToDateExpense",
     "ActualMonthToDateExpense",
   );
-  const predictedMonthEndExpense = readNumber(
-    forecast,
-    "predictedMonthEndExpense",
-    "PredictedMonthEndExpense",
-  );
   const dailyForecasts = readArray(forecast, "dailyForecasts", "DailyForecasts");
   const daysInMonth = getDaysInMonthFromDate(forecastAsOf ?? forecastEndDate, dailySpending.length || 31);
   const now = new Date();
   const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   const isCurrentMonthForecast = (forecastAsOf ?? forecastEndDate)?.slice(0, 7) === currentMonthKey;
+  const chartBaseDate = forecastAsOf ? new Date(`${forecastAsOf.slice(0, 10)}T00:00:00`) : now;
+  const chartBaseYear = chartBaseDate.getFullYear();
+  const chartBaseMonth = chartBaseDate.getMonth();
   const asOfDay = Math.min(
     Math.max(isCurrentMonthForecast ? now.getDate() : getDayOfMonth(forecastAsOf), 1),
     daysInMonth,
@@ -751,9 +759,9 @@ function SpendingForecastChart({
   for (const item of dailyForecasts) {
     const date = readString(item, "date", "Date");
     const predictedExpense = readNumber(item, "predictedExpense", "PredictedExpense") ?? 0;
-    const day = Math.min(Math.max(getDayOfMonth(date), 1), daysInMonth);
+    const day = date ? getDayOffsetFromMonthStart(date, chartBaseYear, chartBaseMonth) : undefined;
 
-    if (day <= asOfDay) {
+    if (day === undefined || day <= asOfDay || day > daysInMonth) {
       continue;
     }
 
@@ -762,16 +770,6 @@ function SpendingForecastChart({
   }
 
   forecastPoints.sort((left, right) => left.day - right.day);
-  if (
-    forecastPoints.length === 1 &&
-    predictedMonthEndExpense !== undefined &&
-    predictedMonthEndExpense !== actualTotal
-  ) {
-    forecastPoints.push({
-      day: Math.min(Math.max(forecastEndDate ? getDayOfMonth(forecastEndDate) : daysInMonth, asOfDay), daysInMonth),
-      value: predictedMonthEndExpense,
-    });
-  }
   const hasActualData = actualPoints.some((point) => point.value > 0);
   const hasForecastData = forecastPoints.length > 1;
   const maxValue = getNiceChartMax(
@@ -779,7 +777,6 @@ function SpendingForecastChart({
       1,
       ...actualPoints.map((point) => point.value),
       ...forecastPoints.map((point) => point.value),
-      predictedMonthEndExpense ?? 0,
     ) * 1.08,
   );
   const actualPath = buildLinePath(actualPoints, daysInMonth, maxValue);
@@ -807,8 +804,6 @@ function SpendingForecastChart({
     (Math.max(forecastEnd.value, 0) / maxValue) * (forecastChart.bottom - forecastChart.top);
   const forecastEndLabelX = Math.min(Math.max(endX, forecastChart.left + 42), forecastChart.right - 4);
   const forecastEndLabelAnchor = endX > forecastChart.right - 42 ? "end" : "middle";
-  const asOfDate = forecastAsOf ? new Date(forecastAsOf) : new Date();
-  const monthLabel = new Intl.DateTimeFormat("vi-VN", { month: "2-digit" }).format(asOfDate);
   const forecastLabel =
     forecastModel && forecastModel !== "LSTM" ? "AI dự đoán (fallback)" : "AI dự đoán";
   const gridRatios = [0.2, 0.4, 0.6, 0.8];
@@ -832,9 +827,9 @@ function SpendingForecastChart({
           <Text style={[styles.forecastSummaryValue, styles.negativeText]}>{formatPlainMoney(actualTotal)}</Text>
         </View>
         <View style={styles.forecastSummaryRight}>
-          <Text style={styles.reportLabel}>Dự đoán cuối tháng</Text>
+          <Text style={styles.reportLabel}>Tổng dự kiến sau {forecastPoints.length - 1} ngày</Text>
           <Text style={styles.forecastSummaryValue}>
-            {formatPlainMoney(predictedMonthEndExpense ?? forecastEnd.value)}
+            {formatPlainMoney(forecastEnd.value)}
           </Text>
         </View>
       </View>
@@ -968,7 +963,7 @@ function SpendingForecastChart({
               x={forecastEndLabelX}
               y={Math.max(endY - 8, forecastChart.top + 10)}
             >
-              {formatAxisMoney(predictedMonthEndExpense ?? forecastEnd.value)}
+              {formatAxisMoney(forecastEnd.value)}
             </SvgText>
           ) : null}
           <Circle cx={asOfX} cy={forecastChart.bottom} fill={theme.card} r={3} stroke={theme.textMuted} strokeWidth={1.5} />
@@ -979,8 +974,12 @@ function SpendingForecastChart({
                 : forecastChart.left + ((day - 1) / (daysInMonth - 1)) * (forecastChart.right - forecastChart.left);
             const label =
               day === 1 || day === daysInMonth
-                ? `${String(day).padStart(2, "0")}/${monthLabel}`
-                : String(day).padStart(2, "0");
+                ? (() => {
+                    const date = new Date(chartBaseYear, chartBaseMonth, day);
+
+                    return `${String(date.getDate()).padStart(2, "0")}/${String(date.getMonth() + 1).padStart(2, "0")}`;
+                  })()
+                : String(new Date(chartBaseYear, chartBaseMonth, day).getDate()).padStart(2, "0");
 
             return (
               <SvgText

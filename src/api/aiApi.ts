@@ -42,9 +42,14 @@ export type AITopCategory = {
 };
 
 export type AIAnomaly = {
-  transactionId: number;
+  transactionId: number | null;
   isAnomaly: boolean;
-  score: number;
+  anomalyScore: number;
+  date: string;
+  categoryId: number | null;
+  category: string;
+  amount: number;
+  reasonCodes: string[];
 };
 
 export type AIAnomalySummary = {
@@ -52,9 +57,12 @@ export type AIAnomalySummary = {
   scoredTransactionCount: number;
   anomalyCount: number;
   returnedCount: number;
-  maxReturned: number;
+  confidence: string;
+  requestedPeriodDays: number;
   minRequiredExpenseCount: number;
   availableExpenseCount: number;
+  contamination: number;
+  monthlyIncomeAvailable: boolean;
   notes: string[];
 };
 

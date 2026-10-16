@@ -4,6 +4,7 @@ import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } 
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { FinancialAccount, financialAccountApi } from "@/api/financialAccountApi";
+import type { AIAnomaly } from "@/api/aiApi";
 import { Transaction, TransactionType, transactionsApi } from "@/api/transactionsApi";
 import { FocusedScreenTransition } from "@/components/screen-transition";
 import { useAIAnalysis } from "@/hooks/use-ai-analysis";
@@ -12,6 +13,23 @@ import { requestSpendingStatsFromTransactions } from "@/stores/spendingStatsNavi
 import type { AppTheme } from "@/theme/appTheme";
 
 type Period = "all" | "previous" | "current" | "future";
+type AnomalyDateFilter = "all" | "7" | "30" | "90";
+
+const anomalyReasonLabels: Record<string, string> = {
+  HIGH_VS_USER_MEDIAN: "Cao hơn mức thường",
+  HIGH_VS_CATEGORY_MEDIAN: "Cao trong danh mục",
+  HIGH_USER_ROBUST_Z: "Lệch khỏi lịch sử",
+  HIGH_CATEGORY_ROBUST_Z: "Lệch khỏi danh mục",
+  WEEKEND_TRANSACTION: "Cuối tuần",
+  UNUSUAL_FEATURE_COMBINATION: "Mẫu chi tiêu lạ",
+};
+
+const anomalyDateFilters: { label: string; value: AnomalyDateFilter }[] = [
+  { label: "Tất cả ngày", value: "all" },
+  { label: "7 ngày", value: "7" },
+  { label: "30 ngày", value: "30" },
+  { label: "90 ngày", value: "90" },
+];
 
 const periodLabels: Record<Period, string> = {
   all: "Tất cả",
@@ -61,6 +79,10 @@ export default function TransactionsScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const hasLoadedDataRef = useRef(false);
   const [showAnomaliesOnly, setShowAnomaliesOnly] = useState(false);
+  const [anomalyCategoryFilter, setAnomalyCategoryFilter] = useState("all");
+  const [anomalyDateFilter, setAnomalyDateFilter] = useState<AnomalyDateFilter>("all");
+  const [anomalyReasonFilter, setAnomalyReasonFilter] = useState("all");
+  const [showAllAnomalies, setShowAllAnomalies] = useState(false);
   const { analysis, refresh: refreshAI } = useAIAnalysis();
 
   const loadData = useCallback(
@@ -113,12 +135,43 @@ export default function TransactionsScreen() {
     }, [loadData, refreshAI]),
   );
 
-  const anomalyIds = useMemo(
-    () =>
-      new Set(
-        (analysis?.anomalies ?? []).filter((anomaly) => anomaly.isAnomaly).map((anomaly) => anomaly.transactionId),
-      ),
+  const anomalies = useMemo(
+    () => (analysis?.anomalies ?? []).filter((anomaly) => anomaly.isAnomaly),
     [analysis],
+  );
+  const anomalyCategories = useMemo(() => {
+    const categories = new Map<string, string>();
+
+    anomalies.forEach((anomaly) => {
+      const key = anomaly.categoryId === null ? "uncategorized" : String(anomaly.categoryId);
+      categories.set(key, anomaly.category || "Chưa phân loại");
+    });
+
+    return [...categories.entries()].sort((left, right) => left[1].localeCompare(right[1], "vi"));
+  }, [anomalies]);
+  const anomalyReasons = useMemo(
+    () => [...new Set(anomalies.flatMap((anomaly) => anomaly.reasonCodes ?? []))].sort(),
+    [anomalies],
+  );
+  const filteredAnomalies = useMemo(() => {
+    const cutoff = anomalyDateFilter === "all" ? null : new Date(Date.now() - Number(anomalyDateFilter) * 86_400_000);
+
+    return anomalies
+      .filter((anomaly) => {
+        const categoryKey = anomaly.categoryId === null ? "uncategorized" : String(anomaly.categoryId);
+        const date = new Date(anomaly.date);
+
+        return (
+          (anomalyCategoryFilter === "all" || categoryKey === anomalyCategoryFilter) &&
+          (!cutoff || (!Number.isNaN(date.getTime()) && date >= cutoff)) &&
+          (anomalyReasonFilter === "all" || anomaly.reasonCodes?.includes(anomalyReasonFilter))
+        );
+      })
+      .sort((left, right) => right.anomalyScore - left.anomalyScore);
+  }, [anomalies, anomalyCategoryFilter, anomalyDateFilter, anomalyReasonFilter]);
+  const anomalyIds = useMemo(
+    () => new Set(anomalies.flatMap((anomaly) => anomaly.transactionId === null ? [] : [anomaly.transactionId])),
+    [anomalies],
   );
 
   const filteredTransactions = useMemo(() => {
@@ -157,23 +210,20 @@ export default function TransactionsScreen() {
   }, [filteredTransactions]);
 
   const groupedTransactions = useMemo(() => {
-    const transactionsToDisplay = showAnomaliesOnly
-      ? filteredTransactions.filter((transaction) => anomalyIds.has(transaction.id))
-      : filteredTransactions;
     const groups = new Map<string, Transaction[]>();
-    transactionsToDisplay.forEach((transaction) => {
+    filteredTransactions.forEach((transaction) => {
       const key = new Date(transaction.transactionDate).toISOString().slice(0, 10);
       groups.set(key, [...(groups.get(key) ?? []), transaction]);
     });
     return [...groups.entries()].sort(([leftDate], [rightDate]) => rightDate.localeCompare(leftDate));
-  }, [anomalyIds, filteredTransactions, showAnomaliesOnly]);
+  }, [filteredTransactions]);
 
   const selectedAccount = (accounts ?? []).find((account) => account.id === selectedAccountId);
   const currency = selectedAccount?.currency ?? (accounts ?? [])[0]?.currency ?? "VND";
   const netRatio = summary.incoming ? Math.min(100, Math.max(0, (summary.net / summary.incoming) * 100)) : 0;
   const currentMonth = new Date().getMonth() + 1;
-  const visibleAnomalyCount = filteredTransactions.filter((transaction) => anomalyIds.has(transaction.id)).length;
-  const displayedTransactionCount = showAnomaliesOnly ? visibleAnomalyCount : filteredTransactions.length;
+  const visibleAnomalyCount = anomalies.length;
+  const displayedTransactionCount = showAnomaliesOnly ? filteredAnomalies.length : filteredTransactions.length;
 
   return (
     <FocusedScreenTransition reanimateOnFocus={false}>
@@ -275,7 +325,7 @@ export default function TransactionsScreen() {
           </Pressable>
 
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Lịch sử giao dịch</Text>
+            <Text style={styles.sectionTitle}>{showAnomaliesOnly ? "Giao dịch bất thường" : "Lịch sử giao dịch"}</Text>
             <Text style={styles.sectionMeta}>
               {displayedTransactionCount}/{totalCount} giao dịch
             </Text>
@@ -299,7 +349,81 @@ export default function TransactionsScreen() {
               </View>
             </View>
           ) : null}
-          {isLoading ? (
+          {showAnomaliesOnly ? (
+            <View>
+              <Text style={styles.anomalyFilterHeading}>Lọc danh sách bất thường</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.anomalyFilters}>
+                <FilterChip
+                  label="Tất cả danh mục"
+                  selected={anomalyCategoryFilter === "all"}
+                  onPress={() => setAnomalyCategoryFilter("all")}
+                  styles={styles}
+                  theme={theme}
+                />
+                {anomalyCategories.map(([key, label]) => (
+                  <FilterChip
+                    key={key}
+                    label={label}
+                    selected={anomalyCategoryFilter === key}
+                    onPress={() => setAnomalyCategoryFilter(key)}
+                    styles={styles}
+                    theme={theme}
+                  />
+                ))}
+              </ScrollView>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.anomalyFilters}>
+                {anomalyDateFilters.map((filter) => (
+                  <FilterChip
+                    key={filter.value}
+                    label={filter.label}
+                    selected={anomalyDateFilter === filter.value}
+                    onPress={() => setAnomalyDateFilter(filter.value)}
+                    styles={styles}
+                    theme={theme}
+                  />
+                ))}
+              </ScrollView>
+              {anomalyReasons.length > 0 ? (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.anomalyFilters}>
+                  <FilterChip
+                    label="Mọi lý do"
+                    selected={anomalyReasonFilter === "all"}
+                    onPress={() => setAnomalyReasonFilter("all")}
+                    styles={styles}
+                    theme={theme}
+                  />
+                  {anomalyReasons.map((reason) => (
+                    <FilterChip
+                      key={reason}
+                      label={anomalyReasonLabels[reason] ?? reason}
+                      selected={anomalyReasonFilter === reason}
+                      onPress={() => setAnomalyReasonFilter(reason)}
+                      styles={styles}
+                      theme={theme}
+                    />
+                  ))}
+                </ScrollView>
+              ) : null}
+              <Text style={styles.anomalyResultCount}>{filteredAnomalies.length} giao dịch phù hợp</Text>
+              {filteredAnomalies.length === 0 ? (
+                <View style={styles.empty}>
+                  <Text style={styles.emptyTitle}>Không có anomaly phù hợp</Text>
+                  <Text style={styles.emptyText}>Thử thay đổi bộ lọc danh mục, ngày hoặc lý do.</Text>
+                </View>
+              ) : (
+                (showAllAnomalies ? filteredAnomalies : filteredAnomalies.slice(0, 5)).map((anomaly) => (
+                  <AnomalyRow key={anomaly.transactionId ?? `${anomaly.date}-${anomaly.amount}`} anomaly={anomaly} />
+                ))
+              )}
+              {filteredAnomalies.length > 5 ? (
+                <Pressable onPress={() => setShowAllAnomalies((show) => !show)} style={styles.showMoreAnomalies}>
+                  <Text style={styles.showMoreAnomaliesText}>
+                    {showAllAnomalies ? "Thu gọn" : `Xem thêm ${filteredAnomalies.length - 5} giao dịch`}
+                  </Text>
+                </Pressable>
+              ) : null}
+            </View>
+          ) : isLoading ? (
             <TransactionSkeleton />
           ) : groupedTransactions.length === 0 ? (
             <EmptyState />
@@ -308,7 +432,7 @@ export default function TransactionsScreen() {
               <TransactionDay key={date} anomalyIds={anomalyIds} currency={currency} date={date} transactions={items} />
             ))
           )}
-          {totalPages > 1 ? (
+          {!showAnomaliesOnly && totalPages > 1 ? (
             <View style={styles.pagination}>
               <Pressable
                 disabled={page === 1}
@@ -391,6 +515,55 @@ function SummaryItem({
     <View style={styles.summaryItem}>
       <Text style={styles.summaryLabel}>{label}</Text>
       <Text style={[styles.summaryValue, { color }]}>{formatMoney(value, currency)}</Text>
+    </View>
+  );
+}
+
+function FilterChip({
+  label,
+  selected,
+  onPress,
+  styles,
+  theme,
+}: {
+  label: string;
+  selected: boolean;
+  onPress: () => void;
+  styles: ReturnType<typeof createStyles>;
+  theme: AppTheme;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={[styles.anomalyFilterChip, selected && { backgroundColor: theme.primary, borderColor: theme.primary }]}
+    >
+      <Text style={[styles.anomalyFilterText, selected && { color: theme.textInverse }]}>{label}</Text>
+    </Pressable>
+  );
+}
+
+function AnomalyRow({ anomaly }: { anomaly: AIAnomaly }) {
+  const styles = useTransactionStyles();
+  const anomalyDate = new Date(anomaly.date);
+  const dateLabel = Number.isNaN(anomalyDate.getTime())
+    ? anomaly.date
+    : new Intl.DateTimeFormat("vi-VN", { day: "2-digit", month: "short", year: "numeric" }).format(anomalyDate);
+
+  return (
+    <View style={styles.anomalyRow}>
+      <View style={styles.anomalyRowHeader}>
+        <View style={styles.anomalyRowCopy}>
+          <Text style={styles.anomalyRowCategory}>{anomaly.category || "Chưa phân loại"}</Text>
+          <Text style={styles.anomalyRowDate}>{dateLabel} · #{anomaly.transactionId ?? "—"}</Text>
+        </View>
+        <Text style={styles.anomalyRowAmount}>{formatMoney(anomaly.amount)}</Text>
+      </View>
+      <View style={styles.anomalyRowFooter}>
+        <Text style={styles.anomalyRowReasons}>
+          {(anomaly.reasonCodes ?? []).slice(0, 2).map((reason) => anomalyReasonLabels[reason] ?? reason).join(" · ") || "Được AI đánh dấu bất thường"}
+        </Text>
+        <Text style={styles.anomalyScore}>Điểm {anomaly.anomalyScore.toFixed(2)}</Text>
+      </View>
     </View>
   );
 }
@@ -661,6 +834,22 @@ function createStyles(theme: AppTheme) {
     anomalyBannerButton: { alignItems: "center", flexDirection: "row", gap: 4, alignSelf: "flex-start" },
     anomalyBannerButtonText: { color: theme.warning, fontSize: 12, fontWeight: "900" },
     anomalyBannerButtonArrow: { color: theme.warning, fontSize: 18, fontWeight: "900", lineHeight: 18 },
+    anomalyFilterHeading: { color: theme.text, fontSize: 14, fontWeight: "800", marginBottom: 2 },
+    anomalyFilters: { alignItems: "center", gap: 7, paddingVertical: 7 },
+    anomalyFilterChip: { backgroundColor: theme.cardAlt, borderColor: theme.border, borderRadius: 16, borderWidth: 1, paddingHorizontal: 11, paddingVertical: 7 },
+    anomalyFilterText: { color: theme.textSubtle, fontSize: 11, fontWeight: "700" },
+    anomalyResultCount: { color: theme.textMuted, fontSize: 11, fontWeight: "700", marginBottom: 8, marginTop: 5 },
+    anomalyRow: { backgroundColor: theme.card, borderColor: theme.border, borderRadius: 12, borderWidth: 1, marginBottom: 8, padding: 12 },
+    anomalyRowHeader: { alignItems: "center", flexDirection: "row", justifyContent: "space-between", gap: 10 },
+    anomalyRowCopy: { flex: 1 },
+    anomalyRowCategory: { color: theme.text, fontSize: 13, fontWeight: "800" },
+    anomalyRowDate: { color: theme.textMuted, fontSize: 10, marginTop: 3 },
+    anomalyRowAmount: { color: theme.warning, fontSize: 13, fontWeight: "900" },
+    anomalyRowFooter: { alignItems: "center", flexDirection: "row", justifyContent: "space-between", gap: 8, marginTop: 9 },
+    anomalyRowReasons: { color: theme.textSubtle, flex: 1, fontSize: 10, lineHeight: 14 },
+    anomalyScore: { color: theme.warning, fontSize: 10, fontWeight: "800" },
+    showMoreAnomalies: { alignItems: "center", paddingVertical: 12 },
+    showMoreAnomaliesText: { color: theme.primary, fontSize: 12, fontWeight: "800" },
     loader: { margin: 30 },
     dayGroup: {
       backgroundColor: theme.card,
