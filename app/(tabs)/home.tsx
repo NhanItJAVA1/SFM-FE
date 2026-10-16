@@ -276,6 +276,9 @@ export default function HomeScreen() {
   const [isAccountsVisible, setIsAccountsVisible] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isChatButtonVisible, setIsChatButtonVisible] = useState(true);
+  const [contentSurfaceTop, setContentSurfaceTop] = useState(202 + insets.top);
+  const [chatButtonBottom, setChatButtonBottom] = useState(64 + insets.top);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const hasLoadedDataRef = useRef(false);
   const { analysis, isLoading: isAILoading, isRefreshing: isAIRefreshing, refresh: refreshAI } = useAIAnalysis();
@@ -427,15 +430,7 @@ export default function HomeScreen() {
               <View style={styles.headerCopy}>
                 <Text numberOfLines={1} style={styles.userName}>Hi, {displayName}!</Text>
               </View>
-              <View style={styles.headerActions}>
-                <Pressable
-                  style={styles.aiChatButton}
-                  onPress={() => router.push('/ai-chat')}
-                  accessibilityLabel="Mở trợ lý tài chính AI"
-                >
-                  <Sparkles color={theme.textInverse} size={19} strokeWidth={2.6} />
-                </Pressable>
-              </View>
+              <View style={styles.aiChatPlaceholder} />
             </View>
 
             <Pressable onPress={() => setIsAccountsVisible((visible) => !visible)}>
@@ -449,6 +444,11 @@ export default function HomeScreen() {
         <View pointerEvents="none" style={styles.bottomSurfaceGuard} />
         <ScrollView
           contentContainerStyle={styles.content}
+          onScroll={({ nativeEvent }) => {
+            const isVisible = nativeEvent.contentOffset.y + chatButtonBottom < contentSurfaceTop - 32;
+            setIsChatButtonVisible((current) => current === isVisible ? current : isVisible);
+          }}
+          scrollEventThrottle={16}
           refreshControl={
             <RefreshControl
               refreshing={isRefreshing}
@@ -459,7 +459,10 @@ export default function HomeScreen() {
           showsVerticalScrollIndicator={false}
         >
           <View style={{ height: 202 + insets.top }} />
-          <View style={styles.contentSurface}>
+          <View
+            onLayout={({ nativeEvent }) => setContentSurfaceTop(nativeEvent.layout.y)}
+            style={styles.contentSurface}
+          >
             <View style={styles.heroStats}>
               <MetricPill label="Thu tháng này" tone="good" value={formatMoney(monthlyIncome, currency)} />
               <MetricPill label="Chi tháng này" tone="warn" value={formatMoney(monthlyExpense, currency)} />
@@ -581,6 +584,30 @@ export default function HomeScreen() {
             )}
           </View>
         </ScrollView>
+        <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
+          <View
+            onLayout={({ nativeEvent }) => {
+              setChatButtonBottom(nativeEvent.layout.y + nativeEvent.layout.height);
+            }}
+            pointerEvents={isChatButtonVisible ? "box-none" : "none"}
+            style={[
+              styles.aiChatOverlay,
+              { top: 24 + insets.top, opacity: isChatButtonVisible ? 1 : 0 },
+            ]}
+          >
+            <Pressable
+              accessibilityLabel="Mở trợ lý tài chính AI"
+              accessibilityRole="button"
+              accessibilityElementsHidden={!isChatButtonVisible}
+              importantForAccessibility={isChatButtonVisible ? "auto" : "no-hide-descendants"}
+              disabled={!isChatButtonVisible}
+              onPress={() => router.push('/ai-chat')}
+              style={styles.aiChatButton}
+            >
+              <Sparkles color={theme.textInverse} size={19} strokeWidth={2.6} />
+            </Pressable>
+          </View>
+        </View>
       </SafeAreaView>
     </FocusedScreenTransition>
   );
@@ -1185,7 +1212,8 @@ function createStyles(theme: AppTheme) {
       paddingTop: 12,
     },
     headerCopy: { flex: 1, paddingRight: 12 },
-    headerActions: { alignItems: "center", flexDirection: "row", gap: 8 },
+    aiChatPlaceholder: { height: 40, width: 40 },
+    aiChatOverlay: { position: "absolute", right: 32 },
     userName: { color: theme.textInverse, fontSize: 24, fontWeight: "900" },
     aiChatButton: {
       alignItems: "center",
