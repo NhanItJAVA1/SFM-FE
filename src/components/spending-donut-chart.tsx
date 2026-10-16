@@ -102,8 +102,9 @@ function LegendItem({
 export function SpendingDonutChart({ data, selectedKey, onSelect }: SpendingDonutChartProps) {
   const safeData = useMemo(() => data ?? [], [data]);
   const total = safeData.reduce((sum, item) => sum + item.amount, 0);
-  const leftItems = safeData.slice(2, 6);
-  const rightItems = safeData.slice(0, 2);
+  const legendSplitIndex = Math.ceil(safeData.length / 2);
+  const leftItems = safeData.slice(0, legendSplitIndex);
+  const rightItems = safeData.slice(legendSplitIndex);
   const segments = useMemo(() => {
     return safeData.reduce<{
       currentAngle: number;

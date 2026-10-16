@@ -1,7 +1,9 @@
 import { router, useFocusEffect } from "expo-router";
-import { useCallback, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { Fragment, useCallback, useMemo, useRef, useState } from "react";
+import { ActivityIndicator, Alert, ImageBackground, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { Sparkles } from "lucide-react-native";
+import Svg, { Circle, Defs, LinearGradient, Line, Path, Rect, Stop, Text as SvgText } from "react-native-svg";
 
 import type { AIAnalysis } from "@/api/aiApi";
 import { categoriesApi, Category } from "@/api/categoriesApi";
@@ -20,8 +22,17 @@ const accountTypeMeta: Record<FinancialAccount["type"], { color: string; icon: s
   Savings: { color: "#d9962b", icon: "◎", label: "Saving" },
 };
 
-const maxChartBarHeight = 58;
-const minChartBarHeight = 6;
+const overviewBackground = require("../../assets/expo.icon/Assets/Serene Blue Abstract Gradient Wallpaper.png");
+
+const forecastChart = {
+  bottom: 204,
+  height: 186,
+  left: 10,
+  right: 312,
+  svgHeight: 234,
+  top: 18,
+  width: 350,
+};
 
 function useHomeStyles() {
   const theme = useAppTheme();
@@ -33,8 +44,20 @@ function formatMoney(amount: number, currency = "VND") {
   return new Intl.NumberFormat("vi-VN", { currency, maximumFractionDigits: 0, style: "currency" }).format(amount);
 }
 
-function formatShortMoney(amount: number) {
-  return new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 1, notation: "compact" }).format(amount);
+function formatPlainMoney(amount: number) {
+  return new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 0 }).format(amount);
+}
+
+function formatAxisMoney(amount: number) {
+  if (amount >= 1_000_000) {
+    return `${new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 1 }).format(amount / 1_000_000)} Tr`;
+  }
+
+  if (amount >= 1_000) {
+    return `${new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 0 }).format(amount / 1_000)} K`;
+  }
+
+  return formatPlainMoney(amount);
 }
 
 function formatDate(value: string) {
@@ -46,6 +69,54 @@ function getMonthRange(date = new Date()) {
   const end = new Date(date.getFullYear(), date.getMonth() + 1, 1);
 
   return { end, start };
+}
+
+function formatApiDate(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
+function getDayOfMonth(value?: string | null) {
+  if (!value) {
+    return new Date().getDate();
+  }
+
+  if (value.includes("T")) {
+    const date = new Date(value);
+
+    if (!Number.isNaN(date.getTime())) {
+      return date.getDate();
+    }
+  }
+
+  const [, , day] = value.slice(0, 10).split("-").map(Number);
+
+  return Number.isFinite(day) ? day : new Date(value).getDate();
+}
+
+function getDaysInMonthFromDate(value?: string | null, fallback = 31) {
+  if (!value) {
+    return fallback;
+  }
+
+  if (value.includes("T")) {
+    const date = new Date(value);
+
+    if (!Number.isNaN(date.getTime())) {
+      return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+    }
+  }
+
+  const [year, month] = value.slice(0, 10).split("-").map(Number);
+
+  if (!Number.isFinite(year) || !Number.isFinite(month)) {
+    return fallback;
+  }
+
+  return new Date(year, month, 0).getDate();
 }
 
 function isInRange(dateValue: string, start: Date, end: Date) {
@@ -62,20 +133,6 @@ function getSignedAmount(transaction: Transaction) {
   return isIncome(transaction.type) ? transaction.amount : -transaction.amount;
 }
 
-function getGreeting() {
-  const hour = new Date().getHours();
-
-  if (hour < 11) {
-    return "Chào buổi sáng,";
-  }
-
-  if (hour < 18) {
-    return "Chào buổi chiều,";
-  }
-
-  return "Chào buổi tối,";
-}
-
 function getCategoryFallback(type: TransactionType) {
   if (type === "Income") {
     return "Thu nhập";
@@ -86,6 +143,111 @@ function getCategoryFallback(type: TransactionType) {
   }
 
   return "Chi tiêu";
+}
+
+function buildLinePath(points: { day: number; value: number }[], rangeDays: number, maxValue: number) {
+  if (points.length === 0) {
+    return "";
+  }
+
+  const xRange = forecastChart.right - forecastChart.left;
+  const yRange = forecastChart.bottom - forecastChart.top;
+
+  return points
+    .map((point, index) => {
+      const x =
+        rangeDays <= 1 ? forecastChart.left : forecastChart.left + ((point.day - 1) / (rangeDays - 1)) * xRange;
+      const y = forecastChart.bottom - (Math.max(point.value, 0) / maxValue) * yRange;
+
+      return `${index === 0 ? "M" : "L"} ${x.toFixed(1)} ${y.toFixed(1)}`;
+    })
+    .join(" ");
+}
+
+function getDayOffsetFromMonthStart(value: string, year: number, month: number) {
+  const [dateYear, dateMonth, dateDay] = value.slice(0, 10).split("-").map(Number);
+
+  if (!Number.isFinite(dateYear) || !Number.isFinite(dateMonth) || !Number.isFinite(dateDay)) {
+    return undefined;
+  }
+
+  return Math.floor((Date.UTC(dateYear, dateMonth - 1, dateDay) - Date.UTC(year, month, 1)) / 86_400_000) + 1;
+}
+
+function getNiceChartMax(value: number) {
+  const safeValue = Math.max(value, 1);
+  const step =
+    safeValue <= 1_000_000
+      ? 100_000
+      : safeValue <= 5_000_000
+        ? 500_000
+        : safeValue <= 20_000_000
+          ? 1_000_000
+          : 5_000_000;
+
+  return Math.ceil(safeValue / step) * step;
+}
+
+function readNumber(data: unknown, ...keys: string[]) {
+  if (!data || typeof data !== "object") {
+    return undefined;
+  }
+
+  const record = data as Record<string, unknown>;
+
+  for (const key of keys) {
+    const value = record[key];
+
+    if (typeof value === "number") {
+      return value;
+    }
+
+    if (typeof value === "string") {
+      const parsed = Number(value);
+
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+  }
+
+  return undefined;
+}
+
+function readString(data: unknown, ...keys: string[]) {
+  if (!data || typeof data !== "object") {
+    return undefined;
+  }
+
+  const record = data as Record<string, unknown>;
+
+  for (const key of keys) {
+    const value = record[key];
+
+    if (typeof value === "string") {
+      return value;
+    }
+  }
+
+  return undefined;
+}
+
+function readArray<T = unknown>(data: unknown, ...keys: string[]) {
+  if (!data || typeof data !== "object") {
+    return [] as T[];
+  }
+
+  const record = data as Record<string, unknown>;
+
+  for (const key of keys) {
+    const value = record[key];
+
+    if (Array.isArray(value)) {
+      return value as T[];
+    }
+  }
+
+  return [] as T[];
 }
 
 function getPriorityRecommendation(analysis: AIAnalysis) {
@@ -105,18 +267,18 @@ function getPriorityRecommendation(analysis: AIAnalysis) {
 export default function HomeScreen() {
   const theme = useAppTheme();
   const styles = useHomeStyles();
+  const insets = useSafeAreaInsets();
   const user = getAuthUser();
   const [accounts, setAccounts] = useState<FinancialAccount[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [spendingStats, setSpendingStats] = useState<CategorySpendingResponse | null>(null);
-  const [isBalanceVisible, setIsBalanceVisible] = useState(true);
   const [isAccountsVisible, setIsAccountsVisible] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const hasLoadedDataRef = useRef(false);
-  const { analysis, isLoading: isAILoading, refresh: refreshAI } = useAIAnalysis();
+  const { analysis, isLoading: isAILoading, isRefreshing: isAIRefreshing, refresh: refreshAI } = useAIAnalysis();
 
   const loadHomeData = useCallback(
     async ({ refresh = false, silent = false } = {}) => {
@@ -128,16 +290,34 @@ export default function HomeScreen() {
         }
         setErrorMessage(null);
 
+        if (refresh) {
+          void refreshAI();
+        }
+
+        const now = new Date();
+        const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+        const transactionRequest = transactionsApi
+          .dateRange({
+            fromDate: formatApiDate(firstDayOfMonth),
+            toDate: formatApiDate(lastDayOfMonth),
+          })
+          .catch((error) => {
+            console.warn("Không tải được giao dịch theo khoảng ngày", error);
+
+            return null;
+          });
+
         const [accountResponse, transactionResponse, categoryResponse, spendingResponse] = await Promise.all([
           financialAccountApi.list(),
-          transactionsApi.list(),
+          transactionRequest,
           categoriesApi.list(),
           transactionsApi.categorySpending(),
-          ...(refresh ? [refreshAI()] : []),
         ]);
 
         setAccounts(Array.isArray(accountResponse.data) ? accountResponse.data : []);
-        setTransactions(Array.isArray(transactionResponse.data) ? transactionResponse.data : []);
+        setTransactions(Array.isArray(transactionResponse?.data) ? transactionResponse.data : []);
         setCategories(Array.isArray(categoryResponse.data) ? categoryResponse.data : []);
         setSpendingStats(spendingResponse.data);
         hasLoadedDataRef.current = true;
@@ -231,23 +411,42 @@ export default function HomeScreen() {
     return Array.from({ length: daysInMonth }, (_, i) => spendingMap.get(i + 1) || 0);
   }, [monthTransactions, monthEnd]);
 
-  // Lọc dữ liệu các ngày có giao dịch (tối đa 15 ngày)
-  const activeDaysData = useMemo(() => {
-    const data = dailySpending.map((amount, i) => ({ day: i + 1, amount })).filter((item) => item.amount > 0);
-
-    // Nếu quá 15 ngày, lấy 15 ngày gần cuối
-    if (data.length > 15) {
-      return data.slice(-15);
-    }
-    return data;
-  }, [dailySpending]);
-  const maxDailySpending = useMemo(() => Math.max(...activeDaysData.map((item) => item.amount), 1), [activeDaysData]);
-
   const displayName = user?.displayName ?? user?.username ?? "bạn";
 
   return (
     <FocusedScreenTransition>
-      <SafeAreaView style={styles.screen} edges={["top"]}>
+      <SafeAreaView style={styles.screen} edges={[]}>
+        <ImageBackground
+          imageStyle={styles.overviewPanelImage}
+          resizeMode="cover"
+          source={overviewBackground}
+          style={styles.overviewBackground}
+        >
+          <View style={[styles.overviewStaticContent, { paddingTop: 12 + insets.top }]}>
+            <View style={styles.header}>
+              <View style={styles.headerCopy}>
+                <Text numberOfLines={1} style={styles.userName}>Hi, {displayName}!</Text>
+              </View>
+              <View style={styles.headerActions}>
+                <Pressable
+                  style={styles.aiChatButton}
+                  onPress={() => router.push('/ai-chat')}
+                  accessibilityLabel="Mở trợ lý tài chính AI"
+                >
+                  <Sparkles color={theme.textInverse} size={19} strokeWidth={2.6} />
+                </Pressable>
+              </View>
+            </View>
+
+            <Pressable onPress={() => setIsAccountsVisible((visible) => !visible)}>
+              <Text style={styles.heroLabel}>Số dư</Text>
+              <Text style={styles.heroBalance}>
+                {formatMoney(totalBalance, currency)}
+              </Text>
+            </Pressable>
+          </View>
+        </ImageBackground>
+        <View pointerEvents="none" style={styles.bottomSurfaceGuard} />
         <ScrollView
           contentContainerStyle={styles.content}
           refreshControl={
@@ -259,63 +458,22 @@ export default function HomeScreen() {
           }
           showsVerticalScrollIndicator={false}
         >
-          <View style={styles.header}>
-            <View style={styles.headerCopy}>
-              <Text style={styles.greeting}>{getGreeting()}</Text>
-              <Text numberOfLines={1} style={styles.userName}>
-                {displayName}
-              </Text>
-            </View>
-            <View style={styles.headerActions}>
-              <Pressable
-                style={styles.aiChatButton}
-                onPress={() => router.push('/ai-chat')}
-                accessibilityLabel="Mở trợ lý tài chính AI"
-              >
-                <Text style={styles.aiChatButtonText}>AI</Text>
-              </Pressable>
-              <Pressable
-                style={styles.iconButton}
-                onPress={() => loadHomeData({ refresh: true })}
-                accessibilityLabel="Làm mới tổng quan"
-              >
-                <Text style={styles.iconButtonText}>↻</Text>
-              </Pressable>
-            </View>
-          </View>
-
-          <View style={styles.heroCard}>
-            <View style={styles.heroTopRow}>
-              <Pressable style={{ flex: 1 }} onPress={() => setIsAccountsVisible((visible) => !visible)}>
-                <View style={styles.heroTitleRow}>
-                  <Text style={styles.heroLabel}>Tổng số dư</Text>
-                  <Text style={styles.chevronText}>{isAccountsVisible ? " ▾" : " ▸"}</Text>
-                </View>
-                <Text style={styles.heroCaption}>
-                  {activeAccounts.length} ví · {isAccountsVisible ? "Nhấn để thu gọn" : "Nhấn để xem chi tiết"}
-                </Text>
-              </Pressable>
-              <Pressable
-                style={styles.eyeButton}
-                onPress={() => setIsBalanceVisible((visible) => !visible)}
-                hitSlop={10}
-              >
-                <Text style={styles.eyeText}>{isBalanceVisible ? "◉" : "○"}</Text>
-              </Pressable>
-            </View>
-            <Pressable onPress={() => setIsAccountsVisible((visible) => !visible)}>
-              <Text style={styles.heroBalance}>
-                {isBalanceVisible ? formatMoney(totalBalance, currency) : "••••••••••"}
-              </Text>
-            </Pressable>
+          <View style={{ height: 202 + insets.top }} />
+          <View style={styles.contentSurface}>
             <View style={styles.heroStats}>
               <MetricPill label="Thu tháng này" tone="good" value={formatMoney(monthlyIncome, currency)} />
               <MetricPill label="Chi tháng này" tone="warn" value={formatMoney(monthlyExpense, currency)} />
+              <MetricPill
+                label="Số ví"
+                onPress={() => setIsAccountsVisible((visible) => !visible)}
+                size="compact"
+                tone="neutral"
+                value={`${activeAccounts.length} ví`}
+              />
             </View>
 
             {isAccountsVisible && (
               <View style={styles.heroAccountsList}>
-                <View style={styles.heroDivider} />
                 <View style={styles.heroAccountsHeader}>
                   <Text style={styles.heroAccountsTitle}>Danh sách tài khoản</Text>
                   <Pressable onPress={() => router.push("/account")} hitSlop={8}>
@@ -331,82 +489,50 @@ export default function HomeScreen() {
                         key={account.id}
                         account={account}
                         currency={currency}
-                        isBalanceVisible={isBalanceVisible}
                       />
                     ))
                   )}
                 </View>
               </View>
             )}
-          </View>
 
-          <AIWidget analysis={analysis} isLoading={isAILoading} styles={styles} />
+            <AIWidget
+              analysis={analysis}
+              isLoading={isAILoading}
+              isRefreshing={isAIRefreshing}
+              onAnalyze={() => refreshAI({ force: true })}
+              styles={styles}
+              theme={theme}
+            />
 
-          {errorMessage ? (
-            <View style={styles.errorCard}>
-              <Text style={styles.errorTitle}>Dữ liệu chưa sẵn sàng</Text>
-              <Text style={styles.errorText}>{errorMessage}</Text>
-            </View>
-          ) : null}
-
-          {isLoading ? (
-            <View style={styles.loadingCard}>
-              <ActivityIndicator color={theme.primary} />
-              <Text style={styles.loadingText}>Đang tải dữ liệu tổng quan...</Text>
-            </View>
-          ) : (
-            <>
-              <SectionHeading
-                title="Báo cáo tháng này"
-                action="Xem sổ"
-                onAction={() => router.push("/(tabs)/transactions")}
-              />
-              <View style={styles.reportCard}>
-                <View style={styles.reportHeader}>
-                  <View>
-                    <Text style={styles.reportLabel}>Tổng chi tiêu</Text>
-                    <Text style={[styles.reportValue, styles.negativeText]}>
-                      {formatMoney(monthlyExpense, currency)}
-                    </Text>
-                  </View>
-                  <View>
-                    <Text style={styles.reportLabel}>Tổng thu nhập</Text>
-                    <Text style={[styles.reportValue, styles.positiveText]}>
-                      {formatMoney(monthlyIncome, currency)}
-                    </Text>
-                  </View>
-                </View>
-
-                {/* Biểu đồ cột chi tiêu theo ngày */}
-                <View style={styles.chartWrapper}>
-                  {activeDaysData.length === 0 ? (
-                    <View style={styles.chartEmptyState}>
-                      <Text style={styles.chartEmptyText}>Chưa có chi tiêu trong tháng</Text>
-                    </View>
-                  ) : (
-                    <View style={styles.dailyChartContainer}>
-                      {activeDaysData.map((item) => (
-                        <View key={item.day} style={styles.dailyBarWrapper}>
-                          <Text style={styles.barAmountText}>{formatShortMoney(item.amount)}</Text>
-                          <View
-                            style={[
-                              styles.dailyBar,
-                              {
-                                height: Math.max(
-                                  minChartBarHeight,
-                                  (item.amount / maxDailySpending) * maxChartBarHeight,
-                                ),
-                              },
-                            ]}
-                          />
-                          <Text style={styles.xAxisLabel}>{item.day}</Text>
-                        </View>
-                      ))}
-                    </View>
-                  )}
-                </View>
-                <Text style={styles.chartFooter}>Ngày trong tháng</Text>
+            {errorMessage ? (
+              <View style={styles.errorCard}>
+                <Text style={styles.errorTitle}>Dữ liệu chưa sẵn sàng</Text>
+                <Text style={styles.errorText}>{errorMessage}</Text>
               </View>
+            ) : null}
+
+            {isLoading ? (
+              <View style={styles.loadingCard}>
+                <ActivityIndicator color={theme.primary} />
+                <Text style={styles.loadingText}>Đang tải dữ liệu tổng quan...</Text>
+              </View>
+            ) : (
+              <>
+                <SectionHeading
+                  title="Báo cáo tháng này"
+                  action="Xem sổ"
+                  onAction={() => router.push("/(tabs)/transactions")}
+                />
+                <View style={styles.reportCard}>
+                  <SpendingForecastChart
+                    analysis={analysis}
+                    currency={currency}
+                    dailySpending={dailySpending}
+                    styles={styles}
+                    theme={theme}
+                  />
+                </View>
 
               <SectionHeading
                 title="Chi tiêu nhiều nhất"
@@ -451,8 +577,9 @@ export default function HomeScreen() {
                   ))
                 )}
               </View>
-            </>
-          )}
+              </>
+            )}
+          </View>
         </ScrollView>
       </SafeAreaView>
     </FocusedScreenTransition>
@@ -462,11 +589,17 @@ export default function HomeScreen() {
 function AIWidget({
   analysis,
   isLoading,
+  isRefreshing,
+  onAnalyze,
   styles,
+  theme,
 }: {
   analysis: AIAnalysis | null;
   isLoading: boolean;
+  isRefreshing: boolean;
+  onAnalyze: () => void;
   styles: ReturnType<typeof createStyles>;
+  theme: AppTheme;
 }) {
   if (isLoading) {
     return (
@@ -483,20 +616,37 @@ function AIWidget({
   }
 
   const recommendation = getPriorityRecommendation(analysis);
-  const isHealthy = analysis.health_status.toLowerCase() === "healthy";
-  const isCritical = analysis.health_status.toLowerCase() === "critical";
+  const normalizedHealthStatus = analysis.health_status.toLowerCase();
+  const isCritical = normalizedHealthStatus === "critical" || normalizedHealthStatus === "risk";
+  const isHealthy = normalizedHealthStatus === "healthy";
 
   return (
     <View style={styles.aiCard}>
       <View style={styles.aiHeader}>
         <Text style={styles.aiEyebrow}>PHÂN TÍCH AI</Text>
-        <View
-          style={[
-            styles.aiBadge,
-            isHealthy ? styles.aiBadgeHealthy : isCritical ? styles.aiBadgeCritical : styles.aiBadgeWarning,
-          ]}
-        >
-          <Text style={styles.aiBadgeText}>{analysis.health_status}</Text>
+        <View style={styles.aiHeaderActions}>
+          <Pressable
+            accessibilityLabel="Cập nhật phân tích AI"
+            disabled={isRefreshing}
+            hitSlop={8}
+            onPress={onAnalyze}
+            style={[styles.aiAnalyzeButton, isRefreshing && styles.aiAnalyzeButtonDisabled]}
+          >
+            {isRefreshing ? (
+              <ActivityIndicator color={theme.primary} size="small" />
+            ) : (
+              <Sparkles color={theme.primary} size={14} strokeWidth={2.6} />
+            )}
+            <Text style={styles.aiAnalyzeText}>Phân tích</Text>
+          </Pressable>
+          <View
+            style={[
+              styles.aiBadge,
+              isHealthy ? styles.aiBadgeHealthy : isCritical ? styles.aiBadgeCritical : styles.aiBadgeWarning,
+            ]}
+          >
+            <Text style={styles.aiBadgeText}>{analysis.health_status}</Text>
+          </View>
         </View>
       </View>
       <View style={styles.aiStatsRow}>
@@ -517,13 +667,359 @@ function AIWidget({
   );
 }
 
-function MetricPill({ label, tone, value }: { label: string; tone: "good" | "warn"; value: string }) {
+function MetricPill({
+  label,
+  onPress,
+  size = "default",
+  tone,
+  value,
+}: {
+  label: string;
+  onPress?: () => void;
+  size?: "compact" | "default";
+  tone: "good" | "neutral" | "warn";
+  value: string;
+}) {
   const styles = useHomeStyles();
+  const toneStyle = tone === "good" ? styles.metricGood : tone === "warn" ? styles.metricWarn : styles.metricNeutral;
+  const sizeStyle = size === "compact" ? styles.metricPillCompact : null;
+  const content = (
+    <>
+      <Text numberOfLines={1} style={styles.metricLabel}>{label}</Text>
+      <Text adjustsFontSizeToFit minimumFontScale={0.78} numberOfLines={1} style={styles.metricValue}>{value}</Text>
+    </>
+  );
+
+  if (onPress) {
+    return (
+      <Pressable accessibilityRole="button" onPress={onPress} style={[styles.metricPill, sizeStyle, toneStyle]}>
+        {content}
+      </Pressable>
+    );
+  }
 
   return (
-    <View style={[styles.metricPill, tone === "good" ? styles.metricGood : styles.metricWarn]}>
-      <Text style={styles.metricLabel}>{label}</Text>
-      <Text style={styles.metricValue}>{value}</Text>
+    <View style={[styles.metricPill, sizeStyle, toneStyle]}>
+      {content}
+    </View>
+  );
+}
+
+function SpendingForecastChart({
+  analysis,
+  currency,
+  dailySpending,
+  styles,
+  theme,
+}: {
+  analysis: AIAnalysis | null;
+  currency: string;
+  dailySpending: number[];
+  styles: ReturnType<typeof createStyles>;
+  theme: AppTheme;
+}) {
+  const forecast = analysis?.forecast;
+  const forecastAsOf = readString(forecast, "asOf", "AsOf");
+  const forecastEndDate = readString(forecast, "forecastEndDate", "ForecastEndDate");
+  const forecastModel = readString(forecast, "model", "Model");
+  const forecastStatus = readString(forecast, "status", "Status");
+  const actualMonthToDateExpense = readNumber(
+    forecast,
+    "actualMonthToDateExpense",
+    "ActualMonthToDateExpense",
+  );
+  const dailyForecasts = readArray(forecast, "dailyForecasts", "DailyForecasts");
+  const daysInMonth = getDaysInMonthFromDate(forecastAsOf ?? forecastEndDate, dailySpending.length || 31);
+  const now = new Date();
+  const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const isCurrentMonthForecast = (forecastAsOf ?? forecastEndDate)?.slice(0, 7) === currentMonthKey;
+  const chartBaseDate = forecastAsOf ? new Date(`${forecastAsOf.slice(0, 10)}T00:00:00`) : now;
+  const chartBaseYear = chartBaseDate.getFullYear();
+  const chartBaseMonth = chartBaseDate.getMonth();
+  const asOfDay = Math.min(
+    Math.max(isCurrentMonthForecast ? now.getDate() : getDayOfMonth(forecastAsOf), 1),
+    daysInMonth,
+  );
+  const actualPoints = dailySpending.slice(0, asOfDay).reduce<{ day: number; value: number }[]>((points, amount, index) => {
+    const runningTotal = (points[points.length - 1]?.value ?? 0) + amount;
+
+    return [...points, { day: index + 1, value: runningTotal }];
+  }, []);
+  const actualTotal =
+    actualMonthToDateExpense ?? actualPoints[actualPoints.length - 1]?.value ?? 0;
+  if (actualPoints.length > 0 && actualMonthToDateExpense !== undefined) {
+    actualPoints[actualPoints.length - 1] = {
+      ...actualPoints[actualPoints.length - 1],
+      value: actualMonthToDateExpense,
+    };
+  }
+  let forecastRunningTotal = actualTotal;
+  const forecastPoints = [{ day: asOfDay, value: actualTotal }];
+
+  for (const item of dailyForecasts) {
+    const date = readString(item, "date", "Date");
+    const predictedExpense = readNumber(item, "predictedExpense", "PredictedExpense") ?? 0;
+    const day = date ? getDayOffsetFromMonthStart(date, chartBaseYear, chartBaseMonth) : undefined;
+
+    if (day === undefined || day <= asOfDay || day > daysInMonth) {
+      continue;
+    }
+
+    forecastRunningTotal += predictedExpense;
+    forecastPoints.push({ day, value: forecastRunningTotal });
+  }
+
+  forecastPoints.sort((left, right) => left.day - right.day);
+  const hasActualData = actualPoints.some((point) => point.value > 0);
+  const hasForecastData = forecastPoints.length > 1;
+  const maxValue = getNiceChartMax(
+    Math.max(
+      1,
+      ...actualPoints.map((point) => point.value),
+      ...forecastPoints.map((point) => point.value),
+    ) * 1.08,
+  );
+  const actualPath = buildLinePath(actualPoints, daysInMonth, maxValue);
+  const forecastPath = buildLinePath(forecastPoints, daysInMonth, maxValue);
+  const forecastEnd = forecastPoints[forecastPoints.length - 1];
+  const asOfX =
+    daysInMonth <= 1
+      ? forecastChart.left
+      : forecastChart.left + ((asOfDay - 1) / (daysInMonth - 1)) * (forecastChart.right - forecastChart.left);
+  const actualEndY =
+    forecastChart.bottom -
+    (Math.max(actualTotal, 0) / maxValue) * (forecastChart.bottom - forecastChart.top);
+  const actualLabelText = formatAxisMoney(actualTotal);
+  const actualLabelWidth = actualLabelText.length * 6;
+  const actualCalloutLength = 98;
+  const actualLabelX = Math.max(asOfX - actualCalloutLength, forecastChart.left + actualLabelWidth + 8);
+  const actualCalloutEndX = Math.min(actualLabelX + 8, asOfX - 8);
+  const actualLabelAnchor = "end";
+  const endX =
+    daysInMonth <= 1
+      ? forecastChart.left
+      : forecastChart.left + ((forecastEnd.day - 1) / (daysInMonth - 1)) * (forecastChart.right - forecastChart.left);
+  const endY =
+    forecastChart.bottom -
+    (Math.max(forecastEnd.value, 0) / maxValue) * (forecastChart.bottom - forecastChart.top);
+  const forecastEndLabelX = Math.min(Math.max(endX, forecastChart.left + 42), forecastChart.right - 4);
+  const forecastEndLabelAnchor = endX > forecastChart.right - 42 ? "end" : "middle";
+  const forecastLabel =
+    forecastModel && forecastModel !== "LSTM" ? "AI dự đoán (fallback)" : "AI dự đoán";
+  const gridRatios = [0.2, 0.4, 0.6, 0.8];
+  const xAxisDays = Array.from(new Set([1, 7, 14, 21, 28, daysInMonth])).filter((day) => day <= daysInMonth);
+
+  if (!hasActualData && !hasForecastData) {
+    return (
+      <View style={styles.chartEmptyState}>
+        <Text style={styles.chartEmptyText}>Chưa có dữ liệu chi tiêu hoặc dự đoán AI</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.forecastChartBlock}>
+      <View style={styles.forecastSummaryRow}>
+        <View>
+          <Text style={styles.reportLabel}>
+            Đã chi đến hiện tại: <Text style={styles.negativeText}>{asOfDay}/{daysInMonth}</Text>
+          </Text>
+          <Text style={[styles.forecastSummaryValue, styles.negativeText]}>{formatPlainMoney(actualTotal)}</Text>
+        </View>
+        <View style={styles.forecastSummaryRight}>
+          <Text style={styles.reportLabel}>Tổng dự kiến sau {forecastPoints.length - 1} ngày</Text>
+          <Text style={styles.forecastSummaryValue}>
+            {formatPlainMoney(forecastEnd.value)}
+          </Text>
+        </View>
+      </View>
+      <View style={styles.forecastDivider}>
+        <View style={[styles.forecastDividerSegment, styles.forecastDividerActual]} />
+        <View style={[styles.forecastDividerSegment, styles.forecastDividerPrediction]} />
+      </View>
+      <View style={styles.forecastChartCanvas}>
+        <Svg height={forecastChart.svgHeight} width="100%" viewBox={`0 0 ${forecastChart.width} ${forecastChart.svgHeight}`}>
+          <Defs>
+            <LinearGradient id="pastAreaFade" x1="1" x2="0" y1="0" y2="0">
+              <Stop offset="0" stopColor={theme.textMuted} stopOpacity={0.16} />
+              <Stop offset="1" stopColor={theme.textMuted} stopOpacity={0.02} />
+            </LinearGradient>
+          </Defs>
+          <Rect
+            fill="url(#pastAreaFade)"
+            height={forecastChart.bottom - forecastChart.top}
+            width={Math.max(asOfX - forecastChart.left, 0)}
+            x={forecastChart.left}
+            y={forecastChart.top}
+          />
+          {gridRatios.map((ratio) => {
+            const y = forecastChart.bottom - ratio * (forecastChart.bottom - forecastChart.top);
+            const tickValue = maxValue * ratio;
+
+            return (
+              <Fragment key={ratio}>
+                <Line
+                  stroke={theme.borderStrong}
+                  strokeDasharray="3 4"
+                  strokeWidth={1}
+                  x1={forecastChart.left}
+                  x2={forecastChart.right}
+                  y1={y}
+                  y2={y}
+                />
+                <SvgText
+                  fill={theme.textSubtle}
+                  fontSize={9}
+                  fontWeight="700"
+                  textAnchor="end"
+                  x={forecastChart.width - 4}
+                  y={y + 3}
+                >
+                  {formatAxisMoney(tickValue)}
+                </SvgText>
+              </Fragment>
+            );
+          })}
+          <Line
+            stroke={theme.borderStrong}
+            strokeWidth={1}
+            x1={forecastChart.left}
+            x2={forecastChart.right}
+            y1={forecastChart.bottom}
+            y2={forecastChart.bottom}
+          />
+          <Line
+            stroke={theme.textMuted}
+            strokeDasharray="4 4"
+            strokeOpacity={0.72}
+            strokeWidth={1}
+            x1={asOfX}
+            x2={asOfX}
+            y1={forecastChart.top}
+            y2={forecastChart.bottom}
+          />
+          {hasForecastData ? (
+            <Line
+              stroke={theme.primary}
+              strokeDasharray="5 5"
+              strokeOpacity={0.48}
+              strokeWidth={1}
+              x1={endX}
+              x2={endX}
+              y1={forecastChart.top}
+              y2={forecastChart.bottom}
+            />
+          ) : null}
+          {actualPath ? (
+            <Path
+              d={actualPath}
+              fill="none"
+              stroke={theme.dangerText}
+              strokeLinecap="round"
+              strokeOpacity={0.82}
+              strokeWidth={3}
+            />
+          ) : null}
+          {hasActualData ? (
+            <Line
+              stroke={theme.dangerText}
+              strokeOpacity={0.46}
+              strokeWidth={1}
+              x1={asOfX}
+              x2={actualCalloutEndX}
+              y1={actualEndY}
+              y2={actualEndY}
+            />
+          ) : null}
+          {hasActualData ? (
+            <SvgText
+              fill={theme.dangerText}
+              fontSize={9}
+              fontWeight="900"
+              textAnchor={actualLabelAnchor}
+              x={actualLabelX}
+              y={actualEndY + 3}
+            >
+              {actualLabelText}
+            </SvgText>
+          ) : null}
+          {forecastPath ? (
+            <Path
+              d={forecastPath}
+              fill="none"
+              stroke={theme.primary}
+              strokeDasharray="6 5"
+              strokeLinecap="round"
+              strokeWidth={2.5}
+            />
+          ) : null}
+          {hasForecastData ? <Circle cx={endX} cy={endY} fill={theme.card} r={4} stroke={theme.primary} strokeWidth={2} /> : null}
+          {hasForecastData ? (
+            <SvgText
+              fill={theme.primary}
+              fontSize={9}
+              fontWeight="900"
+              textAnchor={forecastEndLabelAnchor}
+              x={forecastEndLabelX}
+              y={Math.max(endY - 8, forecastChart.top + 10)}
+            >
+              {formatAxisMoney(forecastEnd.value)}
+            </SvgText>
+          ) : null}
+          <Circle cx={asOfX} cy={forecastChart.bottom} fill={theme.card} r={3} stroke={theme.textMuted} strokeWidth={1.5} />
+          {xAxisDays.map((day) => {
+            const x =
+              daysInMonth <= 1
+                ? forecastChart.left
+                : forecastChart.left + ((day - 1) / (daysInMonth - 1)) * (forecastChart.right - forecastChart.left);
+            const label =
+              day === 1 || day === daysInMonth
+                ? (() => {
+                    const date = new Date(chartBaseYear, chartBaseMonth, day);
+
+                    return `${String(date.getDate()).padStart(2, "0")}/${String(date.getMonth() + 1).padStart(2, "0")}`;
+                  })()
+                : String(new Date(chartBaseYear, chartBaseMonth, day).getDate()).padStart(2, "0");
+
+            return (
+              <SvgText
+                key={day}
+                fill={theme.textSubtle}
+                fontSize={9}
+                fontWeight="700"
+                textAnchor="middle"
+                x={x}
+                y={forecastChart.bottom + 18}
+              >
+                {label}
+              </SvgText>
+            );
+          })}
+          <SvgText
+            fill={theme.textMuted}
+            fontSize={9}
+            fontWeight="800"
+            textAnchor="middle"
+            x={asOfX}
+            y={forecastChart.top - 7}
+          >
+            Hiện tại
+          </SvgText>
+        </Svg>
+      </View>
+      <View style={styles.forecastLegendRow}>
+        <View style={styles.forecastLegendItem}>
+          <View style={[styles.forecastLegendDot, { backgroundColor: theme.dangerText }]} />
+          <Text style={styles.forecastLegendText}>Thực tế</Text>
+        </View>
+        <View style={styles.forecastLegendItem}>
+          <View style={[styles.forecastLegendDot, { backgroundColor: theme.primary }]} />
+          <Text style={styles.forecastLegendText}>{forecastLabel}</Text>
+        </View>
+      </View>
+      {forecastStatus && forecastStatus !== "ok" ? (
+        <Text style={styles.forecastNote}>Dự đoán đang ở trạng thái {forecastStatus}.</Text>
+      ) : null}
     </View>
   );
 }
@@ -532,11 +1028,9 @@ function MetricPill({ label, tone, value }: { label: string; tone: "good" | "war
 function HeroAccountRow({
   account,
   currency,
-  isBalanceVisible,
 }: {
   account: FinancialAccount;
   currency: string;
-  isBalanceVisible: boolean;
 }) {
   const styles = useHomeStyles();
   const meta = accountTypeMeta[account.type] || { color: "#8fa49a", icon: "●", label: "Ví" };
@@ -550,7 +1044,7 @@ function HeroAccountRow({
         {account.name}
       </Text>
       <Text style={styles.heroAccountBalance}>
-        {isBalanceVisible ? formatMoney(getAccountCurrentBalance(account), account.currency || currency) : "••••••••"}
+        {formatMoney(getAccountCurrentBalance(account), account.currency || currency)}
       </Text>
     </Pressable>
   );
@@ -655,60 +1149,72 @@ function EmptyState({ description, title }: { description: string; title: string
 function createStyles(theme: AppTheme) {
   return StyleSheet.create({
     screen: { backgroundColor: theme.screen, flex: 1 },
-    content: { paddingBottom: 112, paddingHorizontal: 16 },
+    bottomSurfaceGuard: {
+      backgroundColor: theme.screen,
+      bottom: 0,
+      height: 260,
+      left: 0,
+      position: "absolute",
+      right: 0,
+    },
+    content: { paddingHorizontal: 16 },
+    contentSurface: {
+      backgroundColor: theme.screen,
+      marginHorizontal: -16,
+      paddingBottom: 112,
+      paddingHorizontal: 16,
+    },
+    overviewBackground: {
+      bottom: 0,
+      left: 0,
+      position: "absolute",
+      right: 0,
+      top: 0,
+    },
+    overviewStaticContent: {
+      paddingHorizontal: 32,
+    },
+    overviewPanelImage: {
+      opacity: 1,
+    },
     header: {
       alignItems: "center",
       flexDirection: "row",
       justifyContent: "space-between",
-      paddingBottom: 16,
-      paddingTop: 14,
+      paddingBottom: 14,
+      paddingTop: 12,
     },
     headerCopy: { flex: 1, paddingRight: 12 },
     headerActions: { alignItems: "center", flexDirection: "row", gap: 8 },
-    greeting: { color: theme.textMuted, fontSize: 13, fontWeight: "600" },
-    userName: { color: theme.text, fontSize: 24, fontWeight: "900", marginTop: 3 },
+    userName: { color: theme.textInverse, fontSize: 24, fontWeight: "900" },
     aiChatButton: {
       alignItems: "center",
-      backgroundColor: theme.primary,
+      backgroundColor: "rgba(255,255,255,0.22)",
       borderRadius: 20,
       height: 40,
       justifyContent: "center",
       width: 40,
     },
-    aiChatButtonText: { color: theme.textInverse, fontSize: 13, fontWeight: "900" },
-    iconButton: {
-      alignItems: "center",
-      backgroundColor: theme.card,
-      borderColor: theme.border,
-      borderRadius: 20,
-      borderWidth: 1,
-      height: 40,
-      justifyContent: "center",
-      width: 40,
-    },
-    iconButtonText: { color: theme.primary, fontSize: 22, fontWeight: "800", lineHeight: 24 },
-    heroCard: {
-      backgroundColor: theme.card,
-      borderColor: theme.border,
+    heroLabel: { color: theme.textInverse, fontSize: 14, fontWeight: "800", opacity: 0.82 },
+    heroBalance: { color: theme.textInverse, fontSize: 34, fontWeight: "900", letterSpacing: 0, marginTop: 6 },
+    heroStats: { flexDirection: "row", gap: 10, marginBottom: 14, marginTop: -32 },
+    metricPill: {
       borderRadius: 8,
-      borderWidth: 1,
-      padding: 18,
+      elevation: 3,
+      flex: 1,
+      minHeight: 64,
+      padding: 12,
       shadowColor: "#000",
-      shadowOpacity: 0.14,
-      shadowRadius: 14,
+      shadowOffset: { height: 5, width: 0 },
+      shadowOpacity: 0.1,
+      shadowRadius: 10,
     },
-    heroTopRow: { alignItems: "center", flexDirection: "row", justifyContent: "space-between" },
-    heroLabel: { color: theme.text, fontSize: 14, fontWeight: "800" },
-    heroCaption: { color: theme.textMuted, fontSize: 12, marginTop: 3 },
-    eyeButton: { alignItems: "center", height: 34, justifyContent: "center", width: 34 },
-    eyeText: { color: theme.primary, fontSize: 18 },
-    heroBalance: { color: theme.text, fontSize: 34, fontWeight: "900", letterSpacing: 0, marginTop: 16 },
-    heroStats: { flexDirection: "row", gap: 10, marginTop: 18 },
-    metricPill: { borderRadius: 8, flex: 1, minHeight: 64, padding: 12 },
+    metricPillCompact: { flex: 0.46 },
     metricGood: { backgroundColor: theme.goodBackground },
+    metricNeutral: { backgroundColor: theme.cardAlt },
     metricWarn: { backgroundColor: theme.warningBackground },
     metricLabel: { color: theme.textMuted, fontSize: 11, fontWeight: "800" },
-    metricValue: { color: theme.text, fontSize: 14, fontWeight: "900", marginTop: 6 },
+    metricValue: { color: theme.text, fontSize: 13, fontWeight: "900", marginTop: 6 },
     errorCard: {
       backgroundColor: theme.warningBackground,
       borderColor: theme.warning,
@@ -737,7 +1243,20 @@ function createStyles(theme: AppTheme) {
       padding: 14,
     },
     aiHeader: { alignItems: "center", flexDirection: "row", justifyContent: "space-between" },
+    aiHeaderActions: { alignItems: "center", flexDirection: "row", gap: 8 },
     aiEyebrow: { color: theme.textMuted, fontSize: 10, fontWeight: "900", letterSpacing: 0.5 },
+    aiAnalyzeButton: {
+      alignItems: "center",
+      backgroundColor: theme.primaryPressed,
+      borderRadius: 14,
+      flexDirection: "row",
+      gap: 5,
+      minHeight: 28,
+      paddingHorizontal: 9,
+      paddingVertical: 6,
+    },
+    aiAnalyzeButtonDisabled: { opacity: 0.68 },
+    aiAnalyzeText: { color: theme.primary, fontSize: 11, fontWeight: "900" },
     aiBadge: { borderRadius: 12, paddingHorizontal: 9, paddingVertical: 5 },
     aiBadgeHealthy: { backgroundColor: theme.goodBackground },
     aiBadgeWarning: { backgroundColor: theme.warningBackground },
@@ -761,21 +1280,6 @@ function createStyles(theme: AppTheme) {
     },
     sectionTitle: { color: theme.text, fontSize: 17, fontWeight: "900" },
     sectionAction: { color: theme.primary, fontSize: 13, fontWeight: "900" },
-    heroTitleRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 4,
-    },
-    chevronText: {
-      color: theme.primary,
-      fontSize: 13,
-      fontWeight: "800",
-    },
-    heroDivider: {
-      backgroundColor: theme.border,
-      height: 1,
-      marginVertical: 14,
-    },
     heroAccountsList: {
       marginTop: 4,
     },
@@ -801,7 +1305,7 @@ function createStyles(theme: AppTheme) {
     heroAccountRow: {
       flexDirection: "row",
       alignItems: "center",
-      backgroundColor: theme.cardAlt,
+      backgroundColor: theme.card,
       borderRadius: 6,
       paddingVertical: 10,
       paddingHorizontal: 12,
@@ -835,66 +1339,35 @@ function createStyles(theme: AppTheme) {
       borderColor: theme.border,
       borderRadius: 8,
       borderWidth: 1,
-      padding: 16,
+      paddingHorizontal: 16,
+      paddingBottom: 14,
+      paddingTop: 10,
     },
-    reportHeader: { alignItems: "flex-start", flexDirection: "row", gap: 10, justifyContent: "space-between" },
     reportLabel: { color: theme.textMuted, fontSize: 12, fontWeight: "800" },
-    reportValue: { fontSize: 26, fontWeight: "900", marginTop: 4 },
-    trendBadge: { backgroundColor: theme.cardAlt, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7 },
-    trendText: { color: theme.primary, fontSize: 12, fontWeight: "900" },
-    chartWrapper: {
-      flexDirection: "row",
-      marginTop: 20,
-      height: 100,
-      marginBottom: 20,
-    },
     chartEmptyState: {
       alignItems: "center",
       backgroundColor: theme.cardAlt,
       borderRadius: 8,
-      flex: 1,
+      minHeight: 130,
       justifyContent: "center",
+      marginTop: 16,
+      padding: 18,
     },
     chartEmptyText: { color: theme.textSubtle, fontSize: 12, fontWeight: "700" },
-    dailyChartContainer: {
-      flex: 1,
-      flexDirection: "row",
-      alignItems: "flex-end",
-      gap: 4,
-      paddingTop: 20,
-      paddingBottom: 4,
-    },
-    dailyBarWrapper: {
-      flex: 1,
-      alignItems: "center",
-      justifyContent: "flex-end",
-    },
-    barAmountText: {
-      fontSize: 8,
-      color: theme.textSubtle,
-      marginBottom: 2,
-      textAlign: "center",
-    },
-    dailyBar: {
-      backgroundColor: theme.dangerText,
-      borderRadius: 2,
-      width: "100%",
-      minHeight: 2,
-    },
-    xAxisLabel: {
-      color: theme.textSubtle,
-      fontSize: 8,
-      fontWeight: "700",
-      marginTop: 4,
-    },
-    chartFooter: {
-      color: theme.textSubtle,
-      fontSize: 11,
-      fontWeight: "700",
-      textAlign: "center",
-      marginTop: 4,
-      marginBottom: 8,
-    },
+    forecastChartBlock: { marginTop: 0 },
+    forecastChartCanvas: { marginTop: 8 },
+    forecastDivider: { flexDirection: "row", gap: 6, marginTop: 10 },
+    forecastDividerActual: { backgroundColor: theme.dangerText, opacity: 0.34 },
+    forecastDividerPrediction: { backgroundColor: theme.primary, opacity: 0.28 },
+    forecastDividerSegment: { borderRadius: 2, flex: 1, height: 2 },
+    forecastLegendDot: { borderRadius: 4, height: 8, width: 8 },
+    forecastLegendItem: { alignItems: "center", flexDirection: "row", gap: 6 },
+    forecastLegendRow: { flexDirection: "row", gap: 14, marginTop: 8 },
+    forecastLegendText: { color: theme.textSubtle, fontSize: 11, fontWeight: "800" },
+    forecastNote: { color: theme.textSubtle, fontSize: 11, fontWeight: "700", lineHeight: 16, marginTop: 8 },
+    forecastSummaryRight: { alignItems: "flex-end", flex: 1 },
+    forecastSummaryRow: { alignItems: "flex-start", flexDirection: "row", justifyContent: "space-between", gap: 12 },
+    forecastSummaryValue: { color: theme.text, fontSize: 16, fontWeight: "900", marginTop: 4 },
     reportSummaryRow: {
       borderTopColor: theme.border,
       borderTopWidth: 1,
