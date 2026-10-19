@@ -4,7 +4,6 @@ import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 
 import { useAppTheme } from "@/hooks/use-app-theme";
 import { useThemeMode } from "@/hooks/use-theme-mode";
-import { darkScreenGradient } from "@/theme/appTheme";
 
 const background = require("../../assets/expo.icon/Assets/Serene Blue Abstract Gradient Wallpaper.png");
 
@@ -20,9 +19,9 @@ export function ScreenGradientBackground({ darkOnly = false }: { darkOnly?: bool
       <Svg width="100%" height="100%" style={StyleSheet.absoluteFill}>
         <Defs>
           <LinearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0" stopColor={isDark ? darkScreenGradient.top : theme.screen} stopOpacity={isDark ? 1 : 0} />
-            <Stop offset="0.45" stopColor={isDark ? darkScreenGradient.middle : theme.screen} stopOpacity={isDark ? 1 : 0.7} />
-            <Stop offset="1" stopColor={isDark ? darkScreenGradient.bottom : theme.screen} stopOpacity={1} />
+            <Stop offset="0" stopColor={theme.screenGradient.top.color} stopOpacity={theme.screenGradient.top.opacity} />
+            <Stop offset="0.45" stopColor={theme.screenGradient.middle.color} stopOpacity={theme.screenGradient.middle.opacity} />
+            <Stop offset="1" stopColor={theme.screenGradient.bottom.color} stopOpacity={theme.screenGradient.bottom.opacity} />
           </LinearGradient>
         </Defs>
         <Rect width="100%" height="100%" fill={`url(#${gradientId})`} />

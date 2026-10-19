@@ -15,7 +15,7 @@ import { useAIAnalysis } from "@/hooks/use-ai-analysis";
 import { useAppTheme } from "@/hooks/use-app-theme";
 import { useThemeMode } from "@/hooks/use-theme-mode";
 import { getAuthUser } from "@/stores/authSession";
-import { darkScreenGradient, type AppTheme } from "@/theme/appTheme";
+import type { AppTheme } from "@/theme/appTheme";
 import { getAccountCurrentBalance } from "@/utils/accountBalance";
 
 const accountTypeMeta: Record<FinancialAccount["type"], { color: string; icon: string; label: string }> = {
@@ -445,7 +445,7 @@ export default function HomeScreen() {
             </Pressable>
           </View>
         </ImageBackground>
-        <View pointerEvents="none" style={[styles.bottomSurfaceGuard, isDark && { backgroundColor: darkScreenGradient.bottom }]} />
+        <View pointerEvents="none" style={[styles.bottomSurfaceGuard, isDark && { backgroundColor: theme.screenGradient.bottom.color }]} />
         <ScrollView
           contentContainerStyle={styles.content}
           onScroll={({ nativeEvent }) => {

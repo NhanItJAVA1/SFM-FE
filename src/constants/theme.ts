@@ -6,21 +6,23 @@
 import '@/global.css';
 
 import { Platform } from 'react-native';
+import { appThemes } from '@/theme/appTheme';
 
+// Compatibility names for template components; palette lives in appTheme.
 export const Colors = {
   light: {
-    text: '#000000',
-    background: '#ffffff',
-    backgroundElement: '#F0F0F3',
-    backgroundSelected: '#E0E1E6',
-    textSecondary: '#60646C',
+    text: appThemes.light.text,
+    background: appThemes.light.screen,
+    backgroundElement: appThemes.light.cardAlt,
+    backgroundSelected: appThemes.light.primaryPressed,
+    textSecondary: appThemes.light.textMuted,
   },
   dark: {
-    text: '#ffffff',
-    background: '#000000',
-    backgroundElement: '#212225',
-    backgroundSelected: '#2E3135',
-    textSecondary: '#B0B4BA',
+    text: appThemes.dark.text,
+    background: appThemes.dark.screen,
+    backgroundElement: appThemes.dark.cardAlt,
+    backgroundSelected: appThemes.dark.primaryPressed,
+    textSecondary: appThemes.dark.textMuted,
   },
 } as const;
 

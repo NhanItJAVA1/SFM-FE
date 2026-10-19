@@ -19,6 +19,12 @@ export const appThemes = {
     primaryPressed: '#17351f',
     progressTrack: '#393c43',
     screen: '#0C0D11',
+    screenGradient: {
+      top: { color: '#101012', opacity: 1 },
+      middle: { color: '#0C0D11', opacity: 1 },
+      bottom: { color: '#1A1B1F', opacity: 1 },
+    },
+    link: '#3c87f7',
     sheet: '#1A1B1F',
     tabBar: '#101012',
     tabBorder: '#1e1e1f',
@@ -50,6 +56,12 @@ export const appThemes = {
     primaryPressed: '#dff4e7',
     progressTrack: '#d9e0e8',
     screen: '#f6f7f9',
+    screenGradient: {
+      top: { color: '#f6f7f9', opacity: 0 },
+      middle: { color: '#f6f7f9', opacity: 0.7 },
+      bottom: { color: '#f6f7f9', opacity: 1 },
+    },
+    link: '#3c87f7',
     sheet: '#ffffff',
     tabBar: '#ffffff',
     tabBorder: '#e3e7ec',
@@ -64,5 +76,3 @@ export const appThemes = {
 } as const;
 
 export type AppTheme = (typeof appThemes)[keyof typeof appThemes];
-
-export const darkScreenGradient = { top: '#101012', middle: '#0C0D11', bottom: '#1A1B1F' } as const;

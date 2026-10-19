@@ -2,10 +2,12 @@ import { router } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { useEffect } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { useAppTheme } from '@/hooks/use-app-theme';
 
 WebBrowser.maybeCompleteAuthSession();
 
 export default function OAuthRedirectScreen() {
+  const theme = useAppTheme();
   useEffect(() => {
     const timeout = setTimeout(() => {
       if (router.canGoBack()) {
@@ -20,8 +22,8 @@ export default function OAuthRedirectScreen() {
   }, []);
 
   return (
-    <View style={styles.container}>
-      <ActivityIndicator color="#31c452" />
+    <View style={[styles.container, { backgroundColor: theme.screen }]}>
+      <ActivityIndicator color={theme.primary} />
     </View>
   );
 }
@@ -29,7 +31,6 @@ export default function OAuthRedirectScreen() {
 const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
-    backgroundColor: '#020204',
     flex: 1,
     justifyContent: 'center',
   },
