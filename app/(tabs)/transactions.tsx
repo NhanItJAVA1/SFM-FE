@@ -1,7 +1,7 @@
 import { BottomPopup, BottomPopupSheet } from "@/components/bottom-popup";
 import { router, useFocusEffect } from "expo-router";
 import { useCallback, useMemo, useRef, useState } from "react";
-import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { ScreenGradientBackground } from "@/components/screen-gradient-background";
 import { ArrowDown, ArrowDownToLine, ArrowUp, ChartNoAxesCombined, Check, ChevronLeft, ChevronRight, Funnel, Landmark, LayoutGrid, ReceiptText, Search, SlidersHorizontal, Sparkles, Wallet, X } from "lucide-react-native";
@@ -13,6 +13,7 @@ import { CategorySpendingResponse, Transaction, TransactionType, transactionsApi
 import { FocusedScreenTransition } from "@/components/screen-transition";
 import { useAIAnalysis } from "@/hooks/use-ai-analysis";
 import { useAppTheme } from "@/hooks/use-app-theme";
+import { useTransactionFeed } from "@/hooks/use-transaction-feed";
 import { requestSpendingStatsFromTransactions } from "@/stores/spendingStatsNavigation";
 import type { AppTheme } from "@/theme/appTheme";
 import { emptyTransactionFilters, getTransactionMonthRange, TransactionFilterScreen, type TransactionFilters } from "@/screens/transactions/transaction-filter-screen";
@@ -58,18 +59,18 @@ export default function TransactionsScreen() {
   const [filters, setFilters] = useState<TransactionFilters>(emptyTransactionFilters);
   const [accounts, setAccounts] = useState<FinancialAccount[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [page, setPage] = useState(1);
-  const [totalCount, setTotalCount] = useState(0);
-  const [totalPages, setTotalPages] = useState(1);
+  const listRef = useRef<FlatList<Transaction>>(null);
+  const [showScrollToTop, setShowScrollToTop] = useState(false);
+  const { transactions, totalCount, isLoading, isRefreshing, isLoadingMore, error: transactionError, loadMoreError, hasMore, reload, loadMore } = useTransactionFeed({
+    accountId: filters.accountId,
+    categoryId: filters.categoryId,
+    ...getTransactionMonthRange(filters.month),
+  });
   const selectedAccountId = filters.accountId;
   const [isAccountPickerOpen, setIsAccountPickerOpen] = useState(false);
   const [isUtilitiesOpen, setIsUtilitiesOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [monthlySpending, setMonthlySpending] = useState<CategorySpendingResponse | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const hasLoadedDataRef = useRef(false);
   const [showAnomaliesOnly, setShowAnomaliesOnly] = useState(false);
   const [anomalyCategoryFilter, setAnomalyCategoryFilter] = useState("all");
   const [anomalyDateFilter, setAnomalyDateFilter] = useState<AnomalyDateFilter>("all");
@@ -97,62 +98,20 @@ export default function TransactionsScreen() {
     }
   }, []);
 
-  const loadData = useCallback(
-    async ({ refresh = false, silent = false } = {}) => {
-      try {
-        if (refresh) {
-          setIsRefreshing(true);
-          void loadMonthlySpending();
-          void loadFilterCategories();
-        } else if (!silent) {
-          setIsLoading(true);
-        }
-        const [accountResponse, transactionResponse] = await Promise.all([
-          financialAccountApi.list(),
-          transactionsApi.list({
-            accountId: filters.accountId,
-            categoryId: filters.categoryId,
-            ...getTransactionMonthRange(filters.month),
-            page,
-            pageSize: 20,
-          }),
-          ...(refresh ? [refreshAI()] : []),
-        ]);
-        setAccounts(Array.isArray(accountResponse.data) ? accountResponse.data : []);
-        setTransactions(Array.isArray(transactionResponse.data.items) ? transactionResponse.data.items : []);
-        setTotalCount(transactionResponse.data.totalCount);
-        setTotalPages(Math.max(1, transactionResponse.data.totalPages));
-        console.log("TRANSACTIONS PAGING:", {
-          receivedCount: transactionResponse.data.items.length,
-          page: transactionResponse.data.page,
-          pageSize: transactionResponse.data.pageSize,
-          totalCount: transactionResponse.data.totalCount,
-          totalPages: transactionResponse.data.totalPages,
-        });
-        hasLoadedDataRef.current = true;
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Vui lòng thử lại sau.";
-
-        if (silent) {
-          console.warn("Không tải được giao dịch", error);
-        } else {
-          Alert.alert("Không tải được giao dịch", message);
-        }
-      } finally {
-        if (!silent) {
-          setIsLoading(false);
-        }
-        setIsRefreshing(false);
-      }
-    },
-    [filters, loadFilterCategories, loadMonthlySpending, page, refreshAI],
-  );
+  const loadAccounts = useCallback(async () => {
+    try {
+      const response = await financialAccountApi.list();
+      setAccounts(Array.isArray(response.data) ? response.data : []);
+    } catch (error) {
+      console.warn("Không tải được danh sách ví", error);
+    }
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
       void refreshAI();
-      loadData({ silent: hasLoadedDataRef.current });
-    }, [loadData, refreshAI]),
+      void loadAccounts();
+    }, [loadAccounts, refreshAI]),
   );
 
   useFocusEffect(
@@ -222,16 +181,6 @@ export default function TransactionsScreen() {
       });
   }, [filters, searchQuery, selectedAccountId, transactions]);
 
-  const groupedTransactions = useMemo(() => {
-    const groups = new Map<string, Transaction[]>();
-    filteredTransactions.forEach((transaction) => {
-      const date = new Date(transaction.transactionDate);
-      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-01`;
-      groups.set(key, [...(groups.get(key) ?? []), transaction]);
-    });
-    return [...groups.entries()].sort(([leftDate], [rightDate]) => rightDate.localeCompare(leftDate));
-  }, [filteredTransactions]);
-
   const selectedAccount = (accounts ?? []).find((account) => account.id === selectedAccountId);
   const currency = selectedAccount?.currency ?? (accounts ?? [])[0]?.currency ?? "VND";
   const currentMonth = new Date().getMonth() + 1;
@@ -255,19 +204,46 @@ export default function TransactionsScreen() {
     <FocusedScreenTransition reanimateOnFocus={false}>
       <SafeAreaView style={styles.screen} edges={["top"]}>
         <ScreenGradientBackground />
-        <ScrollView
+        <FlatList
+          ref={listRef}
+          data={showAnomaliesOnly || isLoading ? [] : filteredTransactions}
+          keyExtractor={(item) => String(item.id)}
+          renderItem={({ item, index }) => (
+            <TransactionListItem
+              transaction={item}
+              showMonth={index === 0 || getTransactionMonth(item.transactionDate) !== getTransactionMonth(filteredTransactions[index - 1].transactionDate)}
+              isAnomaly={anomalyIds.has(item.id)}
+              currency={currency}
+            />
+          )}
+          onEndReached={() => { if (!showAnomaliesOnly && !searchQuery.trim()) void loadMore(); }}
+          onEndReachedThreshold={0.4}
+          initialNumToRender={12}
+          maxToRenderPerBatch={10}
+          windowSize={7}
+          onScroll={({ nativeEvent }) => {
+            const visible = nativeEvent.contentOffset.y > 500;
+            setShowScrollToTop((current) => current === visible ? current : visible);
+          }}
+          scrollEventThrottle={100}
           contentContainerStyle={styles.content}
           refreshControl={
             <RefreshControl
               refreshing={isRefreshing}
-              onRefresh={() => loadData({ refresh: true })}
+              onRefresh={() => {
+                void reload({ refresh: true });
+                void loadAccounts();
+                void loadMonthlySpending();
+                void loadFilterCategories();
+                void refreshAI();
+              }}
               tintColor={theme.primary}
             />
           }
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
           showsVerticalScrollIndicator={false}
-        >
+          ListHeaderComponent={<>
           <View style={styles.ledgerTop}>
             <View style={styles.searchToolbar}>
               <View style={styles.searchField}>
@@ -397,38 +373,31 @@ export default function TransactionsScreen() {
                 </Pressable>
               ) : null}
             </View>
-          ) : isLoading ? (
-            <TransactionSkeleton />
-          ) : groupedTransactions.length === 0 ? (
-            <EmptyState />
-          ) : (
-            groupedTransactions.map(([date, items]) => (
-              <TransactionMonth key={date} anomalyIds={anomalyIds} currency={currency} date={date} transactions={items} />
-            ))
-          )}
-          {!showAnomaliesOnly && totalPages > 1 ? (
-            <View style={styles.pagination}>
-              <Pressable
-                disabled={page === 1}
-                onPress={() => setPage((currentPage) => Math.max(1, currentPage - 1))}
-                style={[styles.pageButton, page === 1 && styles.pageButtonDisabled]}
-              >
-                <Text style={styles.pageButtonText}>Trang trước</Text>
-              </Pressable>
-              <Text style={styles.pageLabel}>
-                Trang {page}/{totalPages}
-              </Text>
-              <Pressable
-                disabled={page === totalPages}
-                onPress={() => setPage((currentPage) => Math.min(totalPages, currentPage + 1))}
-                style={[styles.pageButton, page === totalPages && styles.pageButtonDisabled]}
-              >
-                <Text style={styles.pageButtonText}>Trang sau</Text>
-              </Pressable>
+          ) : null}
+          </>}
+          ListEmptyComponent={!showAnomaliesOnly ? isLoading ? <TransactionSkeleton /> : !transactionError ? <EmptyState /> : null : null}
+          ListFooterComponent={!showAnomaliesOnly ? (
+            <View style={styles.feedFooter}>
+              {isLoadingMore ? <ActivityIndicator accessibilityLabel="Đang tải thêm giao dịch" color={theme.primary} /> : transactionError || loadMoreError ? <>
+                <Text style={styles.emptyText}>{transactionError || loadMoreError}</Text>
+                <Pressable accessibilityRole="button" onPress={() => transactionError ? void reload() : void loadMore({ retry: true })} style={styles.feedRetry}>
+                  <Text style={styles.feedRetryText}>Thử lại</Text>
+                </Pressable>
+              </> : hasMore && searchQuery.trim() ? <Pressable accessibilityRole="button" onPress={() => void loadMore()} style={styles.feedRetry}><Text style={styles.feedRetryText}>Tải thêm giao dịch</Text></Pressable> : !isLoading && !hasMore && transactions.length > 0 ? <Text style={styles.sectionMeta}>Đã hiển thị tất cả giao dịch</Text> : null}
             </View>
           ) : null}
-
-        </ScrollView>
+        />
+        {showScrollToTop && !isAccountPickerOpen && !isUtilitiesOpen && !isAnomalyFilterOpen ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Lên đầu danh sách"
+            accessibilityHint="Cuộn về đầu để chọn tháng hoặc đổi bộ lọc"
+            onPress={() => listRef.current?.scrollToOffset({ offset: 0, animated: true })}
+            style={({ pressed }) => [styles.scrollToTop, pressed && { opacity: 0.8 }]}
+          >
+            <ArrowUp size={22} color={theme.textInverse} strokeWidth={2} />
+          </Pressable>
+        ) : null}
         <TransactionFilterScreen
           visible={isAccountPickerOpen}
           initialFilters={filters}
@@ -436,7 +405,7 @@ export default function TransactionsScreen() {
           categories={categories}
           onClose={() => setIsAccountPickerOpen(false)}
           onApply={(nextFilters) => {
-            setPage(1);
+            listRef.current?.scrollToOffset({ offset: 0, animated: false });
             setFilters(nextFilters);
             setIsAccountPickerOpen(false);
           }}
@@ -614,33 +583,37 @@ function AnomalyRow({ anomaly }: { anomaly: AIAnomaly }) {
   );
 }
 
-function TransactionMonth({
-  anomalyIds,
-  date,
-  transactions,
+function getTransactionMonth(date: string) {
+  const value = new Date(date);
+  return `${value.getFullYear()}-${value.getMonth()}`;
+}
+
+function TransactionListItem({
+  isAnomaly,
+  showMonth,
+  transaction,
   currency,
 }: {
-  anomalyIds: Set<number>;
-  date: string;
-  transactions: Transaction[];
+  isAnomaly: boolean;
+  showMonth: boolean;
+  transaction: Transaction;
   currency: string;
 }) {
   const theme = useAppTheme();
   const styles = useTransactionStyles();
+  const date = transaction.transactionDate;
+  const positive = isPositive(transaction.type);
+  const transfer = transaction.type === "TransferIn" || transaction.type === "TransferOut";
+  const Icon = positive ? ArrowDownToLine : transfer ? Landmark : ReceiptText;
+  const iconColor = positive ? theme.goodText : transfer ? theme.avatar : theme.warning;
 
   return (
     <View style={styles.dayGroup}>
-      <View style={styles.dayHeader}>
+      {showMonth ? <View style={styles.dayHeader}>
         <Text style={styles.dayTitle}>
           Tháng {String(new Date(date).getMonth() + 1).padStart(2, "0")}/{new Date(date).getFullYear()}
         </Text>
-      </View>
-      {(transactions ?? []).map((transaction) => {
-        const positive = isPositive(transaction.type);
-        const transfer = transaction.type === "TransferIn" || transaction.type === "TransferOut";
-        const Icon = positive ? ArrowDownToLine : transfer ? Landmark : ReceiptText;
-        const iconColor = positive ? theme.goodText : transfer ? theme.avatar : theme.warning;
-        return (
+      </View> : null}
         <View key={transaction.id} style={styles.transactionRow}>
           <View style={styles.transactionIcon}>
             <Icon color={iconColor} size={24} strokeWidth={1.8} />
@@ -650,7 +623,7 @@ function TransactionMonth({
               <Text numberOfLines={3} style={styles.transactionTitle}>{transaction.description || transaction.categoryName || (positive ? "Nhận tiền" : "Chi tiêu")}</Text>
             </View>
             <Text style={styles.transactionDescription}>{new Intl.DateTimeFormat("vi-VN", { hour: "2-digit", minute: "2-digit" }).format(new Date(transaction.transactionDate))} - {new Intl.DateTimeFormat("vi-VN", { day: "2-digit", month: "2-digit" }).format(new Date(transaction.transactionDate))}</Text>
-            {anomalyIds.has(transaction.id) ? <Text style={styles.anomalyTagText}>Bất thường</Text> : null}
+            {isAnomaly ? <Text style={styles.anomalyTagText}>Bất thường</Text> : null}
           </View>
           <Text
             adjustsFontSizeToFit
@@ -665,8 +638,6 @@ function TransactionMonth({
             {formatMoney(transaction.amount, currency)}
           </Text>
         </View>
-        );
-      })}
     </View>
   );
 }
@@ -704,6 +675,10 @@ function TransactionSkeleton() {
 
 function createStyles(theme: AppTheme) {
   return StyleSheet.create({
+    scrollToTop: { position: "absolute", right: 20, bottom: 20, width: 48, height: 48, borderRadius: 24, alignItems: "center", justifyContent: "center", backgroundColor: theme.primary, zIndex: 5, elevation: 4, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 5 },
+    feedFooter: { alignItems: "center", gap: 10, paddingHorizontal: 16, paddingVertical: 20 },
+    feedRetry: { minHeight: 44, justifyContent: "center", paddingHorizontal: 16 },
+    feedRetryText: { color: theme.primary, fontSize: 14, fontWeight: "600" },
     ledgerTabs: { flexDirection: "row", marginHorizontal: 12, marginTop: 16, borderBottomWidth: 1, borderBottomColor: theme.border },
     ledgerTab: { flex: 1, minHeight: 46, alignItems: "center", justifyContent: "center", paddingHorizontal: 6, borderBottomWidth: 2, borderBottomColor: "transparent" },
     ledgerTabSelected: { borderBottomColor: theme.primary },
@@ -711,7 +686,7 @@ function createStyles(theme: AppTheme) {
     ledgerTabTextSelected: { color: theme.primary, fontWeight: "700" },
     analysisPeriod: { color: theme.textMuted, fontSize: 12, lineHeight: 18, marginHorizontal: 16, marginBottom: 8 },
     screen: { backgroundColor: theme.screen, flex: 1 },
-    content: { paddingBottom: 32 },
+    content: { paddingBottom: 88 },
     ledgerTop: { paddingTop: 16, paddingBottom: 4 },
     searchToolbar: { alignItems: "center", flexDirection: "row", gap: 8, paddingHorizontal: 16, marginBottom: 16 },
     searchField: { alignItems: "center", flexDirection: "row", flex: 1, minWidth: 0, gap: 8, minHeight: 44, paddingHorizontal: 12, backgroundColor: theme.card, borderRadius: 24 },
@@ -873,17 +848,6 @@ function createStyles(theme: AppTheme) {
     transactionDescription: { color: theme.textMuted, fontSize: 11, lineHeight: 16, marginTop: 7 },
     anomalyTagText: { color: theme.warning, fontSize: 10, fontWeight: "700", marginTop: 4 },
     transactionAmount: { fontSize: 15, lineHeight: 21, fontWeight: "700", marginLeft: 8, maxWidth: "38%", textAlign: "right" },
-    pagination: {
-      alignItems: "center",
-      flexDirection: "row",
-      justifyContent: "space-between",
-      marginTop: 10,
-      marginHorizontal: 16,
-    },
-    pageButton: { backgroundColor: theme.primary, borderRadius: 10, paddingHorizontal: 14, paddingVertical: 9 },
-    pageButtonDisabled: { opacity: 0.4 },
-    pageButtonText: { color: theme.textInverse, fontSize: 12, fontWeight: "700" },
-    pageLabel: { color: theme.textMuted, fontSize: 12, fontWeight: "700" },
     empty: {
       alignItems: "center",
       backgroundColor: theme.card,
