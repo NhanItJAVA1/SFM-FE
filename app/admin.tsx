@@ -2280,7 +2280,7 @@ function createStyles(theme: AppTheme) {
     formField: { gap: 8 },
     formLabel: { color: theme.text, fontSize: 13, fontWeight: "900" },
     formInput: {
-      backgroundColor: theme.card,
+      backgroundColor: theme.inputBackground,
       borderColor: theme.border,
       borderRadius: 8,
       borderWidth: 1,

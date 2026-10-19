@@ -346,7 +346,7 @@ function createStyles(theme: AppTheme) {
       width: '100%',
     },
     quickOption: {
-      backgroundColor: `${theme.card}e8`,
+      backgroundColor: theme.cardOverlay,
       borderColor: theme.border,
       borderRadius: 8,
       borderWidth: 1,
@@ -369,7 +369,7 @@ function createStyles(theme: AppTheme) {
     loadingText: { color: theme.textMuted, fontSize: 13, fontWeight: '800' },
     footer: {
       backgroundColor: `${theme.screen}e8`,
-      borderTopColor: `${theme.border}b3`,
+      borderTopColor: theme.borderOverlay,
       borderTopWidth: StyleSheet.hairlineWidth,
       gap: 10,
       padding: 12,
@@ -377,7 +377,7 @@ function createStyles(theme: AppTheme) {
     },
     inputRow: { alignItems: 'flex-end', flexDirection: 'row', gap: 10 },
     input: {
-      backgroundColor: theme.card,
+      backgroundColor: theme.inputBackground,
       borderColor: theme.border,
       borderRadius: 8,
       borderWidth: 1,

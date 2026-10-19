@@ -12,6 +12,8 @@ import {
 import type { Category } from "@/api/categoriesApi";
 import type { FinancialAccount } from "@/api/financialAccountApi";
 import { useAppTheme } from "@/hooks/use-app-theme";
+import { useThemeMode } from "@/hooks/use-theme-mode";
+import { ScreenGradientBackground } from "@/components/screen-gradient-background";
 import type { AppTheme } from "@/theme/appTheme";
 
 export type TransactionFilters = {
@@ -63,6 +65,7 @@ export function TransactionFilterScreen({
   onSupport: () => void;
 }) {
   const theme = useAppTheme();
+  const isDark = useThemeMode() === "dark";
   const styles = useMemo(() => createStyles(theme), [theme]);
   const [draft, setDraft] = useState(initialFilters);
   const [wasVisible, setWasVisible] = useState(visible);
@@ -91,7 +94,8 @@ export function TransactionFilterScreen({
   return (
     <Modal animationType="slide" visible={visible} onRequestClose={onClose}>
       <View style={styles.screen}>
-        <View pointerEvents="none" style={styles.background}>
+        <ScreenGradientBackground darkOnly />
+        {!isDark ? <View pointerEvents="none" style={styles.background}>
           <ImageBackground source={background} imageStyle={styles.backgroundImage} style={StyleSheet.absoluteFill} />
           <Svg style={StyleSheet.absoluteFill} width="100%" height="100%">
             <Defs>
@@ -102,7 +106,7 @@ export function TransactionFilterScreen({
             </Defs>
             <Rect width="100%" height="100%" fill="url(#filterBackgroundFade)" />
           </Svg>
-        </View>
+        </View> : null}
         <SafeAreaView style={styles.safeArea} edges={["top", "bottom"]}>
           <View style={styles.header}>
             <Pressable accessibilityRole="button" accessibilityLabel="Quay lại sổ giao dịch" onPress={onClose} style={styles.backButton}>
@@ -232,7 +236,7 @@ function createStyles(theme: AppTheme) {
     showMoreText: { color: theme.primary, fontSize: 14, fontWeight: "700" },
     serviceTile: { width: "24%", minHeight: 104, paddingHorizontal: 4, paddingVertical: 14, gap: 10, alignItems: "center", backgroundColor: theme.card, borderRadius: 8, borderWidth: 1.5, borderColor: "transparent" },
     serviceText: { color: theme.text, fontSize: 12, lineHeight: 18, textAlign: "center" },
-    footer: { flexDirection: "row", gap: 8, paddingHorizontal: 12, paddingVertical: 10, backgroundColor: theme.card, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.border },
+    footer: { flexDirection: "row", gap: 8, paddingHorizontal: 12, paddingVertical: 10, backgroundColor: theme.sheet, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.border },
     clearButton: { alignItems: "center", justifyContent: "center", flex: 1, minHeight: 48, paddingHorizontal: 8, paddingVertical: 12, borderRadius: 8, backgroundColor: theme.primaryPressed },
     clearDisabled: { backgroundColor: theme.cardAlt },
     clearText: { color: theme.primary, fontSize: 16, fontWeight: "700" },

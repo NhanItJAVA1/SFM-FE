@@ -125,13 +125,13 @@ function createBudgetStyles(theme: AppTheme) {
     },
     categoryBudgetCardSelected: { borderColor: theme.primary },
     swipeBudgetRow: {
-      backgroundColor: theme.danger,
       borderRadius: 8,
       overflow: "hidden",
       position: "relative",
     },
     swipeBudgetContent: { width: "100%" },
     swipeDeleteBackground: {
+      backgroundColor: theme.danger,
       alignItems: "center",
       bottom: 0,
       justifyContent: "center",
@@ -140,7 +140,7 @@ function createBudgetStyles(theme: AppTheme) {
       top: 0,
       width: "100%",
     },
-    swipeDeleteIcon: { color: theme.textInverse, fontSize: 28, fontWeight: "900" },
+    swipeDeleteIcon: { color: theme.textInverse, fontSize: 28, fontWeight: "900", lineHeight: 36, position: "absolute", left: 16, top: "50%", marginTop: -18 },
     budgetIcon: {
       alignItems: "center",
       backgroundColor: theme.iconBubble,
@@ -264,7 +264,7 @@ function createBudgetStyles(theme: AppTheme) {
     field: { gap: 8 },
     label: { color: theme.text, fontSize: 13, fontWeight: "800" },
     input: {
-      backgroundColor: theme.card,
+      backgroundColor: theme.inputBackground,
       borderColor: theme.border,
       borderRadius: 8,
       borderWidth: 1,
@@ -298,6 +298,12 @@ function createBudgetStyles(theme: AppTheme) {
       width: "48%",
     },
     categoryGridItemSelected: { backgroundColor: theme.primary, borderColor: theme.primary },
+    categoryGridItemSelectedDark: { backgroundColor: theme.primaryPressed, borderColor: theme.primary },
+    categoryGridTextSelectedDark: { color: theme.primary },
+    darkFormText: { color: theme.textSoft },
+    categoryColorDot: { width: 8, height: 8, borderRadius: 4, marginBottom: 10 },
+    categoryMarker: { marginBottom: 8 },
+    categorySelectedCheck: { position: "absolute", right: 10, top: 10 },
     categoryGridContent: {
       alignItems: "center",
       bottom: 0,

@@ -1012,7 +1012,7 @@ function createStyles(theme: AppTheme) {
     aiHint: { color: theme.primary, fontSize: 12, fontWeight: "800" },
     categoryGrid: { gap: 10, paddingTop: 8 },
     categoryInput: {
-      backgroundColor: theme.card,
+      backgroundColor: theme.inputBackground,
       borderColor: theme.border,
       borderRadius: 8,
       borderWidth: 1,
@@ -1150,7 +1150,7 @@ function createStyles(theme: AppTheme) {
       paddingBottom: 20,
     },
     smallBottomSheet: {
-      backgroundColor: theme.card,
+      backgroundColor: theme.sheet,
       borderTopLeftRadius: 8,
       borderTopRightRadius: 8,
       gap: 14,

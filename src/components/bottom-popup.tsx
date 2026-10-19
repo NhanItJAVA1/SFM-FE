@@ -86,7 +86,19 @@ export function BottomPopupSheet({ style, ...props }: ViewProps) {
   return <Animated.View {...props} style={[style, motion]} />;
 }
 
-export function BottomPopupPressable({ style, ...props }: PressableProps) {
+export function BottomPopupPressable({ style, onPressIn, onPressOut, onHoverIn, onHoverOut, ...props }: PressableProps) {
   const motion = useSheetMotion();
-  return <AnimatedPressable {...props} style={(state) => [typeof style === "function" ? style(state) : style, motion]} />;
+  const [pressed, setPressed] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  // Native Animated flattens style before Pressable can resolve a style callback.
+  return (
+    <AnimatedPressable
+      {...props}
+      style={[typeof style === "function" ? style({ pressed, hovered }) : style, motion]}
+      onPressIn={(event) => { setPressed(true); onPressIn?.(event); }}
+      onPressOut={(event) => { setPressed(false); onPressOut?.(event); }}
+      onHoverIn={(event) => { setHovered(true); onHoverIn?.(event); }}
+      onHoverOut={(event) => { setHovered(false); onHoverOut?.(event); }}
+    />
+  );
 }

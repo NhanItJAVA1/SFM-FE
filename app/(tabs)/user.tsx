@@ -715,6 +715,7 @@ export default function UserScreen() {
   if (view === "exportFile") {
     return (
       <FocusedScreenTransition style={styles.screen} triggerKey={view} variant="slide-left">
+        <ScreenGradientBackground darkOnly />
         <View style={styles.walletHeader}>
           <Pressable onPress={() => setView("menu")} hitSlop={12}>
             <Text style={styles.backText}>‹ Cá nhân</Text>
@@ -848,6 +849,7 @@ export default function UserScreen() {
   if (view === "resetWarning") {
     return (
       <FocusedScreenTransition style={styles.screen} triggerKey={view} variant="slide-left">
+        <ScreenGradientBackground darkOnly />
         <View style={styles.walletHeader}>
           <Pressable onPress={() => setView("manage")} hitSlop={12}>
             <Text style={styles.backText}>‹ Quản lý</Text>
@@ -895,6 +897,7 @@ export default function UserScreen() {
     return (
       <FocusedScreenTransition style={styles.screen} triggerKey={view} variant="slide-left">
         <KeyboardAvoidingView behavior={Platform.select({ ios: "padding", default: undefined })} style={styles.screen}>
+          <ScreenGradientBackground darkOnly />
           <View style={styles.walletHeader}>
             <Pressable onPress={() => setView("resetWarning")} hitSlop={12}>
               <Text style={styles.backText}>‹ Cảnh báo</Text>
@@ -970,6 +973,7 @@ export default function UserScreen() {
   if (view === "manage") {
     return (
       <FocusedScreenTransition style={styles.screen} triggerKey={view} variant="slide-left">
+        <ScreenGradientBackground darkOnly />
         <View style={styles.walletHeader}>
           <Pressable onPress={() => setView("menu")} hitSlop={12}>
             <Text style={styles.backText}>‹ Người dùng</Text>
@@ -1028,6 +1032,7 @@ export default function UserScreen() {
   if (view === "editProfile") {
     return (
       <FocusedScreenTransition style={styles.screen} triggerKey={view} variant="slide-left">
+        <ScreenGradientBackground darkOnly />
         <View style={styles.walletHeader}>
           <Pressable onPress={() => setView("menu")} hitSlop={12}>
             <Text style={styles.backText}>‹ Cá nhân</Text>
@@ -1094,6 +1099,7 @@ export default function UserScreen() {
         triggerKey={`${view}-${statsReturnPath ?? "user"}`}
         variant="slide-left"
       >
+        <ScreenGradientBackground darkOnly />
         <View style={styles.walletHeader}>
           <Pressable onPress={closeSpendingStats} hitSlop={12}>
             <Text style={styles.backText}>{statsReturnPath ? "‹ Sổ giao dịch" : "‹ Người dùng"}</Text>
@@ -1102,8 +1108,8 @@ export default function UserScreen() {
           <View style={styles.statsHeaderSpacer} />
         </View>
 
-        <ScrollView contentContainerStyle={styles.statsContent}>
-          <View style={styles.statsPanel}>
+        <ScrollView contentContainerStyle={[styles.statsContent, isDarkMode && { backgroundColor: "transparent" }]}>
+          <View style={[styles.statsPanel, isDarkMode && { backgroundColor: "transparent" }]}>
             <View style={styles.monthSwitcher}>
               <Pressable style={styles.monthButton} onPress={goPreviousStatsPeriod} hitSlop={10}>
                 <Text style={styles.monthButtonText}>‹</Text>
@@ -1979,7 +1985,7 @@ function createStyles(theme: AppTheme) {
     field: { gap: 8 },
     label: { color: theme.text, fontSize: 14, fontWeight: "700" },
     input: {
-      backgroundColor: theme.card,
+      backgroundColor: theme.inputBackground,
       borderColor: theme.border,
       borderRadius: 8,
       borderWidth: 1,

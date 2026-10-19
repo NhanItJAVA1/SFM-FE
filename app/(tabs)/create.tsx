@@ -694,7 +694,7 @@ export default function CreateScreen() {
           style={[styles.modalOverlay, { backgroundColor: theme.overlay }]}
           onPress={() => setIsAccountPickerVisible(false)}
         >
-          <BottomPopupSheet style={[styles.modalContent, { backgroundColor: theme.card }]}>
+          <BottomPopupSheet style={[styles.modalContent, { backgroundColor: theme.sheet }]}>
             <Text style={[styles.modalTitle, { color: theme.text }]}>Chọn tài khoản</Text>
             <ScrollView>
               {(accounts ?? []).map((account) => (
@@ -725,7 +725,7 @@ export default function CreateScreen() {
           style={[styles.modalOverlay, { backgroundColor: theme.overlay }]}
           onPress={() => setIsCategoryPickerVisible(false)}
         >
-          <BottomPopupSheet style={[styles.modalContent, { backgroundColor: theme.card }]}>
+          <BottomPopupSheet style={[styles.modalContent, { backgroundColor: theme.sheet }]}>
             <Text style={[styles.modalTitle, { color: theme.text }]}>Chọn danh mục</Text>
             <ScrollView>
               {availableCategories.map((category) => (
@@ -756,7 +756,7 @@ export default function CreateScreen() {
           style={[styles.modalOverlay, { backgroundColor: theme.overlay }]}
           onPress={() => setIsTypePickerVisible(false)}
         >
-          <BottomPopupSheet style={[styles.modalContent, { backgroundColor: theme.card }]}>
+          <BottomPopupSheet style={[styles.modalContent, { backgroundColor: theme.sheet }]}>
             <Text style={[styles.modalTitle, { color: theme.text }]}>Chọn loại giao dịch</Text>
             {transactionTypes.map((t) => (
               <Pressable
@@ -780,7 +780,7 @@ export default function CreateScreen() {
           style={[styles.modalOverlay, { backgroundColor: theme.overlay }]}
           onPress={() => setIsPaymentBankPickerVisible(false)}
         >
-          <BottomPopupSheet style={[styles.modalContent, { backgroundColor: theme.card }]}>
+          <BottomPopupSheet style={[styles.modalContent, { backgroundColor: theme.sheet }]}>
             <Text style={[styles.modalTitle, { color: theme.text }]}>Chọn ngân hàng thanh toán</Text>
             <ScrollView>
               {(paymentBankApps ?? []).map((bankApp) => (
@@ -825,7 +825,7 @@ export default function CreateScreen() {
           style={[styles.modalOverlay, { backgroundColor: theme.overlay }]}
           onPress={() => setIsDatePickerVisible(false)}
         >
-          <BottomPopupPressable style={[styles.datePickerContent, { backgroundColor: theme.card }]}>
+          <BottomPopupPressable style={[styles.datePickerContent, { backgroundColor: theme.sheet }]}>
             <View style={styles.datePickerHeader}>
               <Pressable onPress={() => setIsDatePickerVisible(false)} hitSlop={10}>
                 <Text style={[styles.datePickerAction, { color: theme.textSubtle }]}>Hủy</Text>

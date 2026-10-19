@@ -985,7 +985,7 @@ function SpendingForecastChart({
               strokeWidth={2.5}
             />
           ) : null}
-          {hasForecastData ? <Circle cx={endX} cy={endY} fill={theme.card} r={4} stroke={theme.primary} strokeWidth={2} /> : null}
+          {hasForecastData ? <Circle cx={endX} cy={endY} fill={theme.sheet} r={4} stroke={theme.primary} strokeWidth={2} /> : null}
           {hasForecastData ? (
             <SvgText
               fill={theme.primary}
@@ -998,7 +998,7 @@ function SpendingForecastChart({
               {formatAxisMoney(forecastEnd.value)}
             </SvgText>
           ) : null}
-          <Circle cx={asOfX} cy={forecastChart.bottom} fill={theme.card} r={3} stroke={theme.textMuted} strokeWidth={1.5} />
+          <Circle cx={asOfX} cy={forecastChart.bottom} fill={theme.sheet} r={3} stroke={theme.textMuted} strokeWidth={1.5} />
           {xAxisDays.map((day) => {
             const x =
               daysInMonth <= 1

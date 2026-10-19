@@ -1,4 +1,4 @@
-import { useId } from "react";
+import { useId, useState } from "react";
 import { ImageBackground, StyleSheet, View } from "react-native";
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 
@@ -11,21 +11,31 @@ export function ScreenGradientBackground({ darkOnly = false }: { darkOnly?: bool
   const theme = useAppTheme();
   const isDark = useThemeMode() === "dark";
   const gradientId = `screenFade${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
+  const [size, setSize] = useState({ width: 0, height: 0 });
   if (darkOnly && !isDark) return null;
 
   return (
-    <View pointerEvents="none" accessible={false} style={StyleSheet.absoluteFill}>
+    <View
+      pointerEvents="none"
+      accessible={false}
+      style={StyleSheet.absoluteFill}
+      onLayout={({ nativeEvent: { layout } }) => {
+        setSize((current) => current.width === layout.width && current.height === layout.height
+          ? current : { width: layout.width, height: layout.height });
+      }}
+    >
       {!isDark ? <ImageBackground source={background} imageStyle={styles.image} style={StyleSheet.absoluteFill} /> : null}
-      <Svg width="100%" height="100%" style={StyleSheet.absoluteFill}>
+      {size.width > 0 && size.height > 0 ? <Svg width={size.width} height={size.height} style={StyleSheet.absoluteFill}>
         <Defs>
-          <LinearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+          {/* Use full layout bounds even when iOS redraws only a visible scroll region. */}
+          <LinearGradient id={gradientId} gradientUnits="userSpaceOnUse" x1={0} y1={0} x2={0} y2={size.height}>
             <Stop offset="0" stopColor={theme.screenGradient.top.color} stopOpacity={theme.screenGradient.top.opacity} />
             <Stop offset="0.45" stopColor={theme.screenGradient.middle.color} stopOpacity={theme.screenGradient.middle.opacity} />
             <Stop offset="1" stopColor={theme.screenGradient.bottom.color} stopOpacity={theme.screenGradient.bottom.opacity} />
           </LinearGradient>
         </Defs>
-        <Rect width="100%" height="100%" fill={`url(#${gradientId})`} />
-      </Svg>
+        <Rect width={size.width} height={size.height} fill={`url(#${gradientId})`} />
+      </Svg> : null}
     </View>
   );
 }
