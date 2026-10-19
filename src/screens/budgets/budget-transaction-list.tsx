@@ -1,5 +1,6 @@
+import { BottomPopup, BottomPopupPressable } from "@/components/bottom-popup";
 import { useState } from "react";
-import { Modal, Pressable, ScrollView, Text, View } from "react-native";
+import { Pressable, ScrollView, Text, View } from "react-native";
 
 import type { BudgetDailySpending } from "@/api/budgetsApi";
 
@@ -64,9 +65,9 @@ function BudgetDayTransactionsSheet({ day, onClose }: { day: BudgetDailySpending
   const styles = useBudgetStyles();
 
   return (
-    <Modal animationType="slide" transparent visible={day !== null} onRequestClose={onClose}>
+    <BottomPopup animationType="fade" transparent visible={day !== null} onRequestClose={onClose}>
       <Pressable style={styles.bottomSheetOverlay} onPress={onClose}>
-        <Pressable style={styles.dayTransactionsSheet} onPress={(event) => event.stopPropagation()}>
+        <BottomPopupPressable style={styles.dayTransactionsSheet} onPress={(event) => event.stopPropagation()}>
           {day ? (
             <>
               <View style={styles.sheetHeader}>
@@ -100,9 +101,9 @@ function BudgetDayTransactionsSheet({ day, onClose }: { day: BudgetDailySpending
               </ScrollView>
             </>
           ) : null}
-        </Pressable>
+        </BottomPopupPressable>
       </Pressable>
-    </Modal>
+    </BottomPopup>
   );
 }
 

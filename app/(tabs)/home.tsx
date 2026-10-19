@@ -10,10 +10,12 @@ import { categoriesApi, Category } from "@/api/categoriesApi";
 import { FinancialAccount, financialAccountApi } from "@/api/financialAccountApi";
 import { CategorySpendingResponse, Transaction, transactionsApi, TransactionType } from "@/api/transactionsApi";
 import { FocusedScreenTransition } from "@/components/screen-transition";
+import { ScreenGradientBackground } from "@/components/screen-gradient-background";
 import { useAIAnalysis } from "@/hooks/use-ai-analysis";
 import { useAppTheme } from "@/hooks/use-app-theme";
+import { useThemeMode } from "@/hooks/use-theme-mode";
 import { getAuthUser } from "@/stores/authSession";
-import type { AppTheme } from "@/theme/appTheme";
+import { darkScreenGradient, type AppTheme } from "@/theme/appTheme";
 import { getAccountCurrentBalance } from "@/utils/accountBalance";
 
 const accountTypeMeta: Record<FinancialAccount["type"], { color: string; icon: string; label: string }> = {
@@ -23,6 +25,7 @@ const accountTypeMeta: Record<FinancialAccount["type"], { color: string; icon: s
 };
 
 const overviewBackground = require("../../assets/expo.icon/Assets/Serene Blue Abstract Gradient Wallpaper.png");
+const darkOverviewBackground = require("../../assets/expo.icon/Assets/Monochrome Orbital Bubble Waves.png");
 
 const forecastChart = {
   bottom: 204,
@@ -266,6 +269,7 @@ function getPriorityRecommendation(analysis: AIAnalysis) {
 
 export default function HomeScreen() {
   const theme = useAppTheme();
+  const isDark = useThemeMode() === "dark";
   const styles = useHomeStyles();
   const insets = useSafeAreaInsets();
   const user = getAuthUser();
@@ -422,7 +426,7 @@ export default function HomeScreen() {
         <ImageBackground
           imageStyle={styles.overviewPanelImage}
           resizeMode="cover"
-          source={overviewBackground}
+          source={isDark ? darkOverviewBackground : overviewBackground}
           style={styles.overviewBackground}
         >
           <View style={[styles.overviewStaticContent, { paddingTop: 12 + insets.top }]}>
@@ -441,7 +445,7 @@ export default function HomeScreen() {
             </Pressable>
           </View>
         </ImageBackground>
-        <View pointerEvents="none" style={styles.bottomSurfaceGuard} />
+        <View pointerEvents="none" style={[styles.bottomSurfaceGuard, isDark && { backgroundColor: darkScreenGradient.bottom }]} />
         <ScrollView
           contentContainerStyle={styles.content}
           onScroll={({ nativeEvent }) => {
@@ -463,6 +467,7 @@ export default function HomeScreen() {
             onLayout={({ nativeEvent }) => setContentSurfaceTop(nativeEvent.layout.y)}
             style={styles.contentSurface}
           >
+            <ScreenGradientBackground darkOnly />
             <View style={styles.heroStats}>
               <MetricPill label="Thu tháng này" tone="good" value={formatMoney(monthlyIncome, currency)} />
               <MetricPill label="Chi tháng này" tone="warn" value={formatMoney(monthlyExpense, currency)} />

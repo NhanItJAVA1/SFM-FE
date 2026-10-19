@@ -1,3 +1,5 @@
+import { BottomPopup, BottomPopupPressable } from "@/components/bottom-popup";
+import { ScreenGradientBackground } from "@/components/screen-gradient-background";
 import DateTimePicker, { DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import * as Google from "expo-auth-session/providers/google";
 import * as ImagePicker from "expo-image-picker";
@@ -5,20 +7,7 @@ import { router, useNavigation } from "expo-router";
 import { SymbolView } from "expo-symbols";
 import * as WebBrowser from "expo-web-browser";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  ActivityIndicator,
-  Alert,
-  Image,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { authApi } from "@/api/authApi";
 import { FinancialAccount, financialAccountApi } from "@/api/financialAccountApi";
@@ -818,14 +807,14 @@ export default function UserScreen() {
           />
         ) : null}
 
-        <Modal
-          animationType="slide"
+        <BottomPopup
+          animationType="fade"
           transparent
           visible={activeExportDateField !== null && Platform.OS !== "android"}
           onRequestClose={closeExportDatePicker}
         >
           <Pressable style={styles.bottomSheetOverlay} onPress={closeExportDatePicker}>
-            <Pressable style={styles.exportDatePickerSheet} onPress={(event) => event.stopPropagation()}>
+            <BottomPopupPressable style={styles.exportDatePickerSheet} onPress={(event) => event.stopPropagation()}>
               <View style={styles.datePickerHeader}>
                 <Pressable onPress={closeExportDatePicker} hitSlop={10}>
                   <Text style={[styles.datePickerAction, { color: theme.textSubtle }]}>Hủy</Text>
@@ -849,9 +838,9 @@ export default function UserScreen() {
                 themeVariant={themeMode}
                 value={activeExportDate}
               />
-            </Pressable>
+            </BottomPopupPressable>
           </Pressable>
-        </Modal>
+        </BottomPopup>
       </FocusedScreenTransition>
     );
   }
@@ -1374,7 +1363,8 @@ export default function UserScreen() {
 
   return (
     <FocusedScreenTransition style={styles.screen} triggerKey={view} variant="slide-right">
-      <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+      <ScreenGradientBackground />
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.content}>
         <View style={styles.headerRow}>
           <View style={styles.headerSide}>
             <Text style={styles.supportText}>Hỗ trợ</Text>

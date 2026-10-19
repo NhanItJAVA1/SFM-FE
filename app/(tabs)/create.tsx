@@ -1,24 +1,11 @@
+import { BottomPopup, BottomPopupSheet, BottomPopupPressable } from "@/components/bottom-popup";
+import { ScreenGradientBackground } from "@/components/screen-gradient-background";
 import DateTimePicker, { DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import { router, useFocusEffect } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 import { SymbolView } from "expo-symbols";
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  ActivityIndicator,
-  Alert,
-  AppState,
-  Image,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { ActivityIndicator, Alert, AppState, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from "react-native";
 
 import { categoriesApi, Category, CategoryType } from "@/api/categoriesApi";
 import { FinancialAccount, financialAccountApi } from "@/api/financialAccountApi";
@@ -482,6 +469,7 @@ export default function CreateScreen() {
   if (isLoading) {
     return (
       <FocusedScreenTransition style={[styles.container, { backgroundColor: theme.screen }]}>
+        <ScreenGradientBackground />
         <View style={styles.loadingState}>
           <ActivityIndicator color={theme.primary} />
         </View>
@@ -491,9 +479,9 @@ export default function CreateScreen() {
 
   return (
     <FocusedScreenTransition style={[styles.container, { backgroundColor: theme.screen }]}>
+      <ScreenGradientBackground />
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 84 : 0}
         style={styles.keyboardView}
       >
         <View style={styles.header}>
@@ -678,12 +666,12 @@ export default function CreateScreen() {
       </KeyboardAvoidingView>
 
       {/* Pickers */}
-      <Modal visible={isAccountPickerVisible} transparent animationType="slide">
+      <BottomPopup visible={isAccountPickerVisible} transparent animationType="fade">
         <Pressable
           style={[styles.modalOverlay, { backgroundColor: theme.overlay }]}
           onPress={() => setIsAccountPickerVisible(false)}
         >
-          <View style={[styles.modalContent, { backgroundColor: theme.card }]}>
+          <BottomPopupSheet style={[styles.modalContent, { backgroundColor: theme.card }]}>
             <Text style={[styles.modalTitle, { color: theme.text }]}>Chọn tài khoản</Text>
             <ScrollView>
               {(accounts ?? []).map((account) => (
@@ -705,16 +693,16 @@ export default function CreateScreen() {
                 </Pressable>
               ))}
             </ScrollView>
-          </View>
+          </BottomPopupSheet>
         </Pressable>
-      </Modal>
+      </BottomPopup>
 
-      <Modal visible={isCategoryPickerVisible} transparent animationType="slide">
+      <BottomPopup visible={isCategoryPickerVisible} transparent animationType="fade">
         <Pressable
           style={[styles.modalOverlay, { backgroundColor: theme.overlay }]}
           onPress={() => setIsCategoryPickerVisible(false)}
         >
-          <View style={[styles.modalContent, { backgroundColor: theme.card }]}>
+          <BottomPopupSheet style={[styles.modalContent, { backgroundColor: theme.card }]}>
             <Text style={[styles.modalTitle, { color: theme.text }]}>Chọn danh mục</Text>
             <ScrollView>
               {availableCategories.map((category) => (
@@ -736,16 +724,16 @@ export default function CreateScreen() {
                 </Pressable>
               ))}
             </ScrollView>
-          </View>
+          </BottomPopupSheet>
         </Pressable>
-      </Modal>
+      </BottomPopup>
 
-      <Modal visible={isTypePickerVisible} transparent animationType="slide">
+      <BottomPopup visible={isTypePickerVisible} transparent animationType="fade">
         <Pressable
           style={[styles.modalOverlay, { backgroundColor: theme.overlay }]}
           onPress={() => setIsTypePickerVisible(false)}
         >
-          <View style={[styles.modalContent, { backgroundColor: theme.card }]}>
+          <BottomPopupSheet style={[styles.modalContent, { backgroundColor: theme.card }]}>
             <Text style={[styles.modalTitle, { color: theme.text }]}>Chọn loại giao dịch</Text>
             {transactionTypes.map((t) => (
               <Pressable
@@ -760,16 +748,16 @@ export default function CreateScreen() {
                 <Text style={[styles.pickerItemText, { color: theme.text }]}>{t.label}</Text>
               </Pressable>
             ))}
-          </View>
+          </BottomPopupSheet>
         </Pressable>
-      </Modal>
+      </BottomPopup>
 
-      <Modal visible={isPaymentBankPickerVisible} transparent animationType="slide">
+      <BottomPopup visible={isPaymentBankPickerVisible} transparent animationType="fade">
         <Pressable
           style={[styles.modalOverlay, { backgroundColor: theme.overlay }]}
           onPress={() => setIsPaymentBankPickerVisible(false)}
         >
-          <View style={[styles.modalContent, { backgroundColor: theme.card }]}>
+          <BottomPopupSheet style={[styles.modalContent, { backgroundColor: theme.card }]}>
             <Text style={[styles.modalTitle, { color: theme.text }]}>Chọn ngân hàng thanh toán</Text>
             <ScrollView>
               {(paymentBankApps ?? []).map((bankApp) => (
@@ -796,25 +784,25 @@ export default function CreateScreen() {
                 </Pressable>
               ))}
             </ScrollView>
-          </View>
+          </BottomPopupSheet>
         </Pressable>
-      </Modal>
+      </BottomPopup>
 
       {isDatePickerVisible && Platform.OS === "android" ? (
         <DateTimePicker value={transactionDate} mode="datetime" display="default" onChange={handleDateChange} />
       ) : null}
 
-      <Modal
+      <BottomPopup
         visible={isDatePickerVisible && Platform.OS !== "android"}
         transparent
-        animationType="slide"
+        animationType="fade"
         onRequestClose={() => setIsDatePickerVisible(false)}
       >
         <Pressable
           style={[styles.modalOverlay, { backgroundColor: theme.overlay }]}
           onPress={() => setIsDatePickerVisible(false)}
         >
-          <Pressable style={[styles.datePickerContent, { backgroundColor: theme.card }]}>
+          <BottomPopupPressable style={[styles.datePickerContent, { backgroundColor: theme.card }]}>
             <View style={styles.datePickerHeader}>
               <Pressable onPress={() => setIsDatePickerVisible(false)} hitSlop={10}>
                 <Text style={[styles.datePickerAction, { color: theme.textSubtle }]}>Hủy</Text>
@@ -834,9 +822,9 @@ export default function CreateScreen() {
               themeVariant={themeMode}
               style={styles.datePicker}
             />
-          </Pressable>
+          </BottomPopupPressable>
         </Pressable>
-      </Modal>
+      </BottomPopup>
     </FocusedScreenTransition>
   );
 }

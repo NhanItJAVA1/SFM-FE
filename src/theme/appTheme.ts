@@ -4,8 +4,8 @@ export const appThemes = {
     avatar: '#2fa9df',
     border: '#303039',
     borderStrong: '#3a3d43',
-    card: '#1e1e1f',
-    cardAlt: '#303039',
+    card: '#1A1B1F',
+    cardAlt: '#24252B',
     chevron: '#6f727b',
     danger: '#d83b3b',
     dangerText: '#ff6262',
@@ -18,9 +18,9 @@ export const appThemes = {
     primary: '#31c452',
     primaryPressed: '#17351f',
     progressTrack: '#393c43',
-    screen: '#020204',
-    sheet: '#1e1e1f',
-    tabBar: '#020204',
+    screen: '#0C0D11',
+    sheet: '#1A1B1F',
+    tabBar: '#101012',
     tabBorder: '#1e1e1f',
     text: '#ffffff',
     textInverse: '#ffffff',
@@ -64,3 +64,5 @@ export const appThemes = {
 } as const;
 
 export type AppTheme = (typeof appThemes)[keyof typeof appThemes];
+
+export const darkScreenGradient = { top: '#101012', middle: '#0C0D11', bottom: '#1A1B1F' } as const;

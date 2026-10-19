@@ -1,3 +1,4 @@
+import { BottomPopup, BottomPopupPressable } from "@/components/bottom-popup";
 import DateTimePicker, { DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import { SymbolView } from "expo-symbols";
 import { useState } from "react";
@@ -267,14 +268,14 @@ export function CreateBudgetModal({
           />
         ) : null}
 
-        <Modal
-          animationType="slide"
+        <BottomPopup
+          animationType="fade"
           transparent
           visible={activeDateField !== null && Platform.OS !== "android"}
           onRequestClose={closeDatePicker}
         >
           <Pressable style={styles.bottomSheetOverlay} onPress={closeDatePicker}>
-            <Pressable style={styles.budgetDatePickerSheet} onPress={(event) => event.stopPropagation()}>
+            <BottomPopupPressable style={styles.budgetDatePickerSheet} onPress={(event) => event.stopPropagation()}>
               <View style={styles.datePickerHeader}>
                 <Pressable onPress={closeDatePicker} hitSlop={10}>
                   <Text style={[styles.datePickerAction, { color: theme.textSubtle }]}>Hủy</Text>
@@ -298,9 +299,9 @@ export function CreateBudgetModal({
                 themeVariant={themeMode}
                 value={selectedDateValue}
               />
-            </Pressable>
+            </BottomPopupPressable>
           </Pressable>
-        </Modal>
+        </BottomPopup>
       </KeyboardAvoidingView>
     </Modal>
   );

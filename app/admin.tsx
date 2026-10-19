@@ -1,3 +1,4 @@
+import { BottomPopup, BottomPopupSheet } from "@/components/bottom-popup";
 import * as DocumentPicker from "expo-document-picker";
 import { router, useFocusEffect } from "expo-router";
 import {
@@ -24,20 +25,7 @@ import {
   Wallet,
 } from "lucide-react-native";
 import { type ComponentType, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  ActivityIndicator,
-  Alert,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import {
@@ -1321,10 +1309,10 @@ function RagActionMenuModal({
   const canReindex = statusLabel.toLowerCase() !== "draft";
 
   return (
-    <Modal animationType="fade" transparent visible={Boolean(document)} onRequestClose={onClose}>
+    <BottomPopup animationType="fade" transparent visible={Boolean(document)} onRequestClose={onClose}>
       <View style={styles.actionMenuOverlay}>
         <Pressable style={styles.modalBackdrop} onPress={onClose} />
-        <View style={styles.actionMenuSheet}>
+        <BottomPopupSheet style={styles.actionMenuSheet}>
           <Text numberOfLines={1} style={styles.actionMenuTitle}>
             {document?.title ?? "Tài liệu RAG"}
           </Text>
@@ -1358,9 +1346,9 @@ function RagActionMenuModal({
             label="Xóa"
             onPress={onDelete}
           />
-        </View>
+        </BottomPopupSheet>
       </View>
-    </Modal>
+    </BottomPopup>
   );
 }
 
@@ -1416,10 +1404,10 @@ function RagDetailModal({
   const canReindex = statusLabel.toLowerCase() !== "draft";
 
   return (
-    <Modal animationType="slide" transparent visible={visible} onRequestClose={onClose}>
+    <BottomPopup animationType="fade" transparent visible={visible} onRequestClose={onClose}>
       <View style={styles.modalOverlay}>
         <Pressable style={styles.modalBackdrop} onPress={onClose} />
-        <View style={styles.categoryFormSheet}>
+        <BottomPopupSheet style={styles.categoryFormSheet}>
           <View style={styles.formHeader}>
             <Pressable onPress={onClose} hitSlop={10}>
               <Text style={styles.formClose}>Đóng</Text>
@@ -1481,9 +1469,9 @@ function RagDetailModal({
               </View>
             </ScrollView>
           ) : null}
-        </View>
+        </BottomPopupSheet>
       </View>
-    </Modal>
+    </BottomPopup>
   );
 }
 
@@ -1509,13 +1497,13 @@ function RagUploadModal({
   const styles = useAdminStyles();
 
   return (
-    <Modal animationType="slide" transparent visible={visible} onRequestClose={onClose}>
+    <BottomPopup animationType="fade" transparent visible={visible} onRequestClose={onClose}>
       <KeyboardAvoidingView
         behavior={Platform.select({ ios: "padding", default: undefined })}
         style={styles.modalOverlay}
       >
         <Pressable style={styles.modalBackdrop} onPress={onClose} />
-        <View style={styles.categoryFormSheet}>
+        <BottomPopupSheet style={styles.categoryFormSheet}>
           <View style={styles.formHeader}>
             <Pressable onPress={onClose} hitSlop={10}>
               <Text style={styles.formClose}>Hủy</Text>
@@ -1584,9 +1572,9 @@ function RagUploadModal({
               )}
             </Pressable>
           </ScrollView>
-        </View>
+        </BottomPopupSheet>
       </KeyboardAvoidingView>
-    </Modal>
+    </BottomPopup>
   );
 }
 
@@ -1610,13 +1598,13 @@ function RagMetadataModal({
   const styles = useAdminStyles();
 
   return (
-    <Modal animationType="slide" transparent visible={visible} onRequestClose={onClose}>
+    <BottomPopup animationType="fade" transparent visible={visible} onRequestClose={onClose}>
       <KeyboardAvoidingView
         behavior={Platform.select({ ios: "padding", default: undefined })}
         style={styles.modalOverlay}
       >
         <Pressable style={styles.modalBackdrop} onPress={onClose} />
-        <View style={styles.categoryFormSheet}>
+        <BottomPopupSheet style={styles.categoryFormSheet}>
           <View style={styles.formHeader}>
             <Pressable onPress={onClose} hitSlop={10}>
               <Text style={styles.formClose}>Hủy</Text>
@@ -1671,9 +1659,9 @@ function RagMetadataModal({
               )}
             </Pressable>
           </ScrollView>
-        </View>
+        </BottomPopupSheet>
       </KeyboardAvoidingView>
-    </Modal>
+    </BottomPopup>
   );
 }
 
@@ -1799,8 +1787,8 @@ function CategoryFormModal({
   const selectedIconOption = getCategoryIconOption(form.icon);
 
   return (
-    <Modal
-      animationType="slide"
+    <BottomPopup
+      animationType="fade"
       transparent
       visible={visible}
       onRequestClose={iconPickerVisible ? onCloseIconPicker : onClose}
@@ -1810,7 +1798,7 @@ function CategoryFormModal({
         style={styles.modalOverlay}
       >
         <Pressable style={styles.modalBackdrop} onPress={iconPickerVisible ? onCloseIconPicker : onClose} />
-        <View style={styles.categoryFormSheet}>
+        <BottomPopupSheet style={styles.categoryFormSheet}>
           <View style={styles.formHeader}>
             <Pressable onPress={iconPickerVisible ? onCloseIconPicker : onClose} hitSlop={10}>
               <Text style={styles.formClose}>{iconPickerVisible ? "‹ Form" : "Hủy"}</Text>
@@ -1900,9 +1888,9 @@ function CategoryFormModal({
             </Pressable>
           </View>
           )}
-        </View>
+        </BottomPopupSheet>
       </KeyboardAvoidingView>
-    </Modal>
+    </BottomPopup>
   );
 }
 
