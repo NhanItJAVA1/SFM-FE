@@ -136,6 +136,7 @@ export default function TabsLayout() {
           tabPress: clearSpendingStatsFromTransactions,
         }}
         options={{
+          tabBarHideOnKeyboard: true,
           title: "",
           tabBarButton: (props) => <CreateTabButton {...props} />,
           tabBarIcon: ({ focused }) => <TabIcon name="plus" focused={focused} theme={theme} />,

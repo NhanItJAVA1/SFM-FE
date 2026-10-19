@@ -1,5 +1,6 @@
 import { BottomPopup, BottomPopupSheet, BottomPopupPressable } from "@/components/bottom-popup";
 import { ScreenGradientBackground } from "@/components/screen-gradient-background";
+import { AmountSuggestions } from "@/components/amount-suggestions";
 import DateTimePicker, { DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import { router, useFocusEffect } from "expo-router";
 import * as SecureStore from "expo-secure-store";
@@ -41,6 +42,7 @@ const VIETQR_BANK_APP_ENDPOINT =
 const BANK_LOGO_PREFETCH_LIMIT = 12;
 const PAYMENT_AUTO_SAVE_SECONDS = 30;
 const PAYMENT_AUTO_SAVE_STORAGE_KEY = "sfm.pendingPaymentAutoSave";
+const AMOUNT_ACCESSORY_ID = "create-transaction-amount-suggestions";
 
 type PendingPaymentAutoSave = {
   deadline: number;
@@ -104,6 +106,9 @@ export default function CreateScreen() {
   const [paymentBankApps, setPaymentBankApps] = useState<VietQRBankApp[]>([]);
 
   const [amount, setAmount] = useState<string>("");
+  const [amountSuggestionInput, setAmountSuggestionInput] = useState("");
+  const [isAmountFocused, setIsAmountFocused] = useState(false);
+  const amountInputRef = useRef<TextInput>(null);
   const [description, setDescription] = useState<string>("");
   const [location, setLocation] = useState<string>("");
   const [type, setType] = useState<TransactionType>("Expense");
@@ -202,6 +207,11 @@ export default function CreateScreen() {
     return clearPaymentAutoSaveTimers;
   }, [clearPaymentAutoSaveTimers]);
 
+  useFocusEffect(useCallback(() => () => {
+    setIsAmountFocused(false);
+    amountInputRef.current?.blur();
+  }, []));
+
   const buildTransactionPayload = useCallback((): CreateTransactionPayload | null => {
     if (!amount || isNaN(Number(amount))) {
       Alert.alert("Lỗi", "Vui lòng nhập số tiền hợp lệ");
@@ -232,6 +242,7 @@ export default function CreateScreen() {
 
   const resetForm = useCallback(() => {
     setAmount("");
+    setAmountSuggestionInput("");
     setDescription("");
     setLocation("");
     setType("Expense");
@@ -504,9 +515,14 @@ export default function CreateScreen() {
             <View style={styles.inputGroup}>
               <Text style={[styles.inputLabel, { color: theme.textSubtle }]}>Số tiền</Text>
               <TextInput
+                ref={amountInputRef}
+                accessibilityLabel="Số tiền"
                 style={[styles.amountInput, { color: theme.primary }]}
                 value={amount}
-                onChangeText={setAmount}
+                onChangeText={(value) => { setAmount(value); setAmountSuggestionInput(value); }}
+                onFocus={() => setIsAmountFocused(true)}
+                onBlur={() => setIsAmountFocused(false)}
+                inputAccessoryViewID={Platform.OS === "ios" ? AMOUNT_ACCESSORY_ID : undefined}
                 keyboardType="numeric"
                 placeholder="0"
                 placeholderTextColor={theme.textSubtle}
@@ -663,6 +679,13 @@ export default function CreateScreen() {
             )}
           </Pressable>
         </ScrollView>
+        <AmountSuggestions
+          nativeID={AMOUNT_ACCESSORY_ID}
+          input={amountSuggestionInput}
+          selectedAmount={amount}
+          focused={isAmountFocused && !isAccountPickerVisible && !isCategoryPickerVisible && !isTypePickerVisible && !isDatePickerVisible && !isPaymentBankPickerVisible}
+          onSelect={(value) => { setAmount(String(value)); amountInputRef.current?.focus(); }}
+        />
       </KeyboardAvoidingView>
 
       {/* Pickers */}
