@@ -1,5 +1,8 @@
+import { BottomPopup, BottomPopupPressable } from "@/components/bottom-popup";
+import { ScreenGradientBackground } from "@/components/screen-gradient-background";
 import DateTimePicker, { DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import { SymbolView } from "expo-symbols";
+import { Check, LayoutGrid } from "lucide-react-native";
 import { useState } from "react";
 import {
   ActivityIndicator,
@@ -62,6 +65,7 @@ export function CreateBudgetModal({
 }) {
   const theme = useAppTheme();
   const themeMode = useThemeMode();
+  const isDark = themeMode === "dark";
   const styles = useBudgetStyles();
   const [activeDateField, setActiveDateField] = useState<BudgetDateField | null>(null);
 
@@ -108,9 +112,11 @@ export function CreateBudgetModal({
 
   return (
     <Modal animationType="slide" visible={visible} onRequestClose={onClose}>
+      <View style={styles.formScreen}>
+      <ScreenGradientBackground darkOnly />
       <KeyboardAvoidingView
         behavior={Platform.select({ ios: "padding", default: undefined })}
-        style={styles.formScreen}
+        style={{ flex: 1 }}
       >
         <View style={styles.formHeader}>
           <Pressable onPress={onClose} hitSlop={12}>
@@ -131,8 +137,8 @@ export function CreateBudgetModal({
             <Text style={styles.label}>Tên ngân sách</Text>
             <TextInput
               placeholder="Ăn uống tháng này"
-              placeholderTextColor={theme.inputPlaceholder}
-              style={styles.input}
+              placeholderTextColor={isDark ? theme.textMuted : theme.inputPlaceholder}
+              style={[styles.input, isDark && styles.darkFormText]}
               value={form.name}
               onChangeText={(name) => updateForm({ name })}
             />
@@ -143,8 +149,8 @@ export function CreateBudgetModal({
             <TextInput
               keyboardType="decimal-pad"
               placeholder="5000000"
-              placeholderTextColor={theme.inputPlaceholder}
-              style={styles.input}
+              placeholderTextColor={isDark ? theme.textMuted : theme.inputPlaceholder}
+              style={[styles.input, isDark && styles.darkFormText]}
               value={form.amount}
               onChangeText={(amount) => updateForm({ amount })}
             />
@@ -171,8 +177,8 @@ export function CreateBudgetModal({
                 <TextInput
                   keyboardType="number-pad"
                   placeholder="80"
-                  placeholderTextColor={theme.inputPlaceholder}
-                  style={styles.alertMiniInput}
+                  placeholderTextColor={isDark ? theme.textMuted : theme.inputPlaceholder}
+                  style={[styles.alertMiniInput, isDark && styles.darkFormText]}
                   value={form.alertThreshold}
                   onChangeText={(alertThreshold) => updateForm({ alertThreshold })}
                 />
@@ -201,40 +207,53 @@ export function CreateBudgetModal({
             <Text style={styles.label}>Danh mục</Text>
             <View style={styles.categoryGrid}>
               <Pressable
+                accessibilityRole="radio"
+                accessibilityLabel="Danh mục: Tất cả"
+                accessibilityState={{ checked: form.categoryId === null }}
                 style={[
                   styles.categoryGridItem,
-                  form.categoryId !== null && getLightCategoryColor("all-categories"),
+                  !isDark && form.categoryId !== null && getLightCategoryColor("all-categories"),
                   form.categoryId === null && styles.categoryGridItemSelected,
+                  isDark && form.categoryId === null && styles.categoryGridItemSelectedDark,
                 ]}
                 onPress={() => updateForm({ categoryId: null })}
               >
                 <View style={styles.categoryGridContent}>
-                  <Text style={[styles.categoryGridText, form.categoryId === null && styles.categoryGridTextSelected]}>
+                  {isDark ? <LayoutGrid size={18} color={form.categoryId === null ? theme.primary : theme.textMuted} style={styles.categoryMarker} /> : null}
+                  <Text style={[styles.categoryGridText, isDark && styles.darkFormText, form.categoryId === null && styles.categoryGridTextSelected, isDark && form.categoryId === null && styles.categoryGridTextSelectedDark]}>
                     Tất cả
                   </Text>
                 </View>
+                {isDark && form.categoryId === null ? <Check size={16} color={theme.primary} style={styles.categorySelectedCheck} /> : null}
               </Pressable>
               {(categories ?? []).map((category) => {
                 const isSelected = form.categoryId === category.id;
+                const categoryColor = getLightCategoryColor(category.id ?? category.name);
 
                 return (
                   <Pressable
                     key={category.id}
+                    accessibilityRole="radio"
+                    accessibilityLabel={`Danh mục: ${category.name}`}
+                    accessibilityState={{ checked: isSelected }}
                     style={[
                       styles.categoryGridItem,
-                      !isSelected && getLightCategoryColor(category.id ?? category.name),
+                      !isDark && !isSelected && categoryColor,
                       isSelected && styles.categoryGridItemSelected,
+                      isDark && isSelected && styles.categoryGridItemSelectedDark,
                     ]}
                     onPress={() => updateForm({ categoryId: category.id })}
                   >
                     <View style={styles.categoryGridContent}>
+                      {isDark ? <View style={[styles.categoryColorDot, { backgroundColor: categoryColor.borderColor }]} /> : null}
                       <Text
                         numberOfLines={2}
-                        style={[styles.categoryGridText, isSelected && styles.categoryGridTextSelected]}
+                        style={[styles.categoryGridText, isDark && styles.darkFormText, isSelected && styles.categoryGridTextSelected, isDark && isSelected && styles.categoryGridTextSelectedDark]}
                       >
                         {category.name}
                       </Text>
                     </View>
+                    {isDark && isSelected ? <Check size={16} color={theme.primary} style={styles.categorySelectedCheck} /> : null}
                   </Pressable>
                 );
               })}
@@ -267,14 +286,14 @@ export function CreateBudgetModal({
           />
         ) : null}
 
-        <Modal
-          animationType="slide"
+        <BottomPopup
+          animationType="fade"
           transparent
           visible={activeDateField !== null && Platform.OS !== "android"}
           onRequestClose={closeDatePicker}
         >
           <Pressable style={styles.bottomSheetOverlay} onPress={closeDatePicker}>
-            <Pressable style={styles.budgetDatePickerSheet} onPress={(event) => event.stopPropagation()}>
+            <BottomPopupPressable style={styles.budgetDatePickerSheet} onPress={(event) => event.stopPropagation()}>
               <View style={styles.datePickerHeader}>
                 <Pressable onPress={closeDatePicker} hitSlop={10}>
                   <Text style={[styles.datePickerAction, { color: theme.textSubtle }]}>Hủy</Text>
@@ -298,10 +317,11 @@ export function CreateBudgetModal({
                 themeVariant={themeMode}
                 value={selectedDateValue}
               />
-            </Pressable>
+            </BottomPopupPressable>
           </Pressable>
-        </Modal>
+        </BottomPopup>
       </KeyboardAvoidingView>
+      </View>
     </Modal>
   );
 }

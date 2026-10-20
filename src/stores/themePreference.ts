@@ -1,6 +1,7 @@
 import * as SecureStore from 'expo-secure-store';
 import * as SystemUI from 'expo-system-ui';
 import { Platform } from 'react-native';
+import { appThemes } from '@/theme/appTheme';
 
 export type AppThemeMode = "dark" | "light";
 
@@ -43,7 +44,7 @@ export function getNextThemeMode(themeMode = currentThemeMode): AppThemeMode {
 
 function applyThemeMode(nextThemeMode: AppThemeMode) {
   currentThemeMode = nextThemeMode;
-  void SystemUI.setBackgroundColorAsync(nextThemeMode === 'dark' ? '#020204' : '#ffffff');
+  void SystemUI.setBackgroundColorAsync(appThemes[nextThemeMode].screen);
   subscribers.forEach((listener) => listener());
 }
 

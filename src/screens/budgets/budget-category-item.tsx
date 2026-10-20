@@ -80,9 +80,12 @@ export function BudgetCategoryItem({
 
   return (
     <View style={styles.swipeBudgetRow} onLayout={(event) => setRowWidth(event.nativeEvent.layout.width)}>
-      <View style={styles.swipeDeleteBackground}>
+      <Animated.View style={[styles.swipeDeleteBackground, {
+        transform: [{ translateX: Animated.add(translateX, rowWidth) }],
+        opacity: rowWidth > 0 ? 1 : 0,
+      }]}>
         <Text style={styles.swipeDeleteIcon}>🗑</Text>
-      </View>
+      </Animated.View>
       <Animated.View
         style={[styles.swipeBudgetContent, { transform: [{ translateX }] }]}
         {...panResponder.panHandlers}

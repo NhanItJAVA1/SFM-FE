@@ -1,3 +1,5 @@
+import { BottomPopup, BottomPopupPressable } from "@/components/bottom-popup";
+import { ScreenGradientBackground } from "@/components/screen-gradient-background";
 import DateTimePicker, { DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import * as Google from "expo-auth-session/providers/google";
 import * as ImagePicker from "expo-image-picker";
@@ -5,25 +7,12 @@ import { router, useNavigation } from "expo-router";
 import { SymbolView } from "expo-symbols";
 import * as WebBrowser from "expo-web-browser";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  ActivityIndicator,
-  Alert,
-  Image,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 
 import { authApi } from "@/api/authApi";
 import { FinancialAccount, financialAccountApi } from "@/api/financialAccountApi";
 import { financialInsightsApi, FinancialInsightsResponse } from "@/api/financialInsightsApi";
-import { CategorySpendingItem, CategorySpendingResponse, transactionsApi } from "@/api/transactionsApi";
+import { CategorySpendingItem, CategorySpendingResponse, Transaction, transactionsApi } from "@/api/transactionsApi";
 import { usersApi } from "@/api/usersApi";
 import { FocusedScreenTransition } from "@/components/screen-transition";
 import { SpendingDonutChart, SpendingDonutSegment } from "@/components/spending-donut-chart";
@@ -131,6 +120,24 @@ function formatExportDate(date: Date) {
   return `${day}/${month}/${date.getFullYear()}`;
 }
 
+function formatApiDate(date: Date) {
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+
+  return `${date.getFullYear()}-${month}-${day}`;
+}
+
+function formatTransactionDate(value: string) {
+  return new Intl.DateTimeFormat("vi-VN", {
+    day: "2-digit",
+    hour: "2-digit",
+    hour12: false,
+    minute: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(new Date(value));
+}
+
 function formatSignedMoney(current: number, compare: number) {
   const difference = current - compare;
   const sign = difference > 0 ? "+" : difference < 0 ? "-" : "";
@@ -218,6 +225,11 @@ export default function UserScreen() {
   const [financialInsightsError, setFinancialInsightsError] = useState<string | null>(null);
   const [isFinancialInsightsVisible, setIsFinancialInsightsVisible] = useState(false);
   const [selectedCategoryKey, setSelectedCategoryKey] = useState<string | null>(null);
+  const [expandedCategoryKey, setExpandedCategoryKey] = useState<string | null>(null);
+  const [categoryTransactions, setCategoryTransactions] = useState<Transaction[]>([]);
+  const [categoryTransactionPage, setCategoryTransactionPage] = useState(1);
+  const [categoryTransactionTotalPages, setCategoryTransactionTotalPages] = useState(1);
+  const [isLoadingCategoryTransactions, setIsLoadingCategoryTransactions] = useState(false);
   const [statsReturnPath, setStatsReturnPath] = useState<SpendingStatsReturnPath | null>(initialStatsReturnPath);
   const [googleResetRequest, googleResetResponse, promptGoogleReset] = Google.useIdTokenAuthRequest({
     androidClientId: googleAndroidClientId,
@@ -284,6 +296,10 @@ export default function UserScreen() {
           : null,
       );
       setSelectedCategoryKey(null);
+      setExpandedCategoryKey(null);
+      setCategoryTransactions([]);
+      setCategoryTransactionPage(1);
+      setCategoryTransactionTotalPages(1);
     } catch (error) {
       Alert.alert("Không tải được thống kê", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
     } finally {
@@ -416,6 +432,46 @@ export default function UserScreen() {
 
   function handleSelectCategory(key: string) {
     setSelectedCategoryKey(key);
+  }
+
+  async function loadCategoryTransactions(category: CategorySpendingItem, page: number, append = false) {
+    try {
+      setIsLoadingCategoryTransactions(true);
+      const fromDate = new Date(statsYear, statsMonth - 1, 1);
+      const toDate = new Date(statsYear, statsMonth, 0);
+      const response = await transactionsApi.list({
+        categoryId: category.categoryId,
+        fromDate: formatApiDate(fromDate),
+        page,
+        pageSize: 20,
+        toDate: formatApiDate(toDate),
+        uncategorized: category.categoryId === null,
+      });
+      const items = Array.isArray(response.data.items) ? response.data.items : [];
+
+      setCategoryTransactions((current) => (append ? [...current, ...items] : items));
+      setCategoryTransactionPage(response.data.page);
+      setCategoryTransactionTotalPages(Math.max(1, response.data.totalPages));
+    } catch (error) {
+      Alert.alert("Không tải được giao dịch", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
+    } finally {
+      setIsLoadingCategoryTransactions(false);
+    }
+  }
+
+  function toggleCategoryDetail(category: CategorySpendingItem) {
+    const categoryKey = getCategoryKey(category);
+
+    if (expandedCategoryKey === categoryKey) {
+      setExpandedCategoryKey(null);
+      return;
+    }
+
+    setExpandedCategoryKey(categoryKey);
+    setCategoryTransactions([]);
+    setCategoryTransactionPage(1);
+    setCategoryTransactionTotalPages(1);
+    void loadCategoryTransactions(category, 1);
   }
 
   function toggleFinancialInsights() {
@@ -659,6 +715,7 @@ export default function UserScreen() {
   if (view === "exportFile") {
     return (
       <FocusedScreenTransition style={styles.screen} triggerKey={view} variant="slide-left">
+        <ScreenGradientBackground darkOnly />
         <View style={styles.walletHeader}>
           <Pressable onPress={() => setView("menu")} hitSlop={12}>
             <Text style={styles.backText}>‹ Cá nhân</Text>
@@ -751,14 +808,14 @@ export default function UserScreen() {
           />
         ) : null}
 
-        <Modal
-          animationType="slide"
+        <BottomPopup
+          animationType="fade"
           transparent
           visible={activeExportDateField !== null && Platform.OS !== "android"}
           onRequestClose={closeExportDatePicker}
         >
           <Pressable style={styles.bottomSheetOverlay} onPress={closeExportDatePicker}>
-            <Pressable style={styles.exportDatePickerSheet} onPress={(event) => event.stopPropagation()}>
+            <BottomPopupPressable style={styles.exportDatePickerSheet} onPress={(event) => event.stopPropagation()}>
               <View style={styles.datePickerHeader}>
                 <Pressable onPress={closeExportDatePicker} hitSlop={10}>
                   <Text style={[styles.datePickerAction, { color: theme.textSubtle }]}>Hủy</Text>
@@ -782,9 +839,9 @@ export default function UserScreen() {
                 themeVariant={themeMode}
                 value={activeExportDate}
               />
-            </Pressable>
+            </BottomPopupPressable>
           </Pressable>
-        </Modal>
+        </BottomPopup>
       </FocusedScreenTransition>
     );
   }
@@ -792,6 +849,7 @@ export default function UserScreen() {
   if (view === "resetWarning") {
     return (
       <FocusedScreenTransition style={styles.screen} triggerKey={view} variant="slide-left">
+        <ScreenGradientBackground darkOnly />
         <View style={styles.walletHeader}>
           <Pressable onPress={() => setView("manage")} hitSlop={12}>
             <Text style={styles.backText}>‹ Quản lý</Text>
@@ -839,6 +897,7 @@ export default function UserScreen() {
     return (
       <FocusedScreenTransition style={styles.screen} triggerKey={view} variant="slide-left">
         <KeyboardAvoidingView behavior={Platform.select({ ios: "padding", default: undefined })} style={styles.screen}>
+          <ScreenGradientBackground darkOnly />
           <View style={styles.walletHeader}>
             <Pressable onPress={() => setView("resetWarning")} hitSlop={12}>
               <Text style={styles.backText}>‹ Cảnh báo</Text>
@@ -914,6 +973,7 @@ export default function UserScreen() {
   if (view === "manage") {
     return (
       <FocusedScreenTransition style={styles.screen} triggerKey={view} variant="slide-left">
+        <ScreenGradientBackground darkOnly />
         <View style={styles.walletHeader}>
           <Pressable onPress={() => setView("menu")} hitSlop={12}>
             <Text style={styles.backText}>‹ Người dùng</Text>
@@ -972,6 +1032,7 @@ export default function UserScreen() {
   if (view === "editProfile") {
     return (
       <FocusedScreenTransition style={styles.screen} triggerKey={view} variant="slide-left">
+        <ScreenGradientBackground darkOnly />
         <View style={styles.walletHeader}>
           <Pressable onPress={() => setView("menu")} hitSlop={12}>
             <Text style={styles.backText}>‹ Cá nhân</Text>
@@ -1033,28 +1094,22 @@ export default function UserScreen() {
   if (view === "spendingStats") {
     return (
       <FocusedScreenTransition
+        reanimateOnFocus={false}
         style={styles.screen}
         triggerKey={`${view}-${statsReturnPath ?? "user"}`}
         variant="slide-left"
       >
+        <ScreenGradientBackground darkOnly />
         <View style={styles.walletHeader}>
           <Pressable onPress={closeSpendingStats} hitSlop={12}>
             <Text style={styles.backText}>{statsReturnPath ? "‹ Sổ giao dịch" : "‹ Người dùng"}</Text>
           </Pressable>
           <Text style={styles.topTitle}>Thống kê chi tiêu</Text>
-          <Pressable
-            style={[styles.insightToggleButton, isFinancialInsightsVisible && styles.insightToggleButtonActive]}
-            onPress={toggleFinancialInsights}
-            hitSlop={8}
-          >
-            <Text style={[styles.insightToggleText, isFinancialInsightsVisible && styles.insightToggleTextActive]}>
-              AI
-            </Text>
-          </Pressable>
+          <View style={styles.statsHeaderSpacer} />
         </View>
 
-        <ScrollView contentContainerStyle={styles.statsContent}>
-          <View style={styles.statsPanel}>
+        <ScrollView contentContainerStyle={[styles.statsContent, isDarkMode && { backgroundColor: "transparent" }]}>
+          <View style={[styles.statsPanel, isDarkMode && { backgroundColor: "transparent" }]}>
             <View style={styles.monthSwitcher}>
               <Pressable style={styles.monthButton} onPress={goPreviousStatsPeriod} hitSlop={10}>
                 <Text style={styles.monthButtonText}>‹</Text>
@@ -1159,6 +1214,28 @@ export default function UserScreen() {
                           spendingStats.compareTotalAmount,
                         )} so với kỳ trước`}
                   </Text>
+                  <Pressable
+                    accessibilityLabel="Xem nhận xét AI"
+                    hitSlop={8}
+                    onPress={toggleFinancialInsights}
+                    style={[styles.insightToggleButton, isFinancialInsightsVisible && styles.insightToggleButtonActive]}
+                  >
+                    <SymbolView
+                      fallback={
+                        <Text
+                          style={[
+                            styles.insightToggleFallback,
+                            isFinancialInsightsVisible && styles.insightToggleFallbackActive,
+                          ]}
+                        >
+                          ✦
+                        </Text>
+                      }
+                      name={{ android: "auto_awesome", ios: "sparkles", web: "auto_awesome" }}
+                      size={18}
+                      tintColor={isFinancialInsightsVisible ? theme.textInverse : theme.primary}
+                    />
+                  </Pressable>
                 </View>
 
                 {chartData.length === 0 ? (
@@ -1179,6 +1256,7 @@ export default function UserScreen() {
                 {(spendingStats.categories ?? []).map((category) => {
                   const categoryKey = getCategoryKey(category);
                   const isSelected = selectedCategoryKey === categoryKey;
+                  const isExpanded = expandedCategoryKey === categoryKey;
                   const chartColor = chartData.find((item) => item.key === categoryKey)?.color ?? "#9ca3af";
 
                   return (
@@ -1200,11 +1278,82 @@ export default function UserScreen() {
                           </Text>
                         </View>
                         <Text style={styles.statCategoryAmount}>{formatMoney(category.amount, "VND")}</Text>
+                        <Pressable
+                          accessibilityLabel={isExpanded ? "Thu gọn giao dịch" : "Xem giao dịch"}
+                          hitSlop={8}
+                          onPress={(event) => {
+                            event.stopPropagation();
+                            toggleCategoryDetail(category);
+                          }}
+                          style={[styles.categoryDetailButton, isExpanded && styles.categoryDetailButtonActive]}
+                        >
+                          <SymbolView
+                            fallback={<Text style={styles.categoryDetailIcon}>{isExpanded ? "⌃" : "⌄"}</Text>}
+                            name={{
+                              android: isExpanded ? "expand_less" : "expand_more",
+                              ios: isExpanded ? "chevron.up" : "chevron.down",
+                              web: isExpanded ? "expand_less" : "expand_more",
+                            }}
+                            size={17}
+                            tintColor={theme.primary}
+                          />
+                        </Pressable>
                       </View>
-                      <Text style={styles.statCompareText}>
+                      <Text
+                        style={[
+                          styles.statCompareText,
+                          category.changePercentage !== null && category.changePercentage < 0
+                            ? styles.statCompareTextDecrease
+                            : null,
+                          category.changePercentage !== null && category.changePercentage > 0
+                            ? styles.statCompareTextIncrease
+                            : null,
+                        ]}
+                      >
                         Kỳ trước: {formatMoney(category.compareAmount, "VND")} ·{" "}
                         {formatChange(category.changePercentage)}
                       </Text>
+                      {isExpanded ? (
+                        <View style={styles.categoryTransactionsPanel}>
+                          {isLoadingCategoryTransactions && categoryTransactions.length === 0 ? (
+                            <ActivityIndicator color={theme.primary} size="small" />
+                          ) : categoryTransactions.length === 0 ? (
+                            <Text style={styles.categoryTransactionsEmpty}>Không có giao dịch trong tháng này.</Text>
+                          ) : (
+                            categoryTransactions.map((transaction) => (
+                              <View key={transaction.id} style={styles.categoryTransactionRow}>
+                                <View style={styles.categoryTransactionCopy}>
+                                  <Text numberOfLines={1} style={styles.categoryTransactionDescription}>
+                                    {transaction.description || category.categoryName}
+                                  </Text>
+                                  <Text style={styles.categoryTransactionDate}>
+                                    {formatTransactionDate(transaction.transactionDate)}
+                                  </Text>
+                                </View>
+                                <Text style={styles.categoryTransactionAmount}>
+                                  {formatMoney(transaction.amount, "VND")}
+                                </Text>
+                              </View>
+                            ))
+                          )}
+                          {categoryTransactionPage < categoryTransactionTotalPages ? (
+                            <Pressable
+                              disabled={isLoadingCategoryTransactions}
+                              onPress={(event) => {
+                                event.stopPropagation();
+                                void loadCategoryTransactions(category, categoryTransactionPage + 1, true);
+                              }}
+                              style={styles.categoryTransactionsMoreButton}
+                            >
+                              {isLoadingCategoryTransactions ? (
+                                <ActivityIndicator color={theme.primary} size="small" />
+                              ) : (
+                                <Text style={styles.categoryTransactionsMoreText}>Xem thêm</Text>
+                              )}
+                            </Pressable>
+                          ) : null}
+                        </View>
+                      ) : null}
                     </Pressable>
                   );
                 })}
@@ -1220,7 +1369,8 @@ export default function UserScreen() {
 
   return (
     <FocusedScreenTransition style={styles.screen} triggerKey={view} variant="slide-right">
-      <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+      <ScreenGradientBackground />
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.content}>
         <View style={styles.headerRow}>
           <View style={styles.headerSide}>
             <Text style={styles.supportText}>Hỗ trợ</Text>
@@ -1537,6 +1687,7 @@ function createStyles(theme: AppTheme) {
     },
     backText: { color: theme.primary, fontSize: 17, fontWeight: "700" },
     topTitle: { color: theme.text, fontSize: 22, fontWeight: "700" },
+    statsHeaderSpacer: { width: 82 },
     topBar: {
       alignItems: "center",
       flexDirection: "row",
@@ -1549,18 +1700,18 @@ function createStyles(theme: AppTheme) {
       alignItems: "center",
       backgroundColor: theme.card,
       borderColor: theme.border,
-      borderRadius: 16,
+      borderRadius: 18,
       borderWidth: 1,
-      height: 32,
+      height: 36,
       justifyContent: "center",
-      width: 82,
+      width: 36,
     },
     insightToggleButtonActive: {
       backgroundColor: theme.primary,
       borderColor: theme.primary,
     },
-    insightToggleText: { color: theme.textMuted, fontSize: 13, fontWeight: "900" },
-    insightToggleTextActive: { color: theme.textInverse },
+    insightToggleFallback: { color: theme.primary, fontSize: 18, fontWeight: "900" },
+    insightToggleFallbackActive: { color: theme.textInverse },
     addWalletButton: {
       alignItems: "center",
       backgroundColor: theme.primary,
@@ -1715,7 +1866,10 @@ function createStyles(theme: AppTheme) {
     statsSummaryLabel: { color: theme.textMuted, fontSize: 12, fontWeight: "800", marginBottom: 7 },
     statsSummaryValue: { color: theme.text, fontSize: 18, fontWeight: "900" },
     statsTrendCard: {
+      alignItems: "center",
       borderRadius: 8,
+      flexDirection: "row",
+      gap: 10,
       minHeight: 42,
       justifyContent: "center",
       paddingHorizontal: 12,
@@ -1723,7 +1877,7 @@ function createStyles(theme: AppTheme) {
     },
     statsTrendCardGood: { backgroundColor: theme.goodBackground },
     statsTrendCardWarn: { backgroundColor: theme.warningBackground },
-    statsTrendText: { fontSize: 13, fontWeight: "800", lineHeight: 18 },
+    statsTrendText: { flex: 1, fontSize: 13, fontWeight: "800", lineHeight: 18 },
     statsTrendTextGood: { color: theme.goodText },
     statsTrendTextWarn: { color: theme.warning },
     chartSection: {
@@ -1782,7 +1936,36 @@ function createStyles(theme: AppTheme) {
     statCategoryName: { color: theme.text, fontSize: 16, fontWeight: "900" },
     statCategoryMeta: { color: theme.textMuted, fontSize: 13, fontWeight: "700", marginTop: 3 },
     statCategoryAmount: { color: theme.text, fontSize: 15, fontWeight: "900" },
+    categoryDetailButton: {
+      alignItems: "center",
+      backgroundColor: theme.cardAlt,
+      borderRadius: 16,
+      height: 32,
+      justifyContent: "center",
+      marginLeft: 9,
+      width: 32,
+    },
+    categoryDetailButtonActive: { backgroundColor: theme.primaryPressed },
+    categoryDetailIcon: { color: theme.primary, fontSize: 18, fontWeight: "900", lineHeight: 20 },
     statCompareText: { color: theme.textMuted, fontSize: 13, lineHeight: 19 },
+    statCompareTextDecrease: { color: theme.goodText, fontWeight: "800" },
+    statCompareTextIncrease: { color: theme.dangerText, fontWeight: "800" },
+    categoryTransactionsPanel: { borderTopColor: theme.border, borderTopWidth: 1, gap: 2, paddingTop: 8 },
+    categoryTransactionsEmpty: { color: theme.textMuted, fontSize: 12, paddingVertical: 10, textAlign: "center" },
+    categoryTransactionRow: {
+      alignItems: "center",
+      borderBottomColor: theme.border,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      flexDirection: "row",
+      minHeight: 48,
+      paddingVertical: 7,
+    },
+    categoryTransactionCopy: { flex: 1, marginRight: 10 },
+    categoryTransactionDescription: { color: theme.text, fontSize: 13, fontWeight: "800" },
+    categoryTransactionDate: { color: theme.textMuted, fontSize: 11, marginTop: 3 },
+    categoryTransactionAmount: { color: theme.dangerText, fontSize: 12, fontWeight: "900" },
+    categoryTransactionsMoreButton: { alignItems: "center", minHeight: 38, justifyContent: "center" },
+    categoryTransactionsMoreText: { color: theme.primary, fontSize: 13, fontWeight: "900" },
     walletIcon: {
       alignItems: "center",
       backgroundColor: theme.cardAlt,
@@ -1802,7 +1985,7 @@ function createStyles(theme: AppTheme) {
     field: { gap: 8 },
     label: { color: theme.text, fontSize: 14, fontWeight: "700" },
     input: {
-      backgroundColor: theme.card,
+      backgroundColor: theme.inputBackground,
       borderColor: theme.border,
       borderRadius: 8,
       borderWidth: 1,

@@ -92,6 +92,19 @@ export type CategorySpendingParams = {
 
 export type TransactionListParams = {
   accountId?: number | null;
+  categoryId?: number | null;
+  filter?: "NotDeleted" | "Deleted" | "All";
+  fromDate?: string;
+  page?: number;
+  pageSize?: number;
+  toDate?: string;
+  uncategorized?: boolean;
+};
+
+export type TransactionDateRangeParams = {
+  fromDate: string;
+  toDate: string;
+  accountId?: number | null;
   filter?: "NotDeleted" | "Deleted" | "All";
 };
 
@@ -117,6 +130,14 @@ export type Transaction = {
   isExcluded: boolean;
   createdAt: string;
   updatedAt: string | null;
+};
+
+export type PagedTransactionResponse = {
+  items: Transaction[];
+  page: number;
+  pageSize: number;
+  totalCount: number;
+  totalPages: number;
 };
 
 export type CreateTransactionPayload = {
@@ -175,6 +196,58 @@ export function buildCreateTransactionFromScanPayload(
   };
 }
 
+async function listTransactionPage(params: TransactionListParams = {}) {
+  const response = await axiosClient.get<PagedTransactionResponse | Transaction[]>(
+    `/v1/transactions${buildQuery({
+      accountId: params.accountId,
+      categoryId: params.categoryId,
+      filter: params.filter,
+      fromDate: params.fromDate,
+      page: params.page,
+      pageSize: params.pageSize,
+      toDate: params.toDate,
+      uncategorized: params.uncategorized ? "true" : undefined,
+    })}`,
+  );
+
+  if (Array.isArray(response.data)) {
+    const allItems = validTransactionItems(response.data).sort(compareTransactionsNewestFirst);
+    const page = Math.max(1, params.page ?? 1);
+    const pageSize = Math.max(1, params.pageSize ?? 20);
+    const startIndex = (page - 1) * pageSize;
+    const items = allItems.slice(startIndex, startIndex + pageSize);
+
+    return {
+      ...response,
+      data: {
+        items,
+        page,
+        pageSize,
+        totalCount: allItems.length,
+        totalPages: Math.max(1, Math.ceil(allItems.length / pageSize)),
+      },
+    };
+  }
+
+  return {
+    ...response,
+    data: {
+      ...response.data,
+      items: validTransactionItems(response.data.items),
+    },
+  };
+}
+
+function validTransactionItems(items: Transaction[] | null | undefined) {
+  return Array.isArray(items) ? items.filter((item): item is Transaction => item != null) : [];
+}
+
+function compareTransactionsNewestFirst(left: Transaction, right: Transaction) {
+  const dateDifference = new Date(right.transactionDate).getTime() - new Date(left.transactionDate).getTime();
+
+  return dateDifference || right.id - left.id;
+}
+
 export const transactionsApi = {
   scanBill: async (imageUri: string) => {
     const imageResponse = await fetch(imageUri);
@@ -184,24 +257,30 @@ export const transactionsApi = {
 
     formData.append("image", jpegBlob, `bill-${Date.now()}.jpg`);
 
-    return axiosClient.uploadFormData<ScanBillResponse>("/transactions/scan-bill", formData);
+    return axiosClient.uploadFormData<ScanBillResponse>("/v1/transactions/scan-bill", formData);
   },
   createFromScan: (payload: CreateTransactionFromScanPayload) =>
-    axiosClient.post<CreateTransactionFromScanResponse>("/transactions", payload),
+    axiosClient.post<CreateTransactionFromScanResponse>("/v1/transactions", payload),
   categorySpending: (params: CategorySpendingParams = {}) =>
-    axiosClient.get<CategorySpendingResponse>(`/transactions/category-spending${buildQuery(params)}`),
-  list: (params: TransactionListParams = {}) =>
+    axiosClient.get<CategorySpendingResponse>(`/v1/transactions/category-spending${buildQuery(params)}`),
+  dateRange: (params: TransactionDateRangeParams) =>
     axiosClient.get<Transaction[]>(
-      `/transactions${buildQuery({ accountId: params.accountId, filter: params.filter })}`,
+      `/v1/transactions/date-range${buildQuery({
+        fromDate: params.fromDate,
+        toDate: params.toDate,
+        accountId: params.accountId,
+        filter: params.filter,
+      })}`,
     ),
+  list: listTransactionPage,
   exportTransactions: (params: ExportTransactionsParams = {}) =>
     axiosClient.getBinary(
-      `/transactions/export${buildQuery({
+      `/v1/transactions/export${buildQuery({
         accountId: params.accountId,
         fromDate: params.fromDate,
         toDate: params.toDate,
       })}`,
     ),
   create: (payload: CreateTransactionPayload) =>
-    axiosClient.post<CreateTransactionFromScanResponse>("/transactions", payload),
+    axiosClient.post<CreateTransactionFromScanResponse>("/v1/transactions", payload),
 };

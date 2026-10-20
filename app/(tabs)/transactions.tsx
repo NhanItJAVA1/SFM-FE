@@ -1,22 +1,42 @@
+import { BottomPopup, BottomPopupSheet } from "@/components/bottom-popup";
 import { router, useFocusEffect } from "expo-router";
 import { useCallback, useMemo, useRef, useState } from "react";
-import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { ActivityIndicator, FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { ScreenGradientBackground } from "@/components/screen-gradient-background";
+import { ArrowDown, ArrowDownToLine, ArrowUp, ChartNoAxesCombined, Check, ChevronLeft, ChevronRight, Funnel, Landmark, LayoutGrid, ReceiptText, Search, SlidersHorizontal, Sparkles, Wallet, X } from "lucide-react-native";
 
 import { FinancialAccount, financialAccountApi } from "@/api/financialAccountApi";
-import { Transaction, TransactionType, transactionsApi } from "@/api/transactionsApi";
+import { categoriesApi, type Category } from "@/api/categoriesApi";
+import type { AIAnomaly } from "@/api/aiApi";
+import { CategorySpendingResponse, Transaction, TransactionType, transactionsApi } from "@/api/transactionsApi";
 import { FocusedScreenTransition } from "@/components/screen-transition";
 import { useAIAnalysis } from "@/hooks/use-ai-analysis";
 import { useAppTheme } from "@/hooks/use-app-theme";
+import { useTransactionFeed } from "@/hooks/use-transaction-feed";
 import { requestSpendingStatsFromTransactions } from "@/stores/spendingStatsNavigation";
 import type { AppTheme } from "@/theme/appTheme";
+import { emptyTransactionFilters, getTransactionMonthRange, TransactionFilterScreen, type TransactionFilters } from "@/screens/transactions/transaction-filter-screen";
+import { calendarDay, getAnomalyWindow } from "@/screens/transactions/anomaly-window";
+type AnomalyDateFilter = string;
+type AnomalyFilters = { category: string; date: AnomalyDateFilter; reason: string };
 
-type Period = "previous" | "current" | "future";
+function matchesAnomalyFilters(anomaly: AIAnomaly, filters: AnomalyFilters) {
+  const categoryKey = anomaly.categoryId === null ? "uncategorized" : String(anomaly.categoryId);
+  return (
+    (filters.category === "all" || categoryKey === filters.category) &&
+    (filters.date === "all" || anomaly.date.slice(0, 7) === filters.date) &&
+    (filters.reason === "all" || anomaly.reasonCodes?.includes(filters.reason))
+  );
+}
 
-const periodLabels: Record<Period, string> = {
-  previous: "Tháng trước",
-  current: "Tháng này",
-  future: "Tương lai",
+const anomalyReasonLabels: Record<string, string> = {
+  HIGH_VS_USER_MEDIAN: "Cao hơn mức thường",
+  HIGH_VS_CATEGORY_MEDIAN: "Cao trong danh mục",
+  HIGH_USER_ROBUST_Z: "Lệch khỏi lịch sử",
+  HIGH_CATEGORY_ROBUST_Z: "Lệch khỏi danh mục",
+  WEEKEND_TRANSACTION: "Cuối tuần",
+  UNUSUAL_FEATURE_COMBINATION: "Mẫu chi tiêu lạ",
 };
 
 function useTransactionStyles() {
@@ -26,15 +46,7 @@ function useTransactionStyles() {
 }
 
 function formatMoney(amount: number, currency = "VND") {
-  return new Intl.NumberFormat("vi-VN", { currency, maximumFractionDigits: 0, style: "currency" }).format(amount);
-}
-
-function getPeriodRange(period: Period) {
-  const now = new Date();
-  const offset = period === "previous" ? -1 : period === "future" ? 1 : 0;
-  const year = now.getFullYear();
-  const month = now.getMonth() + offset;
-  return { start: new Date(year, month, 1), end: new Date(year, month + 1, 1) };
+  return new Intl.NumberFormat("vi-VN", { currency, maximumFractionDigits: 0, style: "currency" }).format(amount).replace(/\s*₫$/, "đ");
 }
 
 function isPositive(type: TransactionType) {
@@ -44,365 +56,588 @@ function isPositive(type: TransactionType) {
 export default function TransactionsScreen() {
   const theme = useAppTheme();
   const styles = useTransactionStyles();
-  const [period, setPeriod] = useState<Period>("current");
+  const [filters, setFilters] = useState<TransactionFilters>(emptyTransactionFilters);
   const [accounts, setAccounts] = useState<FinancialAccount[]>([]);
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [selectedAccountId, setSelectedAccountId] = useState<number | null>(null);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const listRef = useRef<FlatList<Transaction>>(null);
+  const [showScrollToTop, setShowScrollToTop] = useState(false);
+  const { transactions, totalCount, isLoading, isRefreshing, isLoadingMore, error: transactionError, loadMoreError, hasMore, reload, loadMore } = useTransactionFeed({
+    accountId: filters.accountId,
+    categoryId: filters.categoryId,
+    ...getTransactionMonthRange(filters.month),
+  });
+  const selectedAccountId = filters.accountId;
   const [isAccountPickerOpen, setIsAccountPickerOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const hasLoadedDataRef = useRef(false);
+  const [isUtilitiesOpen, setIsUtilitiesOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [monthlySpending, setMonthlySpending] = useState<CategorySpendingResponse | null>(null);
   const [showAnomaliesOnly, setShowAnomaliesOnly] = useState(false);
-  const { analysis, refresh: refreshAI } = useAIAnalysis();
+  const [anomalyCategoryFilter, setAnomalyCategoryFilter] = useState("all");
+  const [anomalyDateFilter, setAnomalyDateFilter] = useState<AnomalyDateFilter>("all");
+  const [anomalyReasonFilter, setAnomalyReasonFilter] = useState("all");
+  const [showAllAnomalies, setShowAllAnomalies] = useState(false);
+  const [isAnomalyFilterOpen, setIsAnomalyFilterOpen] = useState(false);
+  const { analysis, isLoading: isAnalysisLoading, error: analysisError, refresh: refreshAI } = useAIAnalysis();
+  const anomalyWindow = useMemo(() => getAnomalyWindow(analysis?.forecast?.asOf, analysis?.metadata?.periodDays), [analysis]);
 
-  const loadData = useCallback(
-    async ({ refresh = false, silent = false } = {}) => {
-      try {
-        if (refresh) {
-          setIsRefreshing(true);
-        } else if (!silent) {
-          setIsLoading(true);
-        }
-        const [accountResponse, transactionResponse] = await Promise.all([
-          financialAccountApi.list(),
-          transactionsApi.list({ accountId: selectedAccountId }),
-          ...(refresh ? [refreshAI()] : []),
-        ]);
-        setAccounts(Array.isArray(accountResponse.data) ? accountResponse.data : []);
-        setTransactions(Array.isArray(transactionResponse.data) ? transactionResponse.data : []);
-        hasLoadedDataRef.current = true;
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Vui lòng thử lại sau.";
+  const loadMonthlySpending = useCallback(async () => {
+    try {
+      const response = await transactionsApi.categorySpending();
+      setMonthlySpending(response.data);
+    } catch (error) {
+      console.warn("Không tải được tổng quan chi tiêu tháng", error);
+    }
+  }, []);
 
-        if (silent) {
-          console.warn("Không tải được giao dịch", error);
-        } else {
-          Alert.alert("Không tải được giao dịch", message);
-        }
-      } finally {
-        if (!silent) {
-          setIsLoading(false);
-        }
-        setIsRefreshing(false);
-      }
-    },
-    [refreshAI, selectedAccountId],
-  );
+  const loadFilterCategories = useCallback(async () => {
+    try {
+      const response = await categoriesApi.list();
+      setCategories(Array.isArray(response.data) ? response.data : []);
+    } catch (error) {
+      console.warn("Không tải được danh mục bộ lọc", error);
+    }
+  }, []);
+
+  const loadAccounts = useCallback(async () => {
+    try {
+      const response = await financialAccountApi.list();
+      setAccounts(Array.isArray(response.data) ? response.data : []);
+    } catch (error) {
+      console.warn("Không tải được danh sách ví", error);
+    }
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
       void refreshAI();
-      loadData({ silent: hasLoadedDataRef.current });
-    }, [loadData, refreshAI]),
+      void loadAccounts();
+    }, [loadAccounts, refreshAI]),
   );
 
+  useFocusEffect(
+    useCallback(() => {
+      void loadMonthlySpending();
+      void loadFilterCategories();
+    }, [loadFilterCategories, loadMonthlySpending]),
+  );
+
+  const anomalies = useMemo(
+    () => (analysis?.anomalies ?? []).filter((anomaly) => {
+      if (!anomaly.isAnomaly) return false;
+      const day = calendarDay(anomaly.date);
+      return anomalyWindow === null || (day !== null && day >= anomalyWindow.start && day <= anomalyWindow.end);
+    }),
+    [analysis, anomalyWindow],
+  );
+  const anomalyCategories = useMemo(() => {
+    const categories = new Map<string, string>();
+
+    anomalies.forEach((anomaly) => {
+      const key = anomaly.categoryId === null ? "uncategorized" : String(anomaly.categoryId);
+      categories.set(key, anomaly.category || "Chưa phân loại");
+    });
+
+    return [...categories.entries()].sort((left, right) => left[1].localeCompare(right[1], "vi"));
+  }, [anomalies]);
+  const anomalyReasons = useMemo(
+    () => [...new Set(anomalies.flatMap((anomaly) => anomaly.reasonCodes ?? []))].sort(),
+    [anomalies],
+  );
+  const filteredAnomalies = useMemo(() => {
+    return anomalies
+      .filter((anomaly) => matchesAnomalyFilters(anomaly, { category: anomalyCategoryFilter, date: anomalyDateFilter, reason: anomalyReasonFilter }))
+      .filter((anomaly) => !searchQuery.trim() || [anomaly.category, String(anomaly.amount), ...(anomaly.reasonCodes ?? []).map((code) => anomalyReasonLabels[code] ?? code)].some((text) => text.toLocaleLowerCase("vi").includes(searchQuery.trim().toLocaleLowerCase("vi"))))
+      .sort((left, right) => right.anomalyScore - left.anomalyScore);
+  }, [anomalies, anomalyCategoryFilter, anomalyDateFilter, anomalyReasonFilter, searchQuery]);
   const anomalyIds = useMemo(
-    () =>
-      new Set(
-        (analysis?.anomalies ?? []).filter((anomaly) => anomaly.isAnomaly).map((anomaly) => anomaly.transactionId),
-      ),
-    [analysis],
+    () => new Set(anomalies.flatMap((anomaly) => anomaly.transactionId === null ? [] : [anomaly.transactionId])),
+    [anomalies],
   );
 
   const filteredTransactions = useMemo(() => {
-    const { start, end } = getPeriodRange(period);
     return (transactions ?? [])
       .filter((transaction) => {
+        if (!transaction?.transactionDate) {
+          return false;
+        }
+
         const date = new Date(transaction.transactionDate);
-        return (
-          date >= start && date < end && (selectedAccountId === null || transaction.accountId === selectedAccountId)
-        );
+        const matchesAccount = selectedAccountId === null || transaction.accountId === selectedAccountId;
+        const matchesCategory = filters.categoryId === null || transaction.categoryId === filters.categoryId;
+        const query = searchQuery.trim().toLocaleLowerCase("vi");
+        const matchesSearch = !query || [transaction.description, transaction.categoryName, String(transaction.amount)]
+          .some((value) => value?.toLocaleLowerCase("vi").includes(query));
+
+        if (Number.isNaN(date.getTime()) || !matchesAccount || !matchesCategory || !matchesSearch) {
+          return false;
+        }
+
+        return filters.month === null || `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}` === filters.month;
       })
-      .sort((left, right) => new Date(right.transactionDate).getTime() - new Date(left.transactionDate).getTime());
-  }, [period, selectedAccountId, transactions]);
+      .sort((left, right) => {
+        const dateDifference = new Date(right.transactionDate).getTime() - new Date(left.transactionDate).getTime();
 
-  const summary = useMemo(() => {
-    const incoming = filteredTransactions
-      .filter((transaction) => isPositive(transaction.type))
-      .reduce((sum, transaction) => sum + transaction.amount, 0);
-    const outgoing = filteredTransactions
-      .filter((transaction) => !isPositive(transaction.type))
-      .reduce((sum, transaction) => sum + transaction.amount, 0);
-    return { incoming, outgoing, net: incoming - outgoing };
-  }, [filteredTransactions]);
-
-  const groupedTransactions = useMemo(() => {
-    const transactionsToDisplay = showAnomaliesOnly
-      ? filteredTransactions.filter((transaction) => anomalyIds.has(transaction.id))
-      : filteredTransactions;
-    const groups = new Map<string, Transaction[]>();
-    transactionsToDisplay.forEach((transaction) => {
-      const key = new Date(transaction.transactionDate).toISOString().slice(0, 10);
-      groups.set(key, [...(groups.get(key) ?? []), transaction]);
-    });
-    return [...groups.entries()];
-  }, [anomalyIds, filteredTransactions, showAnomaliesOnly]);
+        return dateDifference || right.id - left.id;
+      });
+  }, [filters, searchQuery, selectedAccountId, transactions]);
 
   const selectedAccount = (accounts ?? []).find((account) => account.id === selectedAccountId);
   const currency = selectedAccount?.currency ?? (accounts ?? [])[0]?.currency ?? "VND";
-  const netRatio = summary.incoming ? Math.min(100, Math.max(0, (summary.net / summary.incoming) * 100)) : 0;
   const currentMonth = new Date().getMonth() + 1;
-  const visibleAnomalyCount = filteredTransactions.filter((transaction) => anomalyIds.has(transaction.id)).length;
-  const displayedTransactionCount = showAnomaliesOnly ? visibleAnomalyCount : filteredTransactions.length;
+  const overviewMonth = monthlySpending?.currentPeriod.month ?? currentMonth;
+  const spendingDifference = monthlySpending ? monthlySpending.totalAmount - monthlySpending.compareTotalAmount : null;
+  const listFilterCount = Number(filters.month !== null) + Number(filters.accountId !== null) + Number(filters.categoryId !== null);
+  const openMonthlyOverview = () => {
+    requestSpendingStatsFromTransactions();
+    router.navigate("/(tabs)/user");
+  };
+  const visibleAnomalyCount = anomalies.length;
+  const displayedTransactionCount = showAnomaliesOnly ? filteredAnomalies.length : filteredTransactions.length;
+  const activeFilterCount = [anomalyCategoryFilter, anomalyDateFilter, anomalyReasonFilter].filter((value) => value !== "all").length;
+  const activeFilterLabels = [
+    anomalyCategoryFilter !== "all" ? anomalyCategories.find(([key]) => key === anomalyCategoryFilter)?.[1] : null,
+    anomalyDateFilter !== "all" ? anomalyWindow?.months.find((month) => month.value === anomalyDateFilter)?.label : null,
+    anomalyReasonFilter !== "all" ? anomalyReasonLabels[anomalyReasonFilter] ?? anomalyReasonFilter : null,
+  ].filter(Boolean).join(" · ");
 
   return (
     <FocusedScreenTransition reanimateOnFocus={false}>
       <SafeAreaView style={styles.screen} edges={["top"]}>
-        <ScrollView
+        <ScreenGradientBackground />
+        <FlatList
+          ref={listRef}
+          data={showAnomaliesOnly || isLoading ? [] : filteredTransactions}
+          keyExtractor={(item) => String(item.id)}
+          renderItem={({ item, index }) => (
+            <TransactionListItem
+              transaction={item}
+              showMonth={index === 0 || getTransactionMonth(item.transactionDate) !== getTransactionMonth(filteredTransactions[index - 1].transactionDate)}
+              isAnomaly={anomalyIds.has(item.id)}
+              currency={currency}
+            />
+          )}
+          onEndReached={() => { if (!showAnomaliesOnly && !searchQuery.trim()) void loadMore(); }}
+          onEndReachedThreshold={0.4}
+          initialNumToRender={12}
+          maxToRenderPerBatch={10}
+          windowSize={7}
+          onScroll={({ nativeEvent }) => {
+            const visible = nativeEvent.contentOffset.y > 500;
+            setShowScrollToTop((current) => current === visible ? current : visible);
+          }}
+          scrollEventThrottle={100}
           contentContainerStyle={styles.content}
           refreshControl={
             <RefreshControl
               refreshing={isRefreshing}
-              onRefresh={() => loadData({ refresh: true })}
+              onRefresh={() => {
+                void reload({ refresh: true });
+                void loadAccounts();
+                void loadMonthlySpending();
+                void loadFilterCategories();
+                void refreshAI();
+              }}
               tintColor={theme.primary}
             />
           }
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
           showsVerticalScrollIndicator={false}
-        >
-          <View style={styles.header}>
-            <View>
-              <Text style={styles.eyebrow}>Quản lý tài chính</Text>
-              <Text style={styles.title}>Sổ giao dịch</Text>
+          ListHeaderComponent={<>
+          <View style={styles.ledgerTop}>
+            <View style={styles.searchToolbar}>
+              <View style={styles.searchField}>
+                <Search size={20} color={theme.textMuted} />
+                <TextInput
+                  accessibilityLabel="Tìm kiếm giao dịch"
+                  placeholder="Tìm kiếm giao dịch"
+                  placeholderTextColor={theme.textMuted}
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                  returnKeyType="search"
+                  style={styles.searchInput}
+                />
+                {searchQuery ? (
+                  <Pressable accessibilityLabel="Xóa tìm kiếm" hitSlop={8} onPress={() => setSearchQuery("")}>
+                    <X size={16} color={theme.textMuted} />
+                  </Pressable>
+                ) : null}
+              </View>
+              <Pressable accessibilityRole="button" accessibilityLabel="Bộ lọc giao dịch" onPress={() => showAnomaliesOnly ? setIsAnomalyFilterOpen(true) : setIsAccountPickerOpen(true)} style={styles.toolbarButton}>
+                <Funnel size={21} color={theme.text} />
+                {(showAnomaliesOnly ? activeFilterCount : listFilterCount) > 0 ? <View style={styles.toolbarBadge}><Text style={styles.toolbarBadgeText}>{showAnomaliesOnly ? activeFilterCount : listFilterCount}</Text></View> : null}
+              </Pressable>
+              <Pressable accessibilityRole="button" accessibilityLabel="Tiện ích giao dịch" onPress={() => setIsUtilitiesOpen(true)} style={styles.toolbarButton}>
+                <LayoutGrid size={21} color={theme.text} />
+              </Pressable>
             </View>
-            <Pressable
-              style={styles.monthOverviewButton}
-              onPress={() => {
-                requestSpendingStatsFromTransactions();
-                router.push("/(tabs)/user");
-              }}
-            >
-              <Text style={styles.monthOverviewText}>Tổng Quan Tháng {currentMonth}</Text>
-              <Text style={styles.monthOverviewArrow}>›</Text>
-            </Pressable>
+            <View style={styles.monthOverview}>
+              <Pressable accessibilityRole="button" onPress={openMonthlyOverview} style={styles.overviewHeading}>
+                <Text style={styles.overviewTitle}>Tổng quan tháng {overviewMonth}</Text>
+                <View style={styles.overviewArrow}><ChevronRight size={20} color={theme.primary} /></View>
+              </Pressable>
+              <View style={styles.overviewMetrics}>
+                <Pressable onPress={openMonthlyOverview} style={styles.overviewMetric}>
+                  <Text style={styles.overviewMetricLabel}>Tổng chi</Text>
+                  <View style={styles.overviewAmountRow}>
+                    <Text adjustsFontSizeToFit numberOfLines={1} minimumFontScale={0.7} style={styles.overviewMetricValue}>
+                      {monthlySpending ? formatMoney(monthlySpending.totalAmount) : "--"}
+                    </Text>
+                    <ChevronRight size={14} color={theme.textMuted} />
+                  </View>
+                </Pressable>
+                <Pressable onPress={openMonthlyOverview} style={styles.overviewMetric}>
+                  <Text style={styles.overviewMetricLabel}>So với cùng kỳ</Text>
+                  <View style={styles.overviewAmountRow}>
+                    {spendingDifference !== null ? (
+                      spendingDifference > 0 ? <ArrowUp size={16} color={theme.warning} /> : spendingDifference < 0 ? <ArrowDown size={16} color={theme.goodText} /> : null
+                    ) : null}
+                    <Text adjustsFontSizeToFit numberOfLines={1} minimumFontScale={0.7} style={[styles.overviewMetricValue, { color: spendingDifference !== null && spendingDifference > 0 ? theme.warning : theme.goodText }]}>
+                      {spendingDifference !== null ? formatMoney(Math.abs(spendingDifference)) : "--"}
+                    </Text>
+                    <ChevronRight size={14} color={theme.textMuted} />
+                  </View>
+                </Pressable>
+              </View>
+              <Pressable onPress={() => router.navigate("/(tabs)/budgets")} style={styles.budgetPrompt}>
+                <Text style={styles.budgetPromptText}>Bạn muốn tiết kiệm tiền hơn?</Text>
+                <Text style={styles.budgetPromptAction}>Đặt ngân sách</Text>
+              </Pressable>
+            </View>
           </View>
 
-          <Pressable style={styles.selector} onPress={() => setIsAccountPickerOpen((open) => !open)}>
-            <View>
-              <Text style={styles.selectorLabel}>Đang xem giao dịch của</Text>
-              <Text style={styles.selectorValue}>{selectedAccount?.name ?? "Tổng cộng"}</Text>
-            </View>
-            <Text style={styles.chevron}>{isAccountPickerOpen ? "⌃" : "⌄"}</Text>
-          </Pressable>
-          {isAccountPickerOpen && (
-            <View style={styles.pickerMenu}>
-              <AccountOption
-                label="Tổng cộng"
-                selected={selectedAccountId === null}
-                onPress={() => {
-                  setSelectedAccountId(null);
-                  setIsAccountPickerOpen(false);
-                }}
-              />
-              {(accounts ?? []).map((account) => (
-                <AccountOption
-                  key={account.id}
-                  label={account.name}
-                  selected={selectedAccountId === account.id}
-                  onPress={() => {
-                    setSelectedAccountId(account.id);
-                    setIsAccountPickerOpen(false);
-                  }}
-                />
-              ))}
-            </View>
-          )}
-
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.periodTabs}>
-            {(Object.keys(periodLabels) as Period[]).map((item) => (
-              <Pressable
-                key={item}
-                onPress={() => setPeriod(item)}
-                style={[styles.periodTab, period === item && styles.periodTabActive]}
-              >
-                <Text style={[styles.periodTabText, period === item && styles.periodTabTextActive]}>
-                  {periodLabels[item]}
+          <View accessibilityRole="tablist" style={styles.ledgerTabs}>
+            {[{ label: "Tất cả giao dịch", selected: !showAnomaliesOnly, value: false }, { label: "Bất thường", selected: showAnomaliesOnly, value: true }].map((tab) => (
+              <Pressable key={tab.label} accessibilityRole="tab" accessibilityState={{ selected: tab.selected }} onPress={() => setShowAnomaliesOnly(tab.value)} style={[styles.ledgerTab, tab.selected && styles.ledgerTabSelected]}>
+                <Text style={[styles.ledgerTabText, tab.selected && styles.ledgerTabTextSelected]}>
+                  {tab.label}{tab.value ? <> · <Text style={{ color: theme.dangerText, fontWeight: "700" }}>{visibleAnomalyCount}</Text></> : null}
                 </Text>
               </Pressable>
             ))}
-          </ScrollView>
-
-          <View style={styles.summaryCard}>
-            <Text style={styles.cardTitle}>{periodLabels[period]}</Text>
-            <Text style={styles.availableBalance}>Số dư khả dụng</Text>
-            <Text style={styles.availableValue}>{formatMoney(summary.net, currency)}</Text>
-            <View style={styles.summaryGrid}>
-              <SummaryItem label="Dòng tiền vào" value={summary.incoming} color={theme.goodText} currency={currency} />
-              <SummaryItem label="Dòng tiền ra" value={summary.outgoing} color={theme.dangerText} currency={currency} />
-              <SummaryItem
-                label="Dòng tiền ròng"
-                value={summary.net}
-                color={summary.net >= 0 ? theme.goodText : theme.dangerText}
-                currency={currency}
-              />
-            </View>
           </View>
-
-          <Pressable style={styles.reportButton} onPress={() => router.push("/transaction-report")}>
-            <Text style={styles.reportButtonText}>Xem báo cáo cho giai đoạn này</Text>
-            <Text style={styles.reportArrow}>›</Text>
-          </Pressable>
-
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Lịch sử giao dịch</Text>
-            <Text style={styles.sectionMeta}>{displayedTransactionCount} giao dịch</Text>
+            <Text style={styles.sectionTitle}>{showAnomaliesOnly ? "Giao dịch bất thường" : "Giao dịch gần đây"}</Text>
+            <Text style={styles.sectionMeta}>
+              {showAnomaliesOnly ? `${displayedTransactionCount} giao dịch` : `${displayedTransactionCount}/${totalCount}`}
+            </Text>
           </View>
-          {visibleAnomalyCount > 0 ? (
-            <View style={styles.anomalyBanner}>
-              <Text style={styles.anomalyBannerIcon}>⚡</Text>
-              <View style={styles.anomalyBannerCopy}>
-                <Text style={styles.anomalyBannerText}>
-                  Phát hiện {visibleAnomalyCount} giao dịch có biến động chi tiêu bất thường
-                </Text>
+          {showAnomaliesOnly ? (
+            <View>
+              <Text style={styles.analysisPeriod}>{anomalyWindow ? `${anomalyWindow.days} ngày · ${anomalyWindow.label}` : "Chưa có mốc thời gian phân tích"}</Text>
+              {(analysis?.anomalySummary?.anomalyCount ?? 0) > anomalies.length ? <Text style={styles.analysisPeriod}>Đã nhận {anomalies.length}/{analysis?.anomalySummary?.anomalyCount} giao dịch được AI đánh dấu</Text> : null}
+              <View style={styles.anomalyToolbar}>
+                <Text style={styles.anomalyResultCount}>{filteredAnomalies.length} giao dịch</Text>
                 <Pressable
-                  onPress={() => setShowAnomaliesOnly((currentValue) => !currentValue)}
-                  style={styles.anomalyBannerButton}
+                  accessibilityRole="button"
+                  accessibilityLabel={activeFilterCount ? `Bộ lọc, ${activeFilterCount} điều kiện đang chọn` : "Bộ lọc giao dịch bất thường"}
+                  onPress={() => setIsAnomalyFilterOpen(true)}
+                  style={styles.anomalyFilterButton}
                 >
-                  <Text style={styles.anomalyBannerButtonText}>
-                    {showAnomaliesOnly ? "Xem tất cả giao dịch" : "Xem danh sách bất thường"}
-                  </Text>
-                  <Text style={styles.anomalyBannerButtonArrow}>{showAnomaliesOnly ? "‹" : "›"}</Text>
+                  <SlidersHorizontal size={18} color={theme.text} />
+                  {activeFilterCount > 0 ? <Text style={styles.anomalyFilterBadge}>{activeFilterCount}</Text> : null}
                 </Pressable>
               </View>
+              {activeFilterCount > 0 ? (
+                <View style={styles.anomalyActiveFilters}>
+                  <Text style={styles.anomalyActiveFilterText}>{activeFilterLabels}</Text>
+                  <Pressable
+                    accessibilityLabel="Xóa bộ lọc"
+                    accessibilityRole="button"
+                    hitSlop={8}
+                    onPress={() => {
+                      setAnomalyCategoryFilter("all");
+                      setAnomalyDateFilter("all");
+                      setAnomalyReasonFilter("all");
+                      setShowAllAnomalies(false);
+                    }}
+                  >
+                    <X size={16} color={theme.textMuted} />
+                  </Pressable>
+                </View>
+              ) : null}
+              {!analysis && isAnalysisLoading ? <TransactionSkeleton /> : filteredAnomalies.length === 0 ? (
+                <View style={styles.empty}>
+                  <Text style={styles.emptyTitle}>{!analysis ? "Chưa có kết quả phân tích" : activeFilterCount || searchQuery.trim() ? "Không có giao dịch phù hợp" : "Chưa có giao dịch được đánh dấu"}</Text>
+                  <Text style={styles.emptyText}>{!analysis ? (analysisError?.message || "Cập nhật phân tích tại Tổng quan.") : analysis.anomalySummary?.status !== "ok" && analysis.anomalySummary?.notes?.length ? analysis.anomalySummary.notes.join(" ") : anomalyWindow ? `Trong kỳ ${anomalyWindow.label}.` : "Chưa có dữ liệu bất thường trong kết quả AI."}</Text>
+                </View>
+              ) : (
+                (showAllAnomalies ? filteredAnomalies : filteredAnomalies.slice(0, 5)).map((anomaly) => (
+                  <AnomalyRow key={anomaly.transactionId ?? `${anomaly.date}-${anomaly.amount}`} anomaly={anomaly} />
+                ))
+              )}
+              {filteredAnomalies.length > 5 ? (
+                <Pressable onPress={() => setShowAllAnomalies((show) => !show)} style={styles.showMoreAnomalies}>
+                  <Text style={styles.showMoreAnomaliesText}>
+                    {showAllAnomalies ? "Thu gọn" : `Xem thêm ${filteredAnomalies.length - 5} giao dịch`}
+                  </Text>
+                </Pressable>
+              ) : null}
             </View>
           ) : null}
-          {isLoading ? (
-            <TransactionSkeleton />
-          ) : groupedTransactions.length === 0 ? (
-            <EmptyState />
-          ) : (
-            groupedTransactions.map(([date, items]) => (
-              <TransactionDay key={date} anomalyIds={anomalyIds} currency={currency} date={date} transactions={items} />
-            ))
-          )}
-
-          <View style={styles.netCard}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Thu nhập ròng</Text>
-              <Text style={[styles.netValue, { color: summary.net >= 0 ? theme.goodText : theme.dangerText }]}>
-                {formatMoney(summary.net, currency)}
-              </Text>
+          </>}
+          ListEmptyComponent={!showAnomaliesOnly ? isLoading ? <TransactionSkeleton /> : !transactionError ? <EmptyState /> : null : null}
+          ListFooterComponent={!showAnomaliesOnly ? (
+            <View style={styles.feedFooter}>
+              {isLoadingMore ? <ActivityIndicator accessibilityLabel="Đang tải thêm giao dịch" color={theme.primary} /> : transactionError || loadMoreError ? <>
+                <Text style={styles.emptyText}>{transactionError || loadMoreError}</Text>
+                <Pressable accessibilityRole="button" onPress={() => transactionError ? void reload() : void loadMore({ retry: true })} style={styles.feedRetry}>
+                  <Text style={styles.feedRetryText}>Thử lại</Text>
+                </Pressable>
+              </> : hasMore && searchQuery.trim() ? <Pressable accessibilityRole="button" onPress={() => void loadMore()} style={styles.feedRetry}><Text style={styles.feedRetryText}>Tải thêm giao dịch</Text></Pressable> : !isLoading && !hasMore && transactions.length > 0 ? <Text style={styles.sectionMeta}>Đã hiển thị tất cả giao dịch</Text> : null}
             </View>
-            <Text style={styles.helperText}>Khoản thu trừ khoản chi trong kỳ</Text>
-            <View style={styles.progressTrack}>
-              <View style={[styles.progressFill, { width: `${netRatio}%` }]} />
-            </View>
-            <Text style={styles.progressLabel}>{Math.round(netRatio)}% dòng tiền vào còn lại</Text>
+          ) : null}
+        />
+        {showScrollToTop && !isAccountPickerOpen && !isUtilitiesOpen && !isAnomalyFilterOpen ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Lên đầu danh sách"
+            accessibilityHint="Cuộn về đầu để chọn tháng hoặc đổi bộ lọc"
+            onPress={() => listRef.current?.scrollToOffset({ offset: 0, animated: true })}
+            style={({ pressed }) => [styles.scrollToTop, pressed && { opacity: 0.8 }]}
+          >
+            <ArrowUp size={22} color={theme.textInverse} strokeWidth={2} />
+          </Pressable>
+        ) : null}
+        <TransactionFilterScreen
+          visible={isAccountPickerOpen}
+          initialFilters={filters}
+          accounts={accounts}
+          categories={categories}
+          onClose={() => setIsAccountPickerOpen(false)}
+          onApply={(nextFilters) => {
+            listRef.current?.scrollToOffset({ offset: 0, animated: false });
+            setFilters(nextFilters);
+            setIsAccountPickerOpen(false);
+          }}
+          onHome={() => { setIsAccountPickerOpen(false); router.navigate("/(tabs)/home"); }}
+          onSupport={() => { setIsAccountPickerOpen(false); router.push("/ai-chat"); }}
+        />
+        <BottomPopup visible={isUtilitiesOpen} onRequestClose={() => setIsUtilitiesOpen(false)}>
+          <View style={styles.filterModal}>
+            <Pressable accessibilityLabel="Đóng tiện ích" onPress={() => setIsUtilitiesOpen(false)} style={StyleSheet.absoluteFill} />
+            <BottomPopupSheet style={styles.filterSheet}>
+              <View style={styles.filterHandle} />
+              <View style={styles.filterSheetHeader}>
+                <Text style={styles.filterSheetTitle}>Tiện ích giao dịch</Text>
+                <Pressable accessibilityLabel="Đóng" onPress={() => setIsUtilitiesOpen(false)} style={styles.filterIconButton}><X size={20} color={theme.textMuted} /></Pressable>
+              </View>
+              <View style={styles.filterSheetContent}>
+                <Pressable style={styles.utilityRow} onPress={() => { setIsUtilitiesOpen(false); openMonthlyOverview(); }}>
+                  <ChartNoAxesCombined color={theme.primary} size={22} /><Text style={styles.utilityLabel}>Tổng quan tháng {overviewMonth}</Text><ChevronRight color={theme.textMuted} size={18} />
+                </Pressable>
+                <Pressable style={styles.utilityRow} onPress={() => { setIsUtilitiesOpen(false); router.navigate("/(tabs)/budgets"); }}>
+                  <Wallet color={theme.primary} size={22} /><Text style={styles.utilityLabel}>Ngân sách</Text><ChevronRight color={theme.textMuted} size={18} />
+                </Pressable>
+                <Pressable style={styles.utilityRow} onPress={() => { setIsUtilitiesOpen(false); setShowAnomaliesOnly((value) => !value); }}>
+                  <Sparkles color={theme.warning} size={22} /><Text style={styles.utilityLabel}>{showAnomaliesOnly ? "Tất cả giao dịch" : "Giao dịch bất thường"}</Text><ChevronRight color={theme.textMuted} size={18} />
+                </Pressable>
+              </View>
+              <View style={styles.sheetBottomSpace} />
+            </BottomPopupSheet>
           </View>
-
-          <View style={styles.breakdownCard}>
-            <Text style={styles.sectionTitle}>Báo cáo theo nhóm</Text>
-            <View style={styles.breakdownRow}>
-              <Donut value={summary.incoming} color={theme.goodText} label="Thu nhập" />
-              <Donut value={summary.outgoing} color={theme.dangerText} label="Chi tiêu" />
-            </View>
-          </View>
-          <View style={styles.otherCard}>
-            <Text style={styles.sectionTitle}>Nợ, cho vay và khác</Text>
-            <SummaryItem label="Nợ" value={0} color={theme.dangerText} currency={currency} />
-            <SummaryItem label="Cho vay" value={0} color={theme.warning} currency={currency} />
-            <SummaryItem label="Khác" value={0} color={theme.textSubtle} currency={currency} />
-          </View>
-        </ScrollView>
+        </BottomPopup>
+          <AnomalyFilterSheet
+            visible={isAnomalyFilterOpen}
+            months={anomalyWindow?.months ?? []}
+            periodLabel={anomalyWindow?.label}
+            anomalies={anomalies}
+            categories={anomalyCategories}
+            reasons={anomalyReasons}
+            initialFilters={{ category: anomalyCategoryFilter, date: anomalyDateFilter, reason: anomalyReasonFilter }}
+            onClose={() => setIsAnomalyFilterOpen(false)}
+            onApply={(filters) => {
+              setAnomalyCategoryFilter(filters.category);
+              setAnomalyDateFilter(filters.date);
+              setAnomalyReasonFilter(filters.reason);
+              setShowAllAnomalies(false);
+              setIsAnomalyFilterOpen(false);
+            }}
+          />
       </SafeAreaView>
     </FocusedScreenTransition>
   );
 }
 
-function AccountOption({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
+function AnomalyFilterSheet({
+  visible,
+  months,
+  periodLabel,
+  anomalies,
+  categories,
+  reasons,
+  initialFilters,
+  onClose,
+  onApply,
+}: {
+  visible: boolean;
+  months: { value: string; label: string }[];
+  periodLabel?: string;
+  anomalies: AIAnomaly[];
+  categories: [string, string][];
+  reasons: string[];
+  initialFilters: AnomalyFilters;
+  onClose: () => void;
+  onApply: (filters: AnomalyFilters) => void;
+}) {
+  const theme = useAppTheme();
   const styles = useTransactionStyles();
+  const insets = useSafeAreaInsets();
+  const [draft, setDraft] = useState(initialFilters);
+  const [section, setSection] = useState<keyof AnomalyFilters | null>(null);
+  const [wasVisible, setWasVisible] = useState(visible);
+  if (visible !== wasVisible) {
+    setWasVisible(visible);
+    if (visible) {
+      setDraft(initialFilters);
+      setSection(null);
+    }
+  }
+  const groups = [
+    { key: "category" as const, label: "Danh mục", options: [{ value: "all", label: "Tất cả danh mục" }, ...categories.map(([value, label]) => ({ value, label }))] },
+    { key: "date" as const, label: "Tháng phân tích", options: [{ value: "all", label: "Toàn bộ kỳ phân tích" }, ...months] },
+    { key: "reason" as const, label: "Lý do", options: [{ value: "all", label: "Mọi lý do" }, ...reasons.map((value) => ({ value, label: anomalyReasonLabels[value] ?? value }))] },
+  ];
+  const activeGroup = groups.find((group) => group.key === section);
+  const resultCount = anomalies.filter((anomaly) => matchesAnomalyFilters(anomaly, draft)).length;
 
   return (
-    <Pressable style={styles.pickerOption} onPress={onPress}>
-      <Text style={styles.pickerOptionText}>{label}</Text>
-      <Text style={styles.check}>{selected ? "✓" : ""}</Text>
-    </Pressable>
+    <BottomPopup transparent visible={visible} onRequestClose={onClose}>
+      <View style={styles.filterModal}>
+        <Pressable accessibilityLabel="Đóng bộ lọc" onPress={onClose} style={StyleSheet.absoluteFill} />
+        <BottomPopupSheet accessibilityViewIsModal style={[styles.filterSheet, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+          <View style={styles.filterHandle} />
+          <View style={styles.filterSheetHeader}>
+            {activeGroup ? (
+              <Pressable accessibilityLabel="Quay lại bộ lọc" onPress={() => setSection(null)} style={styles.filterIconButton}>
+                <ChevronLeft size={22} color={theme.text} />
+              </Pressable>
+            ) : <View style={styles.filterIconButton} />}
+            <Text accessibilityRole="header" style={styles.filterSheetTitle}>{activeGroup?.label ?? "Bộ lọc bất thường"}</Text>
+            <Pressable accessibilityLabel="Đóng bộ lọc" onPress={onClose} style={styles.filterIconButton}>
+              <X size={20} color={theme.textMuted} />
+            </Pressable>
+          </View>
+          {periodLabel ? <Text style={styles.analysisPeriod}>{periodLabel}</Text> : null}
+          <ScrollView style={styles.filterSheetScroll} contentContainerStyle={styles.filterSheetContent}>
+            {activeGroup ? activeGroup.options.map((option) => (
+              <Pressable
+                key={option.value}
+                accessibilityRole="radio"
+                accessibilityState={{ checked: draft[activeGroup.key] === option.value }}
+                onPress={() => {
+                  setDraft((current) => ({ ...current, [activeGroup.key]: option.value }));
+                  setSection(null);
+                }}
+                style={styles.filterOptionRow}
+              >
+                <Text style={[styles.filterOptionText, draft[activeGroup.key] === option.value && { color: theme.primary }]}>{option.label}</Text>
+                {draft[activeGroup.key] === option.value ? <Check size={20} color={theme.primary} /> : <View style={styles.filterCheckSpace} />}
+              </Pressable>
+            )) : groups.map((group) => (
+              <Pressable key={group.key} onPress={() => setSection(group.key)} style={styles.filterOptionRow}>
+                <View style={styles.filterRowCopy}>
+                  <Text style={styles.filterRowLabel}>{group.label}</Text>
+                  <Text style={styles.filterRowValue}>{group.options.find((option) => option.value === draft[group.key])?.label}</Text>
+                </View>
+                <ChevronRight size={18} color={theme.textMuted} />
+              </Pressable>
+            ))}
+          </ScrollView>
+          <View style={styles.filterSheetFooter}>
+            <Pressable onPress={() => { setDraft({ category: "all", date: "all", reason: "all" }); setSection(null); }} style={styles.filterReset}>
+              <Text style={styles.filterResetText}>Đặt lại</Text>
+            </Pressable>
+            <Pressable onPress={() => onApply(draft)} style={styles.filterApply}>
+              <Text style={styles.filterApplyText}>Xem {resultCount} giao dịch</Text>
+            </Pressable>
+          </View>
+        </BottomPopupSheet>
+      </View>
+    </BottomPopup>
   );
 }
 
-function SummaryItem({
-  label,
-  value,
-  color,
-  currency,
-}: {
-  label: string;
-  value: number;
-  color: string;
-  currency: string;
-}) {
+function AnomalyRow({ anomaly }: { anomaly: AIAnomaly }) {
   const styles = useTransactionStyles();
+  const anomalyDate = new Date(anomaly.date);
+  const dateLabel = Number.isNaN(anomalyDate.getTime())
+    ? anomaly.date
+    : new Intl.DateTimeFormat("vi-VN", { day: "2-digit", month: "short", year: "numeric" }).format(anomalyDate);
 
   return (
-    <View style={styles.summaryItem}>
-      <Text style={styles.summaryLabel}>{label}</Text>
-      <Text style={[styles.summaryValue, { color }]}>{formatMoney(value, currency)}</Text>
+    <View style={styles.anomalyRow}>
+      <View style={styles.anomalyRowHeader}>
+        <View style={styles.anomalyRowCopy}>
+          <Text style={styles.anomalyRowCategory}>{anomaly.category || "Chưa phân loại"}</Text>
+          <Text style={styles.anomalyRowDate}>{dateLabel} · #{anomaly.transactionId ?? "—"}</Text>
+        </View>
+        <Text style={styles.anomalyRowAmount}>{formatMoney(anomaly.amount)}</Text>
+      </View>
+      <View style={styles.anomalyRowFooter}>
+        <Text style={styles.anomalyRowReasons}>
+          {(anomaly.reasonCodes ?? []).slice(0, 2).map((reason) => anomalyReasonLabels[reason] ?? reason).join(" · ") || "Được AI đánh dấu bất thường"}
+        </Text>
+        <Text style={styles.anomalyScore}>Điểm {anomaly.anomalyScore.toFixed(2)}</Text>
+      </View>
     </View>
   );
 }
 
-function TransactionDay({
-  anomalyIds,
-  date,
-  transactions,
+function getTransactionMonth(date: string) {
+  const value = new Date(date);
+  return `${value.getFullYear()}-${value.getMonth()}`;
+}
+
+function TransactionListItem({
+  isAnomaly,
+  showMonth,
+  transaction,
   currency,
 }: {
-  anomalyIds: Set<number>;
-  date: string;
-  transactions: Transaction[];
+  isAnomaly: boolean;
+  showMonth: boolean;
+  transaction: Transaction;
   currency: string;
 }) {
   const theme = useAppTheme();
   const styles = useTransactionStyles();
+  const date = transaction.transactionDate;
+  const positive = isPositive(transaction.type);
+  const transfer = transaction.type === "TransferIn" || transaction.type === "TransferOut";
+  const Icon = positive ? ArrowDownToLine : transfer ? Landmark : ReceiptText;
+  const iconColor = positive ? theme.goodText : transfer ? theme.avatar : theme.warning;
 
-  const movement = (transactions ?? []).reduce(
-    (sum, transaction) => sum + (isPositive(transaction.type) ? transaction.amount : -transaction.amount),
-    0,
-  );
   return (
     <View style={styles.dayGroup}>
-      <View style={styles.dayHeader}>
+      {showMonth ? <View style={styles.dayHeader}>
         <Text style={styles.dayTitle}>
-          {new Intl.DateTimeFormat("vi-VN", { day: "numeric", month: "long", year: "numeric" }).format(new Date(date))}
+          Tháng {String(new Date(date).getMonth() + 1).padStart(2, "0")}/{new Date(date).getFullYear()}
         </Text>
-        <Text style={[styles.dayTotal, { color: movement >= 0 ? theme.goodText : theme.dangerText }]}>
-          {formatMoney(movement, currency)}
-        </Text>
-      </View>
-      {(transactions ?? []).map((transaction) => (
+      </View> : null}
         <View key={transaction.id} style={styles.transactionRow}>
-          <View
-            style={[
-              styles.transactionIcon,
-              { backgroundColor: isPositive(transaction.type) ? theme.goodBackground : theme.warningBackground },
-            ]}
-          >
-            <Text style={{ color: isPositive(transaction.type) ? theme.goodText : theme.dangerText, fontSize: 18 }}>
-              {isPositive(transaction.type) ? "↗" : "↘"}
-            </Text>
+          <View style={styles.transactionIcon}>
+            <Icon color={iconColor} size={24} strokeWidth={1.8} />
           </View>
           <View style={styles.transactionCopy}>
             <View style={styles.transactionTitleRow}>
-              <Text style={styles.transactionTitle}>{transaction.categoryName}</Text>
-              {anomalyIds.has(transaction.id) ? (
-                <View style={styles.anomalyTag}>
-                  <Text style={styles.anomalyIcon}>⚡</Text>
-                  <Text style={styles.anomalyTagText}>BẤT THƯỜNG</Text>
-                </View>
-              ) : null}
+              <Text numberOfLines={3} style={styles.transactionTitle}>{transaction.description || transaction.categoryName || (positive ? "Nhận tiền" : "Chi tiêu")}</Text>
             </View>
-            <Text style={styles.transactionDescription}>{transaction.description || "Không có ghi chú"}</Text>
+            <Text style={styles.transactionDescription}>{new Intl.DateTimeFormat("vi-VN", { hour: "2-digit", minute: "2-digit" }).format(new Date(transaction.transactionDate))} - {new Intl.DateTimeFormat("vi-VN", { day: "2-digit", month: "2-digit" }).format(new Date(transaction.transactionDate))}</Text>
+            {isAnomaly ? <Text style={styles.anomalyTagText}>Bất thường</Text> : null}
           </View>
           <Text
+            adjustsFontSizeToFit
+            minimumFontScale={0.75}
+            numberOfLines={1}
             style={[
               styles.transactionAmount,
-              { color: isPositive(transaction.type) ? theme.goodText : theme.dangerText },
+              { color: positive ? theme.goodText : theme.text },
             ]}
           >
-            {isPositive(transaction.type) ? "+" : "-"}
+            {positive ? "+" : "-"}
             {formatMoney(transaction.amount, currency)}
           </Text>
         </View>
-      ))}
     </View>
   );
 }
@@ -438,124 +673,54 @@ function TransactionSkeleton() {
   );
 }
 
-function Donut({ value, color, label }: { value: number; color: string; label: string }) {
-  const styles = useTransactionStyles();
-
-  return (
-    <View style={styles.donutItem}>
-      <View style={[styles.donut, { borderColor: color }]}>
-        <Text style={styles.donutValue}>{value ? Math.round(value / 1000) : 0}k</Text>
-      </View>
-      <Text style={styles.donutLabel}>{label}</Text>
-    </View>
-  );
-}
-
 function createStyles(theme: AppTheme) {
   return StyleSheet.create({
+    scrollToTop: { position: "absolute", right: 20, bottom: 20, width: 48, height: 48, borderRadius: 24, alignItems: "center", justifyContent: "center", backgroundColor: theme.primary, zIndex: 5, elevation: 4, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 5 },
+    feedFooter: { alignItems: "center", gap: 10, paddingHorizontal: 16, paddingVertical: 20 },
+    feedRetry: { minHeight: 44, justifyContent: "center", paddingHorizontal: 16 },
+    feedRetryText: { color: theme.primary, fontSize: 14, fontWeight: "600" },
+    ledgerTabs: { flexDirection: "row", marginHorizontal: 12, marginTop: 16, borderBottomWidth: 1, borderBottomColor: theme.border },
+    ledgerTab: { flex: 1, minHeight: 46, alignItems: "center", justifyContent: "center", paddingHorizontal: 6, borderBottomWidth: 2, borderBottomColor: "transparent" },
+    ledgerTabSelected: { borderBottomColor: theme.primary },
+    ledgerTabText: { fontSize: 14, lineHeight: 20, color: theme.textMuted, fontWeight: "500", textAlign: "center" },
+    ledgerTabTextSelected: { color: theme.primary, fontWeight: "700" },
+    analysisPeriod: { color: theme.textMuted, fontSize: 12, lineHeight: 18, marginHorizontal: 16, marginBottom: 8 },
     screen: { backgroundColor: theme.screen, flex: 1 },
-    content: { padding: 16, paddingBottom: 96 },
-    header: {
-      alignItems: "center",
-      flexDirection: "row",
-      justifyContent: "space-between",
-      marginBottom: 18,
-      marginTop: 12,
-    },
-    eyebrow: { color: theme.textMuted, fontSize: 12 },
-    title: { color: theme.text, fontSize: 27, fontWeight: "800", marginTop: 3 },
-    monthOverviewButton: {
-      alignItems: "center",
-      backgroundColor: theme.primaryPressed,
-      borderColor: theme.primary,
-      borderRadius: 18,
-      borderWidth: 1,
-      flexDirection: "row",
-      gap: 6,
-      justifyContent: "center",
-      minHeight: 38,
-      paddingHorizontal: 12,
-    },
-    monthOverviewText: { color: theme.primary, fontSize: 12, fontWeight: "800" },
-    monthOverviewArrow: { color: theme.primary, fontSize: 19, fontWeight: "800", lineHeight: 19 },
-    selector: {
-      alignItems: "center",
-      backgroundColor: theme.card,
-      borderColor: theme.border,
-      borderRadius: 12,
-      borderWidth: 1,
-      flexDirection: "row",
-      justifyContent: "space-between",
-      padding: 14,
-    },
-    selectorLabel: { color: theme.textMuted, fontSize: 11 },
-    selectorValue: { color: theme.text, fontSize: 16, fontWeight: "700", marginTop: 3 },
-    chevron: { color: theme.text, fontSize: 22 },
-    pickerMenu: {
-      backgroundColor: theme.card,
-      borderColor: theme.border,
-      borderRadius: 10,
-      borderWidth: 1,
-      marginTop: 5,
-      overflow: "hidden",
-    },
-    pickerOption: {
-      alignItems: "center",
-      borderBottomColor: theme.border,
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      flexDirection: "row",
-      justifyContent: "space-between",
-      padding: 13,
-    },
-    pickerOptionText: { color: theme.text, fontSize: 14 },
-    check: { color: theme.primary, fontSize: 18, fontWeight: "700" },
-    periodTabs: { gap: 8, paddingVertical: 16 },
-    periodTab: { backgroundColor: theme.cardAlt, borderRadius: 18, paddingHorizontal: 16, paddingVertical: 9 },
-    periodTabActive: { backgroundColor: theme.primary },
-    periodTabText: { color: theme.textSubtle, fontSize: 13, fontWeight: "600" },
-    periodTabTextActive: { color: theme.textInverse },
-    summaryCard: {
-      backgroundColor: theme.card,
-      borderColor: theme.border,
-      borderRadius: 15,
-      borderWidth: 1,
-      padding: 16,
-    },
-    cardTitle: { color: theme.textMuted, fontSize: 13 },
-    availableBalance: { color: theme.textMuted, fontSize: 12, marginTop: 15 },
-    availableValue: { color: theme.text, fontSize: 28, fontWeight: "800", marginTop: 3 },
-    summaryGrid: {
-      borderTopColor: theme.border,
-      borderTopWidth: 1,
-      flexDirection: "row",
-      marginTop: 16,
-      paddingTop: 13,
-    },
-    summaryItem: { flex: 1 },
-    summaryLabel: { color: theme.textMuted, fontSize: 11 },
-    summaryValue: { fontSize: 13, fontWeight: "700", marginTop: 4 },
-    reportButton: {
-      alignItems: "center",
-      backgroundColor: theme.goodBackground,
-      borderRadius: 10,
-      flexDirection: "row",
-      justifyContent: "center",
-      marginTop: 12,
-      padding: 13,
-    },
-    reportButtonText: { color: theme.goodText, fontSize: 14, fontWeight: "700" },
-    reportArrow: { color: theme.goodText, fontSize: 22, marginLeft: 8 },
+    content: { paddingBottom: 88 },
+    ledgerTop: { paddingTop: 16, paddingBottom: 4 },
+    searchToolbar: { alignItems: "center", flexDirection: "row", gap: 8, paddingHorizontal: 16, marginBottom: 16 },
+    searchField: { alignItems: "center", flexDirection: "row", flex: 1, minWidth: 0, gap: 8, minHeight: 44, paddingHorizontal: 12, backgroundColor: theme.inputBackground, borderRadius: 24 },
+    searchInput: { flex: 1, minWidth: 0, fontSize: 14, color: theme.text, paddingVertical: 10 },
+    toolbarButton: { alignItems: "center", justifyContent: "center", height: 44, width: 44, borderRadius: 22, backgroundColor: theme.card, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.border },
+    toolbarBadge: { position: "absolute", right: -2, top: -2, minWidth: 16, height: 16, borderRadius: 8, alignItems: "center", justifyContent: "center", backgroundColor: theme.primary },
+    toolbarBadgeText: { color: theme.textInverse, fontSize: 10, fontWeight: "700" },
+    monthOverview: { backgroundColor: theme.card, borderRadius: 8, marginHorizontal: 12, padding: 12 },
+    overviewHeading: { alignItems: "center", flexDirection: "row", gap: 12, marginBottom: 8 },
+    overviewTitle: { color: theme.text, fontSize: 18, fontWeight: "700", flex: 1 },
+    overviewArrow: { alignItems: "center", justifyContent: "center", width: 28, height: 28, backgroundColor: theme.primaryPressed, borderRadius: 14 },
+    overviewMetrics: { flexDirection: "row", gap: 8 },
+    overviewMetric: { flex: 1, minWidth: 0, borderRadius: 8, borderColor: theme.border, borderWidth: 1, padding: 10, minHeight: 64, justifyContent: "center" },
+    overviewMetricLabel: { color: theme.textMuted, fontSize: 13, marginBottom: 6 },
+    overviewAmountRow: { alignItems: "center", flexDirection: "row", gap: 3 },
+    overviewMetricValue: { color: theme.text, fontSize: 15, fontWeight: "700", flexShrink: 1 },
+    budgetPrompt: { alignItems: "center", flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", gap: 8, backgroundColor: theme.primaryPressed, paddingVertical: 10, paddingHorizontal: 12, marginTop: 8, borderRadius: 8 },
+    budgetPromptText: { color: theme.textSoft, fontSize: 12, lineHeight: 18, flexShrink: 1 },
+    budgetPromptAction: { color: theme.primary, fontSize: 13, lineHeight: 18, fontWeight: "700" },
+    utilityRow: { alignItems: "center", flexDirection: "row", minHeight: 64, gap: 12, borderBottomColor: theme.border, borderBottomWidth: StyleSheet.hairlineWidth },
+    utilityLabel: { color: theme.text, fontSize: 14, flex: 1 },
+    sheetBottomSpace: { height: 32 },
     sectionHeader: {
       alignItems: "center",
       flexDirection: "row",
       justifyContent: "space-between",
-      marginBottom: 10,
-      marginTop: 20,
+      paddingHorizontal: 16,
+      marginBottom: 14,
+      marginTop: 22,
     },
-    sectionTitle: { color: theme.text, fontSize: 17, fontWeight: "800" },
+    sectionTitle: { color: theme.text, fontSize: 20, fontWeight: "700", flexShrink: 1 },
     sectionMeta: { color: theme.textMuted, fontSize: 12 },
     skeletonGroup: {
-      backgroundColor: theme.card,
+      backgroundColor: theme.listSurface,
       borderColor: theme.border,
       borderRadius: 14,
       borderWidth: 1,
@@ -597,6 +762,7 @@ function createStyles(theme: AppTheme) {
       flexDirection: "row",
       gap: 8,
       marginBottom: 10,
+      marginHorizontal: 16,
       paddingHorizontal: 12,
       paddingVertical: 10,
     },
@@ -606,101 +772,85 @@ function createStyles(theme: AppTheme) {
     anomalyBannerButton: { alignItems: "center", flexDirection: "row", gap: 4, alignSelf: "flex-start" },
     anomalyBannerButtonText: { color: theme.warning, fontSize: 12, fontWeight: "900" },
     anomalyBannerButtonArrow: { color: theme.warning, fontSize: 18, fontWeight: "900", lineHeight: 18 },
-    loader: { margin: 30 },
+    anomalyToolbar: { alignItems: "center", flexDirection: "row", justifyContent: "space-between", marginBottom: 10, marginHorizontal: 16 },
+    anomalyResultCount: { color: theme.textMuted, fontSize: 12, fontWeight: "600" },
+    anomalyFilterButton: { alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 6, minWidth: 44, height: 44, borderRadius: 8, borderWidth: 1, borderColor: theme.border, paddingHorizontal: 10 },
+    anomalyFilterBadge: { color: theme.primary, fontSize: 12, fontWeight: "800" },
+    anomalyActiveFilters: { alignItems: "center", flexDirection: "row", gap: 12, marginBottom: 14, marginHorizontal: 16 },
+    anomalyActiveFilterText: { color: theme.textMuted, fontSize: 12, lineHeight: 18, flex: 1 },
+    filterModal: { flex: 1, justifyContent: "flex-end", backgroundColor: theme.overlay },
+    filterSheet: { backgroundColor: theme.sheet, borderTopLeftRadius: 8, borderTopRightRadius: 8, maxHeight: "80%" },
+    filterHandle: { alignSelf: "center", backgroundColor: theme.borderStrong, borderRadius: 2, width: 32, height: 4, marginTop: 10, marginBottom: 6 },
+    filterSheetHeader: { alignItems: "center", flexDirection: "row", paddingHorizontal: 12, paddingBottom: 8, borderBottomColor: theme.border, borderBottomWidth: StyleSheet.hairlineWidth },
+    filterSheetTitle: { color: theme.text, fontSize: 16, fontWeight: "700", flex: 1, textAlign: "center" },
+    filterIconButton: { alignItems: "center", justifyContent: "center", width: 44, height: 44 },
+    filterSheetScroll: { flexShrink: 1 },
+    filterSheetContent: { paddingHorizontal: 20 },
+    filterOptionRow: { alignItems: "center", flexDirection: "row", gap: 16, minHeight: 62, paddingVertical: 14, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.border },
+    filterRowCopy: { flex: 1, gap: 5 },
+    filterRowLabel: { color: theme.textMuted, fontSize: 12 },
+    filterRowValue: { color: theme.text, fontSize: 14, lineHeight: 20, fontWeight: "600" },
+    filterOptionText: { color: theme.text, fontSize: 14, lineHeight: 21, flex: 1 },
+    filterCheckSpace: { width: 20, height: 20 },
+    filterSheetFooter: { alignItems: "center", flexDirection: "row", gap: 16, paddingTop: 18, paddingHorizontal: 20 },
+    filterReset: { alignItems: "center", justifyContent: "center", minWidth: 64, minHeight: 48 },
+    filterResetText: { color: theme.textMuted, fontSize: 14, fontWeight: "600" },
+    filterApply: { alignItems: "center", justifyContent: "center", flex: 1, minHeight: 48, paddingHorizontal: 12, paddingVertical: 12, backgroundColor: theme.primary, borderRadius: 8 },
+    filterApplyText: { color: theme.textInverse, fontSize: 14, fontWeight: "700", textAlign: "center" },
+    anomalyRow: { backgroundColor: theme.listSurface, borderBottomColor: theme.listDivider, borderBottomWidth: StyleSheet.hairlineWidth, padding: 16 },
+    anomalyRowHeader: { alignItems: "center", flexDirection: "row", justifyContent: "space-between", gap: 10 },
+    anomalyRowCopy: { flex: 1 },
+    anomalyRowCategory: { color: theme.text, fontSize: 13, fontWeight: "800" },
+    anomalyRowDate: { color: theme.textMuted, fontSize: 10, marginTop: 3 },
+    anomalyRowAmount: { color: theme.warning, fontSize: 13, fontWeight: "900" },
+    anomalyRowFooter: { alignItems: "center", flexDirection: "row", justifyContent: "space-between", gap: 8, marginTop: 9 },
+    anomalyRowReasons: { color: theme.textSubtle, flex: 1, fontSize: 10, lineHeight: 14 },
+    anomalyScore: { color: theme.warning, fontSize: 10, fontWeight: "800" },
+    showMoreAnomalies: { alignItems: "center", paddingVertical: 12 },
+    showMoreAnomaliesText: { color: theme.primary, fontSize: 12, fontWeight: "800" },
     dayGroup: {
-      backgroundColor: theme.card,
-      borderColor: theme.border,
-      borderRadius: 14,
-      borderWidth: 1,
-      marginBottom: 10,
-      overflow: "hidden",
-      paddingHorizontal: 14,
+      backgroundColor: theme.listSurface,
+      paddingHorizontal: 12,
+      paddingTop: 4,
     },
     dayHeader: {
       alignItems: "center",
-      borderBottomColor: theme.border,
-      borderBottomWidth: 1,
+      backgroundColor: theme.listHeader,
+      borderRadius: 8,
       flexDirection: "row",
       justifyContent: "space-between",
-      paddingVertical: 13,
+      paddingVertical: 12,
+      paddingHorizontal: 12,
     },
-    dayTitle: { color: theme.text, fontSize: 13, fontWeight: "700" },
-    dayTotal: { fontSize: 13, fontWeight: "700" },
+    dayTitle: { color: theme.textSoft, fontSize: 15, fontWeight: "700" },
     transactionRow: {
-      alignItems: "center",
-      borderBottomColor: theme.border,
+      alignItems: "flex-start",
+      borderBottomColor: theme.listDivider,
       borderBottomWidth: StyleSheet.hairlineWidth,
       flexDirection: "row",
-      paddingVertical: 12,
+      paddingVertical: 18,
+      paddingHorizontal: 2,
+      minHeight: 96,
     },
     transactionIcon: {
       alignItems: "center",
-      borderRadius: 18,
-      height: 36,
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: theme.border,
+      height: 40,
       justifyContent: "center",
-      marginRight: 11,
-      width: 36,
+      marginRight: 10,
+      width: 40,
     },
-    transactionCopy: { flex: 1 },
+    transactionCopy: { flex: 1, minWidth: 0 },
     transactionTitleRow: { alignItems: "center", flexDirection: "row", gap: 6 },
-    transactionTitle: { color: theme.text, fontSize: 14, fontWeight: "700" },
-    transactionDescription: { color: theme.textSubtle, fontSize: 11, marginTop: 3 },
-    anomalyTag: {
-      alignItems: "center",
-      backgroundColor: theme.warningBackground,
-      borderRadius: 9,
-      flexDirection: "row",
-      gap: 3,
-      paddingHorizontal: 6,
-      paddingVertical: 3,
-    },
-    anomalyIcon: { color: theme.warning, fontSize: 12, fontWeight: "900" },
-    anomalyTagText: { color: theme.warning, fontSize: 9, fontWeight: "900" },
-    transactionAmount: { fontSize: 13, fontWeight: "700", marginLeft: 8 },
-    netCard: {
-      backgroundColor: theme.card,
-      borderColor: theme.border,
-      borderRadius: 14,
-      borderWidth: 1,
-      marginTop: 10,
-      padding: 15,
-    },
-    netValue: { fontSize: 15, fontWeight: "800" },
-    helperText: { color: theme.textMuted, fontSize: 12 },
-    progressTrack: {
-      backgroundColor: theme.progressTrack,
-      borderRadius: 5,
-      height: 9,
-      marginTop: 12,
-      overflow: "hidden",
-    },
-    progressFill: { backgroundColor: theme.primary, borderRadius: 5, height: "100%" },
-    progressLabel: { color: theme.textMuted, fontSize: 11, marginTop: 6 },
-    breakdownCard: {
-      backgroundColor: theme.card,
-      borderColor: theme.border,
-      borderRadius: 14,
-      borderWidth: 1,
-      marginTop: 12,
-      padding: 15,
-    },
-    breakdownRow: { flexDirection: "row", justifyContent: "space-around", paddingTop: 15 },
-    donutItem: { alignItems: "center" },
-    donut: { alignItems: "center", borderRadius: 52, borderWidth: 14, height: 90, justifyContent: "center", width: 90 },
-    donutValue: { color: theme.text, fontSize: 13, fontWeight: "800" },
-    donutLabel: { color: theme.textMuted, fontSize: 12, marginTop: 8 },
-    otherCard: {
-      backgroundColor: theme.card,
-      borderColor: theme.border,
-      borderRadius: 14,
-      borderWidth: 1,
-      gap: 12,
-      marginTop: 12,
-      padding: 15,
-    },
+    transactionTitle: { color: theme.textSoft, fontSize: 14, lineHeight: 21, fontWeight: "600", flex: 1 },
+    transactionDescription: { color: theme.textMuted, fontSize: 11, lineHeight: 16, marginTop: 7 },
+    anomalyTagText: { color: theme.warning, fontSize: 10, fontWeight: "700", marginTop: 4 },
+    transactionAmount: { fontSize: 15, lineHeight: 21, fontWeight: "700", marginLeft: 8, maxWidth: "38%", textAlign: "right" },
     empty: {
       alignItems: "center",
-      backgroundColor: theme.card,
+      backgroundColor: theme.listSurface,
       borderColor: theme.border,
       borderRadius: 14,
       borderWidth: 1,

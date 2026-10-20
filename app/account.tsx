@@ -16,6 +16,7 @@ import {
 
 import { AccountType, FinancialAccount, financialAccountApi } from "@/api/financialAccountApi";
 import { FocusedScreenTransition } from "@/components/screen-transition";
+import { ScreenGradientBackground } from "@/components/screen-gradient-background";
 import { useAppTheme } from "@/hooks/use-app-theme";
 import type { AppTheme } from "@/theme/appTheme";
 import { getAccountCurrentBalance } from "@/utils/accountBalance";
@@ -191,6 +192,7 @@ export default function AccountScreen() {
   if (view === "add-options") {
     return (
       <FocusedScreenTransition style={styles.screen} triggerKey={view} variant="slide-left">
+        <ScreenGradientBackground darkOnly />
         <View style={styles.walletHeader}>
           <Pressable onPress={() => setView("wallets")} hitSlop={12}>
             <Text style={styles.closeText}>×</Text>
@@ -225,6 +227,7 @@ export default function AccountScreen() {
     return (
       <FocusedScreenTransition style={styles.screen} triggerKey={view} variant="slide-left">
         <KeyboardAvoidingView behavior={Platform.select({ ios: "padding", default: undefined })} style={styles.screen}>
+          <ScreenGradientBackground darkOnly />
           <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
             <View style={styles.topBar}>
               <Pressable onPress={handleCloseForm} hitSlop={12}>
@@ -318,6 +321,7 @@ export default function AccountScreen() {
   if (view === "wallets") {
     return (
       <FocusedScreenTransition style={styles.screen} triggerKey={view} variant="slide-right">
+        <ScreenGradientBackground darkOnly />
         <View style={styles.walletHeader}>
           <Pressable onPress={() => router.back()} hitSlop={12}>
             <Text style={styles.backText}>‹</Text>
@@ -572,7 +576,7 @@ function createStyles(theme: AppTheme) {
     field: { gap: 8 },
     label: { color: theme.text, fontSize: 14, fontWeight: "700" },
     input: {
-      backgroundColor: theme.card,
+      backgroundColor: theme.inputBackground,
       borderColor: theme.border,
       borderRadius: 8,
       borderWidth: 1,

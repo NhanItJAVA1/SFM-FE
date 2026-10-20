@@ -1,3 +1,4 @@
+import { BottomPopup, BottomPopupPressable } from "@/components/bottom-popup";
 import DateTimePicker, { DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import { router } from "expo-router";
 import { SymbolView } from "expo-symbols";
@@ -520,14 +521,14 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
         ) : null}
       </ScrollView>
 
-      <Modal
-        animationType="slide"
+      <BottomPopup
+        animationType="fade"
         transparent
         visible={isAccountPickerVisible}
         onRequestClose={() => setIsAccountPickerVisible(false)}
       >
         <Pressable style={styles.modalOverlay} onPress={() => setIsAccountPickerVisible(false)}>
-          <Pressable style={styles.bottomSheet}>
+          <BottomPopupPressable style={styles.bottomSheet}>
             <View style={styles.sheetHeader}>
               <Text style={styles.sheetTitle}>Chọn ví</Text>
               <Pressable onPress={() => setIsAccountPickerVisible(false)} hitSlop={12}>
@@ -565,9 +566,9 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
                 })
               )}
             </ScrollView>
-          </Pressable>
+          </BottomPopupPressable>
         </Pressable>
-      </Modal>
+      </BottomPopup>
 
       {isDatePickerVisible && Platform.OS === "android" ? (
         <DateTimePicker
@@ -578,14 +579,14 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
         />
       ) : null}
 
-      <Modal
-        animationType="slide"
+      <BottomPopup
+        animationType="fade"
         transparent
         visible={isDatePickerVisible && Platform.OS !== "android"}
         onRequestClose={() => setIsDatePickerVisible(false)}
       >
         <Pressable style={styles.modalOverlay} onPress={() => setIsDatePickerVisible(false)}>
-          <Pressable style={styles.smallBottomSheet}>
+          <BottomPopupPressable style={styles.smallBottomSheet}>
             <View style={styles.datePickerHeader}>
               <Pressable onPress={() => setIsDatePickerVisible(false)} hitSlop={10}>
                 <Text style={[styles.datePickerAction, { color: theme.textSubtle }]}>Hủy</Text>
@@ -605,12 +606,12 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
               themeVariant={themeMode}
               style={styles.datePicker}
             />
-          </Pressable>
+          </BottomPopupPressable>
         </Pressable>
-      </Modal>
+      </BottomPopup>
 
-      <Modal
-        animationType="slide"
+      <BottomPopup
+        animationType="fade"
         transparent
         visible={isAmountEditorVisible}
         onRequestClose={() => setIsAmountEditorVisible(false)}
@@ -620,7 +621,7 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
           style={styles.keyboardModalOverlay}
         >
           <Pressable style={styles.amountModalDismissArea} onPress={() => setIsAmountEditorVisible(false)}>
-            <Pressable style={styles.smallBottomSheet} onPress={(event) => event.stopPropagation()}>
+            <BottomPopupPressable style={styles.smallBottomSheet} onPress={(event) => event.stopPropagation()}>
               <Text style={styles.sheetTitle}>Sửa tổng tiền</Text>
               <TextInput
                 autoFocus
@@ -644,19 +645,19 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
                   <Text style={styles.createCategoryButtonText}>Lưu</Text>
                 </Pressable>
               </View>
-            </Pressable>
+            </BottomPopupPressable>
           </Pressable>
         </KeyboardAvoidingView>
-      </Modal>
+      </BottomPopup>
 
-      <Modal
-        animationType="slide"
+      <BottomPopup
+        animationType="fade"
         transparent
         visible={isTypePickerVisible}
         onRequestClose={() => setIsTypePickerVisible(false)}
       >
         <Pressable style={styles.modalOverlay} onPress={() => setIsTypePickerVisible(false)}>
-          <Pressable style={styles.bottomSheet}>
+          <BottomPopupPressable style={styles.bottomSheet}>
             <View style={styles.sheetHeader}>
               <Text style={styles.sheetTitle}>Chọn loại giao dịch</Text>
               <Pressable onPress={() => setIsTypePickerVisible(false)} hitSlop={12}>
@@ -682,12 +683,12 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
                 );
               })}
             </View>
-          </Pressable>
+          </BottomPopupPressable>
         </Pressable>
-      </Modal>
+      </BottomPopup>
 
-      <Modal
-        animationType="slide"
+      <BottomPopup
+        animationType="fade"
         transparent
         visible={isCategoryPickerVisible}
         onRequestClose={() => setIsCategoryPickerVisible(false)}
@@ -700,7 +701,7 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
             }
           }}
         >
-          <Pressable style={styles.bottomSheet}>
+          <BottomPopupPressable style={styles.bottomSheet}>
             <View style={styles.sheetHeader}>
               <Text style={styles.sheetTitle}>Chọn category</Text>
               <View style={styles.sheetActions}>
@@ -815,9 +816,9 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
                 </Pressable>
               </KeyboardAvoidingView>
             ) : null}
-          </Pressable>
+          </BottomPopupPressable>
         </Pressable>
-      </Modal>
+      </BottomPopup>
 
       <Modal animationType="slide" visible={isBillEditorVisible} onRequestClose={() => setIsBillEditorVisible(false)}>
         <KeyboardAvoidingView
@@ -1011,7 +1012,7 @@ function createStyles(theme: AppTheme) {
     aiHint: { color: theme.primary, fontSize: 12, fontWeight: "800" },
     categoryGrid: { gap: 10, paddingTop: 8 },
     categoryInput: {
-      backgroundColor: theme.card,
+      backgroundColor: theme.inputBackground,
       borderColor: theme.border,
       borderRadius: 8,
       borderWidth: 1,
@@ -1149,7 +1150,7 @@ function createStyles(theme: AppTheme) {
       paddingBottom: 20,
     },
     smallBottomSheet: {
-      backgroundColor: theme.card,
+      backgroundColor: theme.sheet,
       borderTopLeftRadius: 8,
       borderTopRightRadius: 8,
       gap: 14,

@@ -78,15 +78,15 @@ export type BudgetAlert = {
 };
 
 export const budgetsApi = {
-  list: () => axiosClient.get<Budget[]>('/budgets'),
-  get: (id: number) => axiosClient.get<Budget>(`/budgets/${id}`),
-  create: (payload: BudgetPayload) => axiosClient.post('/budgets', payload),
-  update: (id: number, payload: BudgetPayload) => axiosClient.put(`/budgets/${id}`, payload),
-  remove: (id: number) => axiosClient.delete(`/budgets/${id}`),
-  progressSummary: () => axiosClient.get<BudgetProgress[]>('/budgets/progress-summary'),
-  getProgress: (budgetId: number) => axiosClient.get<BudgetProgress>(`/budgets/${budgetId}/progress`),
+  list: () => axiosClient.get<Budget[]>('/v1/budgets'),
+  get: (id: number) => axiosClient.get<Budget>(`/v1/budgets/${id}`),
+  create: (payload: BudgetPayload) => axiosClient.post('/v1/budgets', payload),
+  update: (id: number, payload: BudgetPayload) => axiosClient.put(`/v1/budgets/${id}`, payload),
+  remove: (id: number) => axiosClient.delete(`/v1/budgets/${id}`),
+  progressSummary: () => axiosClient.get<BudgetProgress[]>('/v1/budgets/progress-summary'),
+  getProgress: (budgetId: number) => axiosClient.get<BudgetProgress>(`/v1/budgets/${budgetId}/progress`),
   getProgressDetail: (budgetId: number) =>
-    axiosClient.get<BudgetProgressDetail>(`/budgets/${budgetId}/progress-detail`),
-  listAlerts: () => axiosClient.get<BudgetAlert[]>('/budget-alerts'),
-  markAlertRead: (id: number) => axiosClient.post(`/budget-alerts/${id}/read`),
+    axiosClient.get<BudgetProgressDetail>(`/v1/budgets/${budgetId}/progress-detail`),
+  listAlerts: () => axiosClient.get<BudgetAlert[]>('/v1/budget-alerts'),
+  markAlertRead: (id: number) => axiosClient.post(`/v1/budget-alerts/${id}/read`),
 };

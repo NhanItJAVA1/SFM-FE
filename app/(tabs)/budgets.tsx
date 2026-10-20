@@ -1,4 +1,5 @@
 import { useFocusEffect } from "expo-router";
+import { ScreenGradientBackground } from "@/components/screen-gradient-background";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Animated, Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
 
@@ -232,6 +233,7 @@ export default function BudgetsScreen() {
 
   return (
     <FocusedScreenTransition style={styles.screen}>
+      <ScreenGradientBackground />
       <View style={styles.header}>
         <Text style={styles.title}>Ngân sách Đang áp dụng</Text>
         {budgets.length > 0 ? (

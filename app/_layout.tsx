@@ -4,8 +4,10 @@ import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
 import { restoreAuthSession } from '@/stores/persistedAuthSession';
 import { restoreThemeMode } from '@/stores/themePreference';
+import { useAppTheme } from '@/hooks/use-app-theme';
 
 export default function RootLayout() {
+  const theme = useAppTheme();
   const [isRestoringSession, setIsRestoringSession] = useState(true);
 
   useEffect(() => {
@@ -19,19 +21,18 @@ export default function RootLayout() {
 
   if (isRestoringSession) {
     return (
-      <View style={styles.loadingScreen}>
-        <ActivityIndicator color="#31c452" />
+      <View style={[styles.loadingScreen, { backgroundColor: theme.screen }]}>
+        <ActivityIndicator color={theme.primary} />
       </View>
     );
   }
 
-  return <Stack screenOptions={{ headerShown: false }} />;
+  return <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.screen } }} />;
 }
 
 const styles = StyleSheet.create({
   loadingScreen: {
     alignItems: 'center',
-    backgroundColor: '#020204',
     flex: 1,
     justifyContent: 'center',
   },

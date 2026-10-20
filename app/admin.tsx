@@ -1,27 +1,43 @@
+import { BottomPopup, BottomPopupSheet } from "@/components/bottom-popup";
+import * as DocumentPicker from "expo-document-picker";
 import { router, useFocusEffect } from "expo-router";
-import { useCallback, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+  Banknote,
+  Briefcase,
+  Car,
+  CircleDollarSign,
+  Eye,
+  Gamepad2,
+  Gift,
+  GraduationCap,
+  HeartPulse,
+  Home,
+  MoreHorizontal,
+  MoreVertical,
+  Pencil,
+  PiggyBank,
+  Plane,
+  Receipt,
+  RotateCw,
+  ShoppingBag,
+  Trash2,
+  Utensils,
+  Wallet,
+} from "lucide-react-native";
+import { type ComponentType, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { adminApi } from "@/api/adminApi";
-import type { AuthUser } from "@/api/authApi";
+import {
+  adminApi,
+  type AdminUser,
+  type AdminUserRole,
+  type AdminUserStatus,
+} from "@/api/adminApi";
 import { authApi } from "@/api/authApi";
 import { type Category, type CategoryType } from "@/api/categoriesApi";
+import { RAG_DOCUMENT_UPLOAD_CONTENT_TYPE, ragDocumentsApi, type RagDocument } from "@/api/ragDocumentsApi";
 import { transactionsApi, type Transaction } from "@/api/transactionsApi";
-import { usersApi } from "@/api/usersApi";
 import { FocusedScreenTransition } from "@/components/screen-transition";
 import { useAppTheme } from "@/hooks/use-app-theme";
 import { getAuthRefreshToken, getAuthUser } from "@/stores/authSession";
@@ -29,18 +45,75 @@ import { clearAuthSession } from "@/stores/persistedAuthSession";
 import type { AppTheme } from "@/theme/appTheme";
 import { isAdminUser } from "@/utils/authRole";
 
-type AdminView = "dashboard" | "users" | "categories";
+type AdminView = "dashboard" | "users" | "categories" | "documents";
 type CategoryFormState = {
   icon: string;
   name: string;
   type: CategoryType;
 };
+type CategoryIconComponent = ComponentType<{
+  color?: string;
+  size?: number;
+  strokeWidth?: number;
+}>;
+type CategoryIconOption = {
+  Icon: CategoryIconComponent;
+  key: string;
+  label: string;
+};
+type RagUploadFormState = {
+  title: string;
+  description: string;
+  fileName: string;
+  fileType: string;
+  ragCategory: string;
+  asset: DocumentPicker.DocumentPickerAsset | null;
+};
+type RagMetadataFormState = {
+  title: string;
+  description: string;
+  ragCategory: string;
+};
 
 const emptyCategoryForm: CategoryFormState = {
-  icon: "other",
+  icon: "",
   name: "",
   type: "Expense",
 };
+const emptyRagUploadForm: RagUploadFormState = {
+  asset: null,
+  description: "",
+  fileName: "",
+  fileType: "",
+  ragCategory: "General",
+  title: "",
+};
+const emptyRagMetadataForm: RagMetadataFormState = {
+  description: "",
+  ragCategory: "General",
+  title: "",
+};
+const supportedRagFileExtensions = new Set(["txt", "docs", "md", "pdf"]);
+const userStatusOptions: AdminUserStatus[] = ["Active", "Inactive", "Suspended"];
+const userRoleOptions: AdminUserRole[] = ["User", "Admin"];
+const categoryIconOptions: CategoryIconOption[] = [
+  { Icon: Utensils, key: "food", label: "Ăn uống" },
+  { Icon: Car, key: "transport", label: "Di chuyển" },
+  { Icon: Home, key: "home", label: "Nhà cửa" },
+  { Icon: ShoppingBag, key: "shopping", label: "Mua sắm" },
+  { Icon: HeartPulse, key: "health", label: "Sức khỏe" },
+  { Icon: GraduationCap, key: "education", label: "Học tập" },
+  { Icon: Gamepad2, key: "entertainment", label: "Giải trí" },
+  { Icon: Receipt, key: "bill", label: "Hóa đơn" },
+  { Icon: Wallet, key: "wallet", label: "Ví tiền" },
+  { Icon: Briefcase, key: "work", label: "Công việc" },
+  { Icon: Gift, key: "gift", label: "Quà tặng" },
+  { Icon: CircleDollarSign, key: "income", label: "Thu nhập" },
+  { Icon: PiggyBank, key: "saving", label: "Tiết kiệm" },
+  { Icon: Plane, key: "travel", label: "Du lịch" },
+  { Icon: Banknote, key: "cash", label: "Tiền mặt" },
+  { Icon: MoreHorizontal, key: "other", label: "Khác" },
+];
 
 function useAdminStyles() {
   const theme = useAppTheme();
@@ -64,24 +137,105 @@ function getCategoryTypeLabel(type: Category["type"]) {
   return type === "Income" ? "Thu nhập" : "Chi tiêu";
 }
 
+function getUserStatusLabel(status: AdminUserStatus | string) {
+  if (status === "Active") {
+    return "Đang hoạt động";
+  }
+
+  if (status === "Inactive") {
+    return "Không hoạt động";
+  }
+
+  if (status === "Suspended") {
+    return "Bị đình chỉ";
+  }
+
+  return status;
+}
+
+function getCategoryIconOption(icon: string | null | undefined) {
+  if (!icon) {
+    return null;
+  }
+
+  return categoryIconOptions.find((option) => option.key === icon) ?? null;
+}
+
+function getFileExtension(fileName: string) {
+  const extension = fileName.split(".").pop()?.trim().toLowerCase();
+
+  return extension && extension !== fileName.toLowerCase() ? extension : "txt";
+}
+
+function isSupportedRagFileType(fileType: string) {
+  return supportedRagFileExtensions.has(fileType.toLowerCase());
+}
+
+function getRagDocumentStatusLabel(document: RagDocument) {
+  return document.statusName || document.status;
+}
+
+function formatFileSize(size?: number) {
+  if (!size) {
+    return "Không rõ dung lượng";
+  }
+
+  if (size < 1024 * 1024) {
+    return `${Math.max(1, Math.round(size / 1024))} KB`;
+  }
+
+  return `${(size / 1024 / 1024).toFixed(1)} MB`;
+}
+
 export default function AdminScreen() {
   const theme = useAppTheme();
   const styles = useAdminStyles();
   const currentUser = getAuthUser();
   const [view, setView] = useState<AdminView>("dashboard");
-  const [users, setUsers] = useState<AuthUser[]>([]);
+  const [users, setUsers] = useState<AdminUser[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [selectedUser, setSelectedUser] = useState<AuthUser | null>(null);
+  const [ragDocuments, setRagDocuments] = useState<RagDocument[]>([]);
+  const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
+  const [userSearch, setUserSearch] = useState("");
+  const [userRoleFilter, setUserRoleFilter] = useState<AdminUserRole | "All">("All");
+  const [userStatusFilter, setUserStatusFilter] = useState<AdminUserStatus | "All">("All");
+  const [userPage, setUserPage] = useState(1);
+  const [userPageSize] = useState(20);
+  const [userTotalCount, setUserTotalCount] = useState(0);
+  const [processingUserId, setProcessingUserId] = useState<number | null>(null);
+  const [selectedRagDocument, setSelectedRagDocument] = useState<RagDocument | null>(null);
+  const [actionMenuRagDocument, setActionMenuRagDocument] = useState<RagDocument | null>(null);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
+  const [editingRagDocument, setEditingRagDocument] = useState<RagDocument | null>(null);
   const [categoryForm, setCategoryForm] = useState<CategoryFormState>(emptyCategoryForm);
+  const [ragUploadForm, setRagUploadForm] = useState<RagUploadFormState>(emptyRagUploadForm);
+  const [ragMetadataForm, setRagMetadataForm] = useState<RagMetadataFormState>(emptyRagMetadataForm);
   const [isCategoryFormVisible, setIsCategoryFormVisible] = useState(false);
+  const [isCategoryIconPickerVisible, setIsCategoryIconPickerVisible] = useState(false);
+  const [isRagDetailVisible, setIsRagDetailVisible] = useState(false);
+  const [isRagUploadVisible, setIsRagUploadVisible] = useState(false);
+  const [isRagMetadataVisible, setIsRagMetadataVisible] = useState(false);
   const [isSavingCategory, setIsSavingCategory] = useState(false);
+  const [isLoadingRagDetail, setIsLoadingRagDetail] = useState(false);
+  const [isUploadingRagDocument, setIsUploadingRagDocument] = useState(false);
+  const [isSavingRagMetadata, setIsSavingRagMetadata] = useState(false);
+  const [processingDocumentId, setProcessingDocumentId] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const ragMetadataOpenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const defaultCategories = categories;
+  const userTotalPages = Math.max(1, Math.ceil(userTotalCount / userPageSize));
+
+  useEffect(() => {
+    return () => {
+      if (ragMetadataOpenTimerRef.current) {
+        clearTimeout(ragMetadataOpenTimerRef.current);
+      }
+    };
+  }, []);
 
   const loadAdminData = useCallback(async ({ refresh = false, silent = false } = {}) => {
     try {
@@ -91,15 +245,25 @@ export default function AdminScreen() {
         setIsLoading(true);
       }
 
-      const [usersResponse, categoriesResponse, transactionsResponse] = await Promise.all([
-        usersApi.list(),
+      const [usersResponse, categoriesResponse, transactionsResponse, ragDocumentsResponse] = await Promise.all([
+        adminApi.listUsers({
+          page: userPage,
+          pageSize: userPageSize,
+          role: userRoleFilter === "All" ? undefined : userRoleFilter,
+          search: userSearch.trim() || undefined,
+          status: userStatusFilter === "All" ? undefined : userStatusFilter,
+        }),
         adminApi.listDefaultCategories(),
         transactionsApi.list({ filter: "All" }),
+        ragDocumentsApi.list(),
       ]);
 
-      setUsers(Array.isArray(usersResponse.data) ? usersResponse.data : []);
+      setUsers(Array.isArray(usersResponse.data.items) ? usersResponse.data.items : []);
+      setUserTotalCount(usersResponse.data.totalCount ?? 0);
+      setUserPage(usersResponse.data.page ?? userPage);
       setCategories(Array.isArray(categoriesResponse.data) ? categoriesResponse.data : []);
-      setTransactions(Array.isArray(transactionsResponse.data) ? transactionsResponse.data : []);
+      setTransactions(Array.isArray(transactionsResponse.data.items) ? transactionsResponse.data.items : []);
+      setRagDocuments(Array.isArray(ragDocumentsResponse.data) ? ragDocumentsResponse.data : []);
     } catch (error) {
       if (silent) {
         console.warn("Không tải được admin dashboard", error);
@@ -112,23 +276,108 @@ export default function AdminScreen() {
       }
       setIsRefreshing(false);
     }
-  }, []);
+  }, [userPage, userPageSize, userRoleFilter, userSearch, userStatusFilter]);
 
   useFocusEffect(
     useCallback(() => {
       if (isAdminUser(currentUser)) {
-        loadAdminData({ silent: users.length > 0 || categories.length > 0 || transactions.length > 0 });
+        loadAdminData({
+          silent: users.length > 0 || categories.length > 0 || transactions.length > 0 || ragDocuments.length > 0,
+        });
       }
-    }, [categories.length, currentUser, loadAdminData, transactions.length, users.length]),
+    }, [categories.length, currentUser, loadAdminData, ragDocuments.length, transactions.length, users.length]),
   );
 
-  function openUserDetail(user: AuthUser) {
-    setSelectedUser(user);
+  async function openUserDetail(user: AdminUser) {
+    try {
+      setSelectedUser(user);
+      setProcessingUserId(user.id);
+      const response = await adminApi.getUser(user.id);
+
+      setSelectedUser(response.data);
+      setUsers((current) => (current ?? []).map((item) => (item.id === user.id ? response.data : item)));
+    } catch (error) {
+      Alert.alert("Không tải được thông tin user", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
+    } finally {
+      setProcessingUserId(null);
+    }
+  }
+
+  function updateUserSearch(nextSearch: string) {
+    setUserSearch(nextSearch);
+    setUserPage(1);
+  }
+
+  function updateUserRoleFilter(nextRole: AdminUserRole | "All") {
+    setUserRoleFilter(nextRole);
+    setUserPage(1);
+  }
+
+  function updateUserStatusFilter(nextStatus: AdminUserStatus | "All") {
+    setUserStatusFilter(nextStatus);
+    setUserPage(1);
+  }
+
+  function requestUpdateUserStatus(user: AdminUser, status: AdminUserStatus) {
+    if (user.status === status) {
+      return;
+    }
+
+    Alert.alert("Cập nhật trạng thái", `Đổi trạng thái ${user.username} thành "${getUserStatusLabel(status)}"?`, [
+      { style: "cancel", text: "Hủy" },
+      {
+        onPress: () => void updateUserStatus(user, status),
+        text: "Cập nhật",
+      },
+    ]);
+  }
+
+  async function updateUserStatus(user: AdminUser, status: AdminUserStatus) {
+    try {
+      setProcessingUserId(user.id);
+      const response = await adminApi.updateUserStatus(user.id, { status });
+
+      setUsers((current) => (current ?? []).map((item) => (item.id === user.id ? response.data : item)));
+      setSelectedUser((current) => (current?.id === user.id ? response.data : current));
+    } catch (error) {
+      Alert.alert("Không cập nhật được trạng thái", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
+    } finally {
+      setProcessingUserId(null);
+    }
+  }
+
+  function requestUpdateUserRole(user: AdminUser, role: AdminUserRole) {
+    if (user.role === role) {
+      return;
+    }
+
+    Alert.alert("Cập nhật vai trò", `Đổi vai trò ${user.username} thành "${role}"?`, [
+      { style: "cancel", text: "Hủy" },
+      {
+        onPress: () => void updateUserRole(user, role),
+        text: "Cập nhật",
+      },
+    ]);
+  }
+
+  async function updateUserRole(user: AdminUser, role: AdminUserRole) {
+    try {
+      setProcessingUserId(user.id);
+      const response = await adminApi.updateUserRole(user.id, { role });
+
+      setUsers((current) => (current ?? []).map((item) => (item.id === user.id ? response.data : item)));
+      setSelectedUser((current) => (current?.id === user.id ? response.data : current));
+    } catch (error) {
+      Alert.alert("Không cập nhật được vai trò", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
+    } finally {
+      setProcessingUserId(null);
+    }
   }
 
   function openAddDefaultCategory() {
     setEditingCategory(null);
     setCategoryForm(emptyCategoryForm);
+    setIsCategoryIconPickerVisible(false);
     setIsCategoryFormVisible(true);
   }
 
@@ -139,6 +388,7 @@ export default function AdminScreen() {
       name: category.name,
       type: category.type,
     });
+    setIsCategoryIconPickerVisible(false);
     setIsCategoryFormVisible(true);
   }
 
@@ -148,13 +398,14 @@ export default function AdminScreen() {
     }
 
     setIsCategoryFormVisible(false);
+    setIsCategoryIconPickerVisible(false);
     setEditingCategory(null);
     setCategoryForm(emptyCategoryForm);
   }
 
   async function saveDefaultCategory() {
     const name = categoryForm.name.trim();
-    const icon = categoryForm.icon.trim() || null;
+    const icon = categoryForm.icon.trim() || "other";
 
     if (!name) {
       Alert.alert("Thiếu tên danh mục", "Vui lòng nhập tên category mặc định.");
@@ -209,6 +460,226 @@ export default function AdminScreen() {
       setCategories((current) => (current ?? []).filter((item) => item.id !== category.id));
     } catch (error) {
       Alert.alert("Không xóa được category", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
+    }
+  }
+
+  function openRagUpload() {
+    setRagUploadForm(emptyRagUploadForm);
+    setIsRagUploadVisible(true);
+  }
+
+  async function pickRagDocumentFile() {
+    const result = await DocumentPicker.getDocumentAsync({
+      copyToCacheDirectory: true,
+      multiple: false,
+      type: "*/*",
+    });
+
+    if (result.canceled) {
+      return;
+    }
+
+    const asset = result.assets[0];
+    const fileType = getFileExtension(asset.name);
+
+    if (!isSupportedRagFileType(fileType)) {
+      Alert.alert("Định dạng chưa hỗ trợ", "Hiện chỉ hỗ trợ .txt, .docs, .md và .pdf.");
+      return;
+    }
+
+    const title = ragUploadForm.title.trim() || asset.name.replace(/\.[^/.]+$/, "");
+
+    setRagUploadForm((current) => ({
+      ...current,
+      asset,
+      fileName: asset.name,
+      fileType,
+      title,
+    }));
+  }
+
+  async function uploadRagDocument() {
+    const title = ragUploadForm.title.trim();
+    const description = ragUploadForm.description.trim();
+    const ragCategory = ragUploadForm.ragCategory.trim() || "General";
+    const asset = ragUploadForm.asset;
+    const fileType = ragUploadForm.fileType || (asset ? getFileExtension(asset.name) : "");
+    let createdDocumentId: number | null = null;
+
+    if (!asset) {
+      Alert.alert("Chưa chọn file", "Vui lòng chọn tài liệu cần upload.");
+      return;
+    }
+
+    if (!title) {
+      Alert.alert("Thiếu tiêu đề", "Vui lòng nhập tiêu đề tài liệu.");
+      return;
+    }
+
+    if (!isSupportedRagFileType(fileType)) {
+      Alert.alert("Định dạng chưa hỗ trợ", "Hiện chỉ hỗ trợ .txt, .docs, .md và .pdf.");
+      return;
+    }
+
+    try {
+      setIsUploadingRagDocument(true);
+      const uploadUrlResponse = await ragDocumentsApi.createUploadUrl({
+        contentType: RAG_DOCUMENT_UPLOAD_CONTENT_TYPE,
+        description: description || null,
+        fileName: ragUploadForm.fileName || asset.name,
+        fileType,
+        ragCategory: ragCategory || null,
+        title,
+      });
+
+      createdDocumentId = uploadUrlResponse.data.documentId;
+
+      await ragDocumentsApi.uploadFileToPresignedUrl(uploadUrlResponse.data.uploadUrl, asset.uri, asset.file ?? null);
+      await ragDocumentsApi.confirm(createdDocumentId);
+      setIsRagUploadVisible(false);
+      setRagUploadForm(emptyRagUploadForm);
+      await loadAdminData({ refresh: true });
+      Alert.alert("Upload thành công", "Tài liệu đã được upload và gửi yêu cầu indexing.");
+    } catch (error) {
+      if (createdDocumentId !== null) {
+        await loadAdminData({ refresh: true });
+      }
+
+      Alert.alert(
+        createdDocumentId === null ? "Tạo tài liệu thất bại" : "Upload hoặc confirm thất bại",
+        error instanceof Error ? error.message : "Vui lòng thử lại sau.",
+      );
+    } finally {
+      setIsUploadingRagDocument(false);
+    }
+  }
+
+  function openEditRagMetadata(document: RagDocument) {
+    setEditingRagDocument(document);
+    setRagMetadataForm({
+      description: document.description ?? "",
+      ragCategory: document.ragCategory ?? "General",
+      title: document.title,
+    });
+    setIsRagMetadataVisible(true);
+  }
+
+  function queueOpenEditRagMetadata(document: RagDocument, { closeDetail = false } = {}) {
+    if (ragMetadataOpenTimerRef.current) {
+      clearTimeout(ragMetadataOpenTimerRef.current);
+    }
+
+    setActionMenuRagDocument(null);
+
+    if (closeDetail) {
+      setIsRagDetailVisible(false);
+    }
+
+    ragMetadataOpenTimerRef.current = setTimeout(() => {
+      ragMetadataOpenTimerRef.current = null;
+      openEditRagMetadata(document);
+    }, 250);
+  }
+
+  async function saveRagMetadata() {
+    if (!editingRagDocument) {
+      return;
+    }
+
+    const title = ragMetadataForm.title.trim();
+    const description = ragMetadataForm.description.trim();
+    const ragCategory = ragMetadataForm.ragCategory.trim() || "General";
+
+    if (!title) {
+      Alert.alert("Thiếu tiêu đề", "Vui lòng nhập tiêu đề tài liệu.");
+      return;
+    }
+
+    try {
+      setIsSavingRagMetadata(true);
+      await ragDocumentsApi.updateMetadata(editingRagDocument.id, {
+        description,
+        ragCategory,
+        title,
+      });
+      const response = await ragDocumentsApi.get(editingRagDocument.id);
+
+      setRagDocuments((current) =>
+        (current ?? []).map((document) => (document.id === editingRagDocument.id ? response.data : document)),
+      );
+      setSelectedRagDocument((current) => (current?.id === editingRagDocument.id ? response.data : current));
+      setIsRagMetadataVisible(false);
+      setEditingRagDocument(null);
+      setRagMetadataForm(emptyRagMetadataForm);
+      Alert.alert("Đã lưu metadata", "Thông tin tài liệu đã được cập nhật.");
+    } catch (error) {
+      Alert.alert("Không lưu được metadata", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
+    } finally {
+      setIsSavingRagMetadata(false);
+    }
+  }
+
+  function requestDeleteRagDocument(document: RagDocument) {
+    setActionMenuRagDocument(null);
+    Alert.alert("Xóa tài liệu RAG", `Bạn muốn xóa "${document.title}"?`, [
+      { style: "cancel", text: "Hủy" },
+      {
+        onPress: () => void deleteRagDocument(document),
+        style: "destructive",
+        text: "Xóa",
+      },
+    ]);
+  }
+
+  async function deleteRagDocument(document: RagDocument) {
+    try {
+      setProcessingDocumentId(document.id);
+      await ragDocumentsApi.remove(document.id);
+      setRagDocuments((current) => (current ?? []).filter((item) => item.id !== document.id));
+      if (selectedRagDocument?.id === document.id) {
+        setSelectedRagDocument(null);
+        setIsRagDetailVisible(false);
+      }
+      Alert.alert("Đã xóa tài liệu", "Tài liệu RAG đã được xóa.");
+    } catch (error) {
+      Alert.alert("Không xóa được tài liệu", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
+    } finally {
+      setProcessingDocumentId(null);
+    }
+  }
+
+  async function openRagDocumentDetail(document: RagDocument) {
+    try {
+      setSelectedRagDocument(document);
+      setIsRagDetailVisible(true);
+      setIsLoadingRagDetail(true);
+      const response = await ragDocumentsApi.get(document.id);
+
+      setSelectedRagDocument(response.data);
+      setRagDocuments((current) =>
+        (current ?? []).map((item) => (item.id === document.id ? response.data : item)),
+      );
+    } catch (error) {
+      Alert.alert("Không tải được chi tiết tài liệu", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
+    } finally {
+      setIsLoadingRagDetail(false);
+    }
+  }
+
+  async function reindexRagDocument(document: RagDocument) {
+    try {
+      setProcessingDocumentId(document.id);
+      await ragDocumentsApi.reindex(document.id);
+      const response = await ragDocumentsApi.get(document.id);
+      setRagDocuments((current) =>
+        (current ?? []).map((item) => (item.id === document.id ? response.data : item)),
+      );
+      setSelectedRagDocument((current) => (current?.id === document.id ? response.data : current));
+      Alert.alert("Đã chạy reindex", "Yêu cầu indexing lại đã hoàn tất.");
+    } catch (error) {
+      Alert.alert("Không chạy lại indexing", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
+    } finally {
+      setProcessingDocumentId(null);
     }
   }
 
@@ -274,10 +745,52 @@ export default function AdminScreen() {
               <InfoRow label="ID" value={String(selectedUser.id)} />
               <InfoRow label="Username" value={selectedUser.username} />
               <InfoRow label="Email" value={selectedUser.email} />
+              <InfoRow label="Display name" value={selectedUser.displayName ?? "Chưa có"} />
               <InfoRow label="Role" value={selectedUser.role} />
+              <InfoRow label="Status" value={getUserStatusLabel(selectedUser.status)} />
               <InfoRow label="Ngày tạo" value={formatDate(selectedUser.createdAt)} />
-              <InfoRow label="Cập nhật" value={formatDate(selectedUser.updatedAt)} />
               <InfoRow label="Avatar" value={selectedUser.avatarUrl ? "Có" : "Không"} />
+            </View>
+
+            <View style={styles.userControlCard}>
+              <Text style={styles.sectionLabel}>Trạng thái</Text>
+              <View style={styles.typeToggleRow}>
+                {userStatusOptions.map((status) => (
+                  <Pressable
+                    key={status}
+                    disabled={processingUserId === selectedUser.id}
+                    onPress={() => requestUpdateUserStatus(selectedUser, status)}
+                    style={[styles.typeToggle, selectedUser.status === status && styles.typeToggleSelected]}
+                  >
+                    <Text
+                      style={[
+                        styles.typeToggleText,
+                        selectedUser.status === status && styles.typeToggleTextSelected,
+                      ]}
+                    >
+                      {getUserStatusLabel(status)}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+
+              <Text style={styles.sectionLabel}>Vai trò</Text>
+              <View style={styles.typeToggleRow}>
+                {userRoleOptions.map((role) => (
+                  <Pressable
+                    key={role}
+                    disabled={processingUserId === selectedUser.id}
+                    onPress={() => requestUpdateUserRole(selectedUser, role)}
+                    style={[styles.typeToggle, selectedUser.role === role && styles.typeToggleSelected]}
+                  >
+                    <Text
+                      style={[styles.typeToggleText, selectedUser.role === role && styles.typeToggleTextSelected]}
+                    >
+                      {role}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
             </View>
           </ScrollView>
         </SafeAreaView>
@@ -294,7 +807,7 @@ export default function AdminScreen() {
               <Text style={styles.backText}>‹ Admin</Text>
             </Pressable>
             <Text style={styles.headerTitle}>Users</Text>
-            <Text style={styles.headerCount}>{users.length}</Text>
+            <Text style={styles.headerCount}>{userTotalCount}</Text>
           </View>
 
           <ScrollView
@@ -307,7 +820,49 @@ export default function AdminScreen() {
               />
             }
           >
-            {(users ?? []).map((user) => (
+            <View style={styles.userFilterCard}>
+              <TextInput
+                autoCapitalize="none"
+                onChangeText={updateUserSearch}
+                placeholder="Tìm username, email, display name"
+                placeholderTextColor={theme.inputPlaceholder}
+                style={styles.formInput}
+                value={userSearch}
+              />
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
+                {(["All", ...userRoleOptions] as (AdminUserRole | "All")[]).map((role) => (
+                  <FilterChip
+                    key={role}
+                    label={role === "All" ? "Tất cả role" : role}
+                    selected={userRoleFilter === role}
+                    onPress={() => updateUserRoleFilter(role)}
+                  />
+                ))}
+              </ScrollView>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
+                {(["All", ...userStatusOptions] as (AdminUserStatus | "All")[]).map((status) => (
+                  <FilterChip
+                    key={status}
+                    label={status === "All" ? "Tất cả trạng thái" : getUserStatusLabel(status)}
+                    selected={userStatusFilter === status}
+                    onPress={() => updateUserStatusFilter(status)}
+                  />
+                ))}
+              </ScrollView>
+            </View>
+
+            {isLoading ? (
+              <View style={styles.loadingCard}>
+                <ActivityIndicator color={theme.primary} />
+                <Text style={styles.loadingText}>Đang tải user...</Text>
+              </View>
+            ) : users.length === 0 ? (
+              <View style={styles.emptyDocumentCard}>
+                <Text style={styles.emptyDocumentTitle}>Không có user</Text>
+                <Text style={styles.emptyDocumentText}>Thử đổi từ khóa tìm kiếm hoặc bộ lọc.</Text>
+              </View>
+            ) : (
+            (users ?? []).map((user) => (
               <Pressable key={user.id} style={styles.userRow} onPress={() => openUserDetail(user)}>
                 <View style={styles.userMiniAvatar}>
                   <Text style={styles.userMiniAvatarText}>
@@ -316,15 +871,44 @@ export default function AdminScreen() {
                 </View>
                 <View style={styles.rowCopy}>
                   <Text style={styles.rowTitle}>{user.displayName ?? user.username}</Text>
-                  <Text style={styles.rowSubtitle}>{user.email}</Text>
+                  <Text style={styles.rowSubtitle}>
+                    @{user.username} · {user.email}
+                  </Text>
+                  <Text style={styles.rowSubtitle}>
+                    {getUserStatusLabel(user.status)} · {formatDate(user.createdAt)}
+                  </Text>
                 </View>
-                <View style={[styles.roleBadge, isAdminUser(user) && styles.roleBadgeAdmin]}>
-                  <Text style={[styles.roleBadgeText, isAdminUser(user) && styles.roleBadgeTextAdmin]}>
+                <View style={[styles.roleBadge, user.role === "Admin" && styles.roleBadgeAdmin]}>
+                  <Text style={[styles.roleBadgeText, user.role === "Admin" && styles.roleBadgeTextAdmin]}>
                     {user.role}
                   </Text>
                 </View>
               </Pressable>
-            ))}
+            ))
+            )}
+
+            <View style={styles.paginationRow}>
+              <Pressable
+                disabled={userPage <= 1 || isRefreshing}
+                onPress={() => setUserPage((page) => Math.max(1, page - 1))}
+                style={[styles.paginationButton, (userPage <= 1 || isRefreshing) && styles.disabledText]}
+              >
+                <Text style={styles.paginationButtonText}>Trước</Text>
+              </Pressable>
+              <Text style={styles.paginationText}>
+                Trang {userPage}/{userTotalPages}
+              </Text>
+              <Pressable
+                disabled={userPage >= userTotalPages || isRefreshing}
+                onPress={() => setUserPage((page) => Math.min(userTotalPages, page + 1))}
+                style={[
+                  styles.paginationButton,
+                  (userPage >= userTotalPages || isRefreshing) && styles.disabledText,
+                ]}
+              >
+                <Text style={styles.paginationButtonText}>Sau</Text>
+              </Pressable>
+            </View>
           </ScrollView>
         </SafeAreaView>
       </FocusedScreenTransition>
@@ -358,7 +942,7 @@ export default function AdminScreen() {
             {(defaultCategories ?? []).map((category) => (
               <Pressable key={category.id} style={styles.categoryRow} onPress={() => openEditDefaultCategory(category)}>
                 <View style={styles.categoryIcon}>
-                  <Text style={styles.categoryIconText}>{category.icon?.charAt(0).toUpperCase() ?? "C"}</Text>
+                  <CategoryIconMark icon={category.icon} />
                 </View>
                 <View style={styles.rowCopy}>
                   <Text style={styles.rowTitle}>{category.name}</Text>
@@ -382,13 +966,154 @@ export default function AdminScreen() {
 
           <CategoryFormModal
             form={categoryForm}
+            iconPickerVisible={isCategoryIconPickerVisible}
             isSaving={isSavingCategory}
             onChange={setCategoryForm}
             onClose={closeCategoryForm}
+            onCloseIconPicker={() => setIsCategoryIconPickerVisible(false)}
+            onOpenIconPicker={() => setIsCategoryIconPickerVisible(true)}
+            onSelectIcon={(icon) => {
+              setCategoryForm((current) => ({ ...current, icon }));
+              setIsCategoryIconPickerVisible(false);
+            }}
             onSubmit={saveDefaultCategory}
             theme={theme}
             title={editingCategory ? "Sửa category mặc định" : "Thêm category mặc định"}
             visible={isCategoryFormVisible}
+          />
+        </SafeAreaView>
+      </FocusedScreenTransition>
+    );
+  }
+
+  if (view === "documents") {
+    return (
+      <FocusedScreenTransition style={styles.screen} triggerKey={view} variant="slide-left">
+        <SafeAreaView style={styles.screen} edges={["top"]}>
+          <View style={styles.header}>
+            <Pressable onPress={() => setView("dashboard")} hitSlop={12}>
+              <Text style={styles.backText}>‹ Admin</Text>
+            </Pressable>
+            <Text style={styles.headerTitle}>Tài liệu RAG</Text>
+            <Pressable style={styles.addButton} onPress={openRagUpload}>
+              <Text style={styles.addButtonText}>+</Text>
+            </Pressable>
+          </View>
+
+          <ScrollView
+            contentContainerStyle={styles.documentContent}
+            refreshControl={
+              <RefreshControl
+                refreshing={isRefreshing}
+                onRefresh={() => loadAdminData({ refresh: true })}
+                tintColor={theme.primary}
+              />
+            }
+          >
+            {ragDocuments.length === 0 ? (
+              <View style={styles.emptyDocumentCard}>
+                <Text style={styles.emptyDocumentTitle}>Chưa có tài liệu</Text>
+                <Text style={styles.emptyDocumentText}>Upload tài liệu đầu tiên để tạo nguồn dữ liệu RAG.</Text>
+                <Pressable style={styles.fullSaveButton} onPress={openRagUpload}>
+                  <Text style={styles.fullSaveButtonText}>Upload tài liệu</Text>
+                </Pressable>
+              </View>
+            ) : (
+              ragDocuments.map((document) => (
+                <RagDocumentRow
+                  key={document.id}
+                  document={document}
+                  isProcessing={processingDocumentId === document.id}
+                  onDelete={() => requestDeleteRagDocument(document)}
+                  onMore={() => setActionMenuRagDocument(document)}
+                />
+              ))
+            )}
+          </ScrollView>
+
+          <RagUploadModal
+            form={ragUploadForm}
+            isUploading={isUploadingRagDocument}
+            onChange={setRagUploadForm}
+            onClose={() => {
+              if (!isUploadingRagDocument) {
+                setIsRagUploadVisible(false);
+              }
+            }}
+            onPickFile={pickRagDocumentFile}
+            onSubmit={uploadRagDocument}
+            theme={theme}
+            visible={isRagUploadVisible}
+          />
+          <RagActionMenuModal
+            document={actionMenuRagDocument}
+            isProcessing={actionMenuRagDocument ? processingDocumentId === actionMenuRagDocument.id : false}
+            onClose={() => setActionMenuRagDocument(null)}
+            onDelete={() => {
+              if (actionMenuRagDocument) {
+                requestDeleteRagDocument(actionMenuRagDocument);
+              }
+            }}
+            onDetail={() => {
+              if (actionMenuRagDocument) {
+                const document = actionMenuRagDocument;
+
+                setActionMenuRagDocument(null);
+                void openRagDocumentDetail(document);
+              }
+            }}
+            onEdit={() => {
+              if (actionMenuRagDocument) {
+                queueOpenEditRagMetadata(actionMenuRagDocument);
+              }
+            }}
+            onReindex={() => {
+              if (actionMenuRagDocument) {
+                const document = actionMenuRagDocument;
+
+                setActionMenuRagDocument(null);
+                void reindexRagDocument(document);
+              }
+            }}
+          />
+          <RagDetailModal
+            document={selectedRagDocument}
+            isLoading={isLoadingRagDetail}
+            isProcessing={selectedRagDocument ? processingDocumentId === selectedRagDocument.id : false}
+            onClose={() => {
+              setIsRagDetailVisible(false);
+              setSelectedRagDocument(null);
+            }}
+            onDelete={() => {
+              if (selectedRagDocument) {
+                requestDeleteRagDocument(selectedRagDocument);
+              }
+            }}
+            onEdit={() => {
+              if (selectedRagDocument) {
+                queueOpenEditRagMetadata(selectedRagDocument, { closeDetail: true });
+              }
+            }}
+            onReindex={() => {
+              if (selectedRagDocument) {
+                void reindexRagDocument(selectedRagDocument);
+              }
+            }}
+            visible={isRagDetailVisible}
+          />
+          <RagMetadataModal
+            form={ragMetadataForm}
+            isSaving={isSavingRagMetadata}
+            onChange={setRagMetadataForm}
+            onClose={() => {
+              if (!isSavingRagMetadata) {
+                setIsRagMetadataVisible(false);
+                setEditingRagDocument(null);
+              }
+            }}
+            onSubmit={saveRagMetadata}
+            theme={theme}
+            visible={isRagMetadataVisible}
           />
         </SafeAreaView>
       </FocusedScreenTransition>
@@ -454,6 +1179,13 @@ export default function AdminScreen() {
                   note="Danh mục mặc định"
                   onPress={() => setView("categories")}
                 />
+                <AdminTile
+                  color="#8b5cf6"
+                  label="RAG Docs"
+                  metric={ragDocuments.length}
+                  note="Tài liệu tri thức AI"
+                  onPress={() => setView("documents")}
+                />
               </View>
 
               <Text style={styles.sectionLabel}>Thống kê hệ thống</Text>
@@ -461,6 +1193,7 @@ export default function AdminScreen() {
                 <StatRow label="Tổng user" value={String(users.length)} />
                 <StatRow label="Tổng giao dịch" value={String(transactions.length)} />
                 <StatRow label="Category mặc định" value={String(defaultCategories.length)} />
+                <StatRow label="Tài liệu RAG" value={String(ragDocuments.length)} />
               </View>
             </>
           )}
@@ -494,6 +1227,444 @@ function AdminTile({
   );
 }
 
+function RagDocumentRow({
+  document,
+  isProcessing,
+  onDelete,
+  onMore,
+}: {
+  document: RagDocument;
+  isProcessing: boolean;
+  onDelete: () => void;
+  onMore: () => void;
+}) {
+  const theme = useAppTheme();
+  const styles = useAdminStyles();
+
+  return (
+    <View style={styles.documentListCard}>
+      <View style={styles.documentListMain}>
+        <View style={styles.documentTopRow}>
+          <View style={styles.rowCopy}>
+            <Text style={styles.rowTitle}>{document.title}</Text>
+            <Text style={styles.rowSubtitle}>
+              {document.fileName} · v{document.version} · {document.chunkCount} chunks
+            </Text>
+          </View>
+        </View>
+
+        <Text numberOfLines={2} style={styles.documentDescription}>
+          {document.description || "Không có mô tả"}
+        </Text>
+        <View style={styles.documentMetaRow}>
+          <Text style={styles.documentMetaText}>{document.ragCategory ?? "General"}</Text>
+          <Text style={styles.documentMetaText}>{document.fileType}</Text>
+          <Text style={styles.documentMetaText}>{formatDate(document.updatedAt ?? document.createdAt)}</Text>
+        </View>
+        {document.errorMessage ? <Text style={styles.documentError}>{document.errorMessage}</Text> : null}
+      </View>
+
+      <View style={styles.documentActionRail}>
+        <Pressable
+          accessibilityLabel="Xóa tài liệu"
+          style={[styles.documentIconDeleteButton, isProcessing && styles.disabledText]}
+          onPress={onDelete}
+          disabled={isProcessing}
+        >
+          <Trash2 color={theme.dangerText} size={18} strokeWidth={2.4} />
+        </Pressable>
+        <Pressable
+          accessibilityLabel="Mở thêm thao tác tài liệu"
+          style={styles.documentIconButton}
+          onPress={onMore}
+          disabled={isProcessing}
+        >
+          <MoreVertical color={theme.primary} size={18} strokeWidth={2.4} />
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+function RagActionMenuModal({
+  document,
+  isProcessing,
+  onClose,
+  onDelete,
+  onDetail,
+  onEdit,
+  onReindex,
+}: {
+  document: RagDocument | null;
+  isProcessing: boolean;
+  onClose: () => void;
+  onDelete: () => void;
+  onDetail: () => void;
+  onEdit: () => void;
+  onReindex: () => void;
+}) {
+  const theme = useAppTheme();
+  const styles = useAdminStyles();
+  const statusLabel = document ? getRagDocumentStatusLabel(document) : "";
+  const canReindex = statusLabel.toLowerCase() !== "draft";
+
+  return (
+    <BottomPopup animationType="fade" transparent visible={Boolean(document)} onRequestClose={onClose}>
+      <View style={styles.actionMenuOverlay}>
+        <Pressable style={styles.modalBackdrop} onPress={onClose} />
+        <BottomPopupSheet style={styles.actionMenuSheet}>
+          <Text numberOfLines={1} style={styles.actionMenuTitle}>
+            {document?.title ?? "Tài liệu RAG"}
+          </Text>
+          <ActionMenuItem
+            icon={<Eye color={theme.primary} size={18} strokeWidth={2.4} />}
+            label="Xem chi tiết"
+            onPress={onDetail}
+          />
+          <ActionMenuItem
+            disabled={!canReindex || isProcessing}
+            icon={
+              isProcessing ? (
+                <ActivityIndicator color={theme.primary} size="small" />
+              ) : (
+                <RotateCw color={theme.primary} size={18} strokeWidth={2.4} />
+              )
+            }
+            label="Reindex"
+            onPress={onReindex}
+          />
+          <ActionMenuItem
+            disabled={isProcessing}
+            icon={<Pencil color={theme.primary} size={18} strokeWidth={2.4} />}
+            label="Sửa metadata"
+            onPress={onEdit}
+          />
+          <ActionMenuItem
+            danger
+            disabled={isProcessing}
+            icon={<Trash2 color={theme.dangerText} size={18} strokeWidth={2.4} />}
+            label="Xóa"
+            onPress={onDelete}
+          />
+        </BottomPopupSheet>
+      </View>
+    </BottomPopup>
+  );
+}
+
+function ActionMenuItem({
+  danger = false,
+  disabled = false,
+  icon,
+  label,
+  onPress,
+}: {
+  danger?: boolean;
+  disabled?: boolean;
+  icon: ReactNode;
+  label: string;
+  onPress: () => void;
+}) {
+  const styles = useAdminStyles();
+
+  return (
+    <Pressable
+      accessibilityLabel={label}
+      disabled={disabled}
+      onPress={onPress}
+      style={[styles.actionMenuItem, disabled && styles.disabledText]}
+    >
+      <View style={styles.actionMenuIcon}>{icon}</View>
+      <Text style={[styles.actionMenuLabel, danger && styles.actionMenuDangerLabel]}>{label}</Text>
+    </Pressable>
+  );
+}
+
+function RagDetailModal({
+  document,
+  isLoading,
+  isProcessing,
+  onClose,
+  onDelete,
+  onEdit,
+  onReindex,
+  visible,
+}: {
+  document: RagDocument | null;
+  isLoading: boolean;
+  isProcessing: boolean;
+  onClose: () => void;
+  onDelete: () => void;
+  onEdit: () => void;
+  onReindex: () => void;
+  visible: boolean;
+}) {
+  const styles = useAdminStyles();
+  const statusLabel = document ? getRagDocumentStatusLabel(document) : "";
+  const canReindex = statusLabel.toLowerCase() !== "draft";
+
+  return (
+    <BottomPopup animationType="fade" transparent visible={visible} onRequestClose={onClose}>
+      <View style={styles.modalOverlay}>
+        <Pressable style={styles.modalBackdrop} onPress={onClose} />
+        <BottomPopupSheet style={styles.categoryFormSheet}>
+          <View style={styles.formHeader}>
+            <Pressable onPress={onClose} hitSlop={10}>
+              <Text style={styles.formClose}>Đóng</Text>
+            </Pressable>
+            <Text style={styles.formTitle}>Chi tiết RAG</Text>
+            <View style={styles.headerSpacer} />
+          </View>
+
+          {isLoading && !document ? (
+            <View style={styles.detailLoadingState}>
+              <ActivityIndicator />
+            </View>
+          ) : document ? (
+            <ScrollView contentContainerStyle={styles.detailContent}>
+              <View style={styles.documentCard}>
+                <View style={styles.documentTopRow}>
+                  <View style={styles.rowCopy}>
+                    <Text style={styles.rowTitle}>{document.title}</Text>
+                    <Text style={styles.rowSubtitle}>{document.fileName}</Text>
+                  </View>
+                  <View style={styles.documentStatusBadge}>
+                    <Text style={styles.documentStatusText}>{statusLabel}</Text>
+                  </View>
+                </View>
+                <Text style={styles.documentDescription}>{document.description || "Không có mô tả"}</Text>
+                {document.errorMessage ? <Text style={styles.documentError}>{document.errorMessage}</Text> : null}
+              </View>
+
+              <View style={styles.infoCard}>
+                <InfoRow label="ID" value={String(document.id)} />
+                <InfoRow label="S3 Key" value={document.s3Key} />
+                <InfoRow label="File type" value={document.fileType} />
+                <InfoRow label="RAG category" value={document.ragCategory ?? "General"} />
+                <InfoRow label="Version" value={String(document.version)} />
+                <InfoRow label="Chunk count" value={String(document.chunkCount)} />
+                <InfoRow label="Created by" value={String(document.createdBy)} />
+                <InfoRow label="Ngày tạo" value={formatDate(document.createdAt)} />
+                <InfoRow label="Cập nhật" value={formatDate(document.updatedAt)} />
+              </View>
+
+              <View style={styles.documentActions}>
+                <Pressable
+                  style={[styles.documentActionButton, (!canReindex || isProcessing) && styles.disabledText]}
+                  onPress={onReindex}
+                  disabled={!canReindex || isProcessing}
+                >
+                  {isProcessing ? (
+                    <ActivityIndicator size="small" />
+                  ) : (
+                    <Text style={styles.documentActionText}>Reindex</Text>
+                  )}
+                </Pressable>
+                <Pressable style={styles.documentActionButton} onPress={onEdit} disabled={isProcessing}>
+                  <Text style={styles.documentActionText}>Sửa metadata</Text>
+                </Pressable>
+                <Pressable style={styles.documentDeleteButton} onPress={onDelete} disabled={isProcessing}>
+                  <Text style={styles.documentDeleteText}>Xóa</Text>
+                </Pressable>
+              </View>
+            </ScrollView>
+          ) : null}
+        </BottomPopupSheet>
+      </View>
+    </BottomPopup>
+  );
+}
+
+function RagUploadModal({
+  form,
+  isUploading,
+  onChange,
+  onClose,
+  onPickFile,
+  onSubmit,
+  theme,
+  visible,
+}: {
+  form: RagUploadFormState;
+  isUploading: boolean;
+  onChange: (form: RagUploadFormState) => void;
+  onClose: () => void;
+  onPickFile: () => void;
+  onSubmit: () => void;
+  theme: AppTheme;
+  visible: boolean;
+}) {
+  const styles = useAdminStyles();
+
+  return (
+    <BottomPopup animationType="fade" transparent visible={visible} onRequestClose={onClose}>
+      <KeyboardAvoidingView
+        behavior={Platform.select({ ios: "padding", default: undefined })}
+        style={styles.modalOverlay}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={onClose} />
+        <BottomPopupSheet style={styles.categoryFormSheet}>
+          <View style={styles.formHeader}>
+            <Pressable onPress={onClose} hitSlop={10}>
+              <Text style={styles.formClose}>Hủy</Text>
+            </Pressable>
+            <Text style={styles.formTitle}>Upload tài liệu RAG</Text>
+            <Pressable onPress={onSubmit} disabled={isUploading} hitSlop={10}>
+              <Text style={[styles.formSave, isUploading && styles.disabledText]}>Lưu</Text>
+            </Pressable>
+          </View>
+
+          <ScrollView contentContainerStyle={styles.formBody}>
+            <Pressable style={styles.filePickerButton} onPress={onPickFile} disabled={isUploading}>
+              <Text style={styles.filePickerTitle}>{form.asset ? form.asset.name : "Chọn file tài liệu"}</Text>
+              <Text style={styles.filePickerSubtitle}>
+                {form.asset ? `${formatFileSize(form.asset.size)} · ${form.fileType}` : ".txt, .docs, .md hoặc .pdf"}
+              </Text>
+            </Pressable>
+
+            <View style={styles.formField}>
+              <Text style={styles.formLabel}>Tiêu đề</Text>
+              <TextInput
+                editable={!isUploading}
+                onChangeText={(title) => onChange({ ...form, title })}
+                placeholder="Tiết kiệm và lãi suất"
+                placeholderTextColor={theme.inputPlaceholder}
+                style={styles.formInput}
+                value={form.title}
+              />
+            </View>
+
+            <View style={styles.formField}>
+              <Text style={styles.formLabel}>Mô tả</Text>
+              <TextInput
+                editable={!isUploading}
+                multiline
+                onChangeText={(description) => onChange({ ...form, description })}
+                placeholder="File tài liệu kiến thức tài chính"
+                placeholderTextColor={theme.inputPlaceholder}
+                style={[styles.formInput, styles.multilineInput]}
+                value={form.description}
+              />
+            </View>
+
+            <View style={styles.formField}>
+              <Text style={styles.formLabel}>RAG category</Text>
+              <TextInput
+                autoCapitalize="none"
+                editable={!isUploading}
+                onChangeText={(ragCategory) => onChange({ ...form, ragCategory })}
+                placeholder="General"
+                placeholderTextColor={theme.inputPlaceholder}
+                style={styles.formInput}
+                value={form.ragCategory}
+              />
+            </View>
+
+            <Pressable
+              style={[styles.fullSaveButton, isUploading && styles.disabledText]}
+              onPress={onSubmit}
+              disabled={isUploading}
+            >
+              {isUploading ? (
+                <ActivityIndicator color={theme.textInverse} />
+              ) : (
+                <Text style={styles.fullSaveButtonText}>Upload và index</Text>
+              )}
+            </Pressable>
+          </ScrollView>
+        </BottomPopupSheet>
+      </KeyboardAvoidingView>
+    </BottomPopup>
+  );
+}
+
+function RagMetadataModal({
+  form,
+  isSaving,
+  onChange,
+  onClose,
+  onSubmit,
+  theme,
+  visible,
+}: {
+  form: RagMetadataFormState;
+  isSaving: boolean;
+  onChange: (form: RagMetadataFormState) => void;
+  onClose: () => void;
+  onSubmit: () => void;
+  theme: AppTheme;
+  visible: boolean;
+}) {
+  const styles = useAdminStyles();
+
+  return (
+    <BottomPopup animationType="fade" transparent visible={visible} onRequestClose={onClose}>
+      <KeyboardAvoidingView
+        behavior={Platform.select({ ios: "padding", default: undefined })}
+        style={styles.modalOverlay}
+      >
+        <Pressable style={styles.modalBackdrop} onPress={onClose} />
+        <BottomPopupSheet style={styles.categoryFormSheet}>
+          <View style={styles.formHeader}>
+            <Pressable onPress={onClose} hitSlop={10}>
+              <Text style={styles.formClose}>Hủy</Text>
+            </Pressable>
+            <Text style={styles.formTitle}>Sửa metadata</Text>
+            <Pressable onPress={onSubmit} disabled={isSaving} hitSlop={10}>
+              <Text style={[styles.formSave, isSaving && styles.disabledText]}>Lưu</Text>
+            </Pressable>
+          </View>
+
+          <ScrollView contentContainerStyle={styles.formBody} keyboardShouldPersistTaps="handled">
+            <View style={styles.formField}>
+              <Text style={styles.formLabel}>Tiêu đề</Text>
+              <TextInput
+                editable={!isSaving}
+                onChangeText={(title) => onChange({ ...form, title })}
+                placeholder="Tiêu đề tài liệu"
+                placeholderTextColor={theme.inputPlaceholder}
+                style={styles.formInput}
+                value={form.title}
+              />
+            </View>
+            <View style={styles.formField}>
+              <Text style={styles.formLabel}>Mô tả</Text>
+              <TextInput
+                editable={!isSaving}
+                multiline
+                onChangeText={(description) => onChange({ ...form, description })}
+                placeholder="Mô tả tài liệu"
+                placeholderTextColor={theme.inputPlaceholder}
+                style={[styles.formInput, styles.multilineInput]}
+                value={form.description}
+              />
+            </View>
+            <View style={styles.formField}>
+              <Text style={styles.formLabel}>RAG category</Text>
+              <TextInput
+                autoCapitalize="none"
+                editable={!isSaving}
+                onChangeText={(ragCategory) => onChange({ ...form, ragCategory })}
+                placeholder="General"
+                placeholderTextColor={theme.inputPlaceholder}
+                style={styles.formInput}
+                value={form.ragCategory}
+              />
+            </View>
+            <Pressable style={[styles.fullSaveButton, isSaving && styles.disabledText]} onPress={onSubmit}>
+              {isSaving ? (
+                <ActivityIndicator color={theme.textInverse} />
+              ) : (
+                <Text style={styles.fullSaveButtonText}>Lưu metadata</Text>
+              )}
+            </Pressable>
+          </ScrollView>
+        </BottomPopupSheet>
+      </KeyboardAvoidingView>
+    </BottomPopup>
+  );
+}
+
 function StatRow({ label, value }: { label: string; value: string }) {
   const styles = useAdminStyles();
 
@@ -502,6 +1673,16 @@ function StatRow({ label, value }: { label: string; value: string }) {
       <Text style={styles.statLabel}>{label}</Text>
       <Text style={styles.statValue}>{value}</Text>
     </View>
+  );
+}
+
+function FilterChip({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
+  const styles = useAdminStyles();
+
+  return (
+    <Pressable style={[styles.filterChip, selected && styles.filterChipSelected]} onPress={onPress}>
+      <Text style={[styles.filterChipText, selected && styles.filterChipTextSelected]}>{label}</Text>
+    </Pressable>
   );
 }
 
@@ -516,45 +1697,125 @@ function InfoRow({ label, value }: { label: string; value: string }) {
   );
 }
 
+function CategoryIconMark({ icon }: { icon: string | null | undefined }) {
+  const theme = useAppTheme();
+  const styles = useAdminStyles();
+  const iconOption = getCategoryIconOption(icon);
+
+  if (iconOption) {
+    const Icon = iconOption.Icon;
+
+    return <Icon color={theme.primary} size={18} strokeWidth={2.4} />;
+  }
+
+  return <Text style={styles.categoryIconText}>{icon?.charAt(0).toUpperCase() ?? "C"}</Text>;
+}
+
+function CategoryIconPickerContent({
+  onSelect,
+  selectedIcon,
+}: {
+  onSelect: (icon: string) => void;
+  selectedIcon: string;
+}) {
+  const theme = useAppTheme();
+  const styles = useAdminStyles();
+
+  return (
+    <ScrollView contentContainerStyle={styles.iconPickerContent}>
+      <Pressable
+        style={[styles.iconPickerOption, !selectedIcon && styles.iconPickerOptionSelected]}
+        onPress={() => onSelect("")}
+      >
+        <View style={styles.iconPickerBubble}>
+          <Text style={styles.iconSelectPreviewText}>C</Text>
+        </View>
+        <Text style={styles.iconPickerLabel}>Mặc định</Text>
+      </Pressable>
+
+      {categoryIconOptions.map((option) => {
+        const Icon = option.Icon;
+        const isSelected = selectedIcon === option.key;
+
+        return (
+          <Pressable
+            key={option.key}
+            style={[styles.iconPickerOption, isSelected && styles.iconPickerOptionSelected]}
+            onPress={() => onSelect(option.key)}
+          >
+            <View style={styles.iconPickerBubble}>
+              <Icon color={theme.primary} size={20} strokeWidth={2.4} />
+            </View>
+            <Text numberOfLines={1} style={styles.iconPickerLabel}>
+              {option.label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </ScrollView>
+  );
+}
+
 function CategoryFormModal({
   form,
+  iconPickerVisible,
   isSaving,
   onChange,
   onClose,
+  onCloseIconPicker,
+  onOpenIconPicker,
+  onSelectIcon,
   onSubmit,
   theme,
   title,
   visible,
 }: {
   form: CategoryFormState;
+  iconPickerVisible: boolean;
   isSaving: boolean;
   onChange: (form: CategoryFormState) => void;
   onClose: () => void;
+  onCloseIconPicker: () => void;
+  onOpenIconPicker: () => void;
+  onSelectIcon: (icon: string) => void;
   onSubmit: () => void;
   theme: AppTheme;
   title: string;
   visible: boolean;
 }) {
   const styles = useAdminStyles();
+  const selectedIconOption = getCategoryIconOption(form.icon);
 
   return (
-    <Modal animationType="slide" transparent visible={visible} onRequestClose={onClose}>
+    <BottomPopup
+      animationType="fade"
+      transparent
+      visible={visible}
+      onRequestClose={iconPickerVisible ? onCloseIconPicker : onClose}
+    >
       <KeyboardAvoidingView
         behavior={Platform.select({ ios: "padding", default: undefined })}
         style={styles.modalOverlay}
       >
-        <Pressable style={styles.modalBackdrop} onPress={onClose} />
-        <View style={styles.categoryFormSheet}>
+        <Pressable style={styles.modalBackdrop} onPress={iconPickerVisible ? onCloseIconPicker : onClose} />
+        <BottomPopupSheet style={styles.categoryFormSheet}>
           <View style={styles.formHeader}>
-            <Pressable onPress={onClose} hitSlop={10}>
-              <Text style={styles.formClose}>Hủy</Text>
+            <Pressable onPress={iconPickerVisible ? onCloseIconPicker : onClose} hitSlop={10}>
+              <Text style={styles.formClose}>{iconPickerVisible ? "‹ Form" : "Hủy"}</Text>
             </Pressable>
-            <Text style={styles.formTitle}>{title}</Text>
-            <Pressable onPress={onSubmit} disabled={isSaving} hitSlop={10}>
-              <Text style={[styles.formSave, isSaving && styles.disabledText]}>Lưu</Text>
-            </Pressable>
+            <Text style={styles.formTitle}>{iconPickerVisible ? "Chọn icon" : title}</Text>
+            {iconPickerVisible ? (
+              <View style={styles.headerSpacer} />
+            ) : (
+              <Pressable onPress={onSubmit} disabled={isSaving} hitSlop={10}>
+                <Text style={[styles.formSave, isSaving && styles.disabledText]}>Lưu</Text>
+              </Pressable>
+            )}
           </View>
 
+          {iconPickerVisible ? (
+            <CategoryIconPickerContent onSelect={onSelectIcon} selectedIcon={form.icon} />
+          ) : (
           <View style={styles.formBody}>
             <View style={styles.formField}>
               <Text style={styles.formLabel}>Tên category</Text>
@@ -592,15 +1853,26 @@ function CategoryFormModal({
 
             <View style={styles.formField}>
               <Text style={styles.formLabel}>Icon</Text>
-              <TextInput
-                autoCapitalize="none"
-                editable={!isSaving}
-                onChangeText={(icon) => onChange({ ...form, icon })}
-                placeholder="food"
-                placeholderTextColor={theme.inputPlaceholder}
-                style={styles.formInput}
-                value={form.icon}
-              />
+              <Pressable
+                disabled={isSaving}
+                onPress={onOpenIconPicker}
+                style={[styles.iconSelectButton, isSaving && styles.disabledText]}
+              >
+                <View style={styles.iconSelectPreview}>
+                  {selectedIconOption ? (
+                    <selectedIconOption.Icon color={theme.primary} size={18} strokeWidth={2.4} />
+                  ) : (
+                    <Text style={styles.iconSelectPreviewText}>C</Text>
+                  )}
+                </View>
+                <View style={styles.iconSelectCopy}>
+                  <Text style={styles.iconSelectTitle}>{selectedIconOption?.label ?? "Mặc định"}</Text>
+                  <Text style={styles.iconSelectSubtitle}>
+                    {selectedIconOption ? selectedIconOption.key : "Dùng icon mặc định"}
+                  </Text>
+                </View>
+                <Text style={styles.iconSelectChevron}>›</Text>
+              </Pressable>
             </View>
 
             <Pressable
@@ -615,9 +1887,10 @@ function CategoryFormModal({
               )}
             </Pressable>
           </View>
-        </View>
+          )}
+        </BottomPopupSheet>
       </KeyboardAvoidingView>
-    </Modal>
+    </BottomPopup>
   );
 }
 
@@ -656,11 +1929,13 @@ function createStyles(theme: AppTheme) {
       paddingHorizontal: 12,
     },
     logoutButtonText: { color: theme.textInverse, fontSize: 13, fontWeight: "900" },
-    tileGrid: { flexDirection: "row", gap: 12 },
+    tileGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
     tile: {
       borderRadius: 8,
-      flex: 1,
+      flexBasis: "30%",
+      flexGrow: 1,
       minHeight: 128,
+      minWidth: 120,
       padding: 14,
       shadowColor: "#000",
       shadowOpacity: 0.14,
@@ -701,6 +1976,26 @@ function createStyles(theme: AppTheme) {
     headerSpacer: { width: 74 },
     headerCount: { color: theme.textMuted, fontSize: 14, fontWeight: "900", minWidth: 74, textAlign: "right" },
     listContent: { gap: 10, padding: 18, paddingBottom: 96 },
+    userFilterCard: {
+      backgroundColor: theme.card,
+      borderColor: theme.border,
+      borderRadius: 8,
+      borderWidth: 1,
+      gap: 10,
+      padding: 12,
+    },
+    filterRow: { gap: 8 },
+    filterChip: {
+      backgroundColor: theme.cardAlt,
+      borderColor: theme.border,
+      borderRadius: 18,
+      borderWidth: 1,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+    },
+    filterChipSelected: { backgroundColor: theme.primary, borderColor: theme.primary },
+    filterChipText: { color: theme.textMuted, fontSize: 12, fontWeight: "900" },
+    filterChipTextSelected: { color: theme.textInverse },
     userRow: {
       alignItems: "center",
       backgroundColor: theme.card,
@@ -734,6 +2029,7 @@ function createStyles(theme: AppTheme) {
     roleBadgeText: { color: theme.textMuted, fontSize: 11, fontWeight: "900" },
     roleBadgeTextAdmin: { color: theme.primary },
     categoryContent: { gap: 10, padding: 18, paddingBottom: 96 },
+    documentContent: { gap: 10, padding: 18, paddingBottom: 96 },
     categoryRow: {
       alignItems: "center",
       backgroundColor: theme.card,
@@ -762,6 +2058,122 @@ function createStyles(theme: AppTheme) {
       paddingVertical: 7,
     },
     deleteCategoryText: { color: theme.dangerText, fontSize: 12, fontWeight: "900" },
+    documentCard: {
+      backgroundColor: theme.card,
+      borderColor: theme.border,
+      borderRadius: 8,
+      borderWidth: 1,
+      gap: 10,
+      padding: 14,
+    },
+    documentListCard: {
+      backgroundColor: theme.card,
+      borderColor: theme.border,
+      borderRadius: 8,
+      borderWidth: 1,
+      flexDirection: "row",
+      gap: 12,
+      padding: 14,
+    },
+    documentListMain: { flex: 1, gap: 10, minWidth: 0 },
+    documentTopRow: { alignItems: "flex-start", flexDirection: "row", gap: 10, justifyContent: "space-between" },
+    documentDescription: { color: theme.textMuted, fontSize: 13, fontWeight: "700", lineHeight: 19 },
+    documentMetaRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+    documentMetaText: {
+      backgroundColor: theme.cardAlt,
+      borderRadius: 8,
+      color: theme.textMuted,
+      fontSize: 11,
+      fontWeight: "900",
+      paddingHorizontal: 8,
+      paddingVertical: 5,
+    },
+    documentError: { color: theme.dangerText, fontSize: 12, fontWeight: "800", lineHeight: 18 },
+    documentStatusBadge: {
+      backgroundColor: theme.cardAlt,
+      borderRadius: 12,
+      paddingHorizontal: 9,
+      paddingVertical: 5,
+    },
+    documentStatusGood: { backgroundColor: theme.goodBackground },
+    documentStatusDanger: { backgroundColor: `${theme.danger}22` },
+    documentStatusWarning: { backgroundColor: theme.warningBackground },
+    documentStatusText: { color: theme.text, fontSize: 11, fontWeight: "900" },
+    documentActionRail: { alignItems: "center", gap: 8 },
+    documentIconButton: {
+      alignItems: "center",
+      backgroundColor: theme.primaryPressed,
+      borderRadius: 8,
+      height: 36,
+      justifyContent: "center",
+      width: 36,
+    },
+    documentIconDeleteButton: {
+      alignItems: "center",
+      backgroundColor: theme.warningBackground,
+      borderRadius: 8,
+      height: 36,
+      justifyContent: "center",
+      width: 36,
+    },
+    actionMenuOverlay: { flex: 1, justifyContent: "flex-end" },
+    actionMenuSheet: {
+      backgroundColor: theme.sheet,
+      borderTopLeftRadius: 8,
+      borderTopRightRadius: 8,
+      gap: 4,
+      padding: 16,
+      paddingBottom: 26,
+    },
+    actionMenuTitle: {
+      color: theme.text,
+      fontSize: 16,
+      fontWeight: "900",
+      marginBottom: 8,
+    },
+    actionMenuItem: {
+      alignItems: "center",
+      borderRadius: 8,
+      flexDirection: "row",
+      gap: 12,
+      minHeight: 48,
+      paddingHorizontal: 10,
+    },
+    actionMenuIcon: {
+      alignItems: "center",
+      height: 28,
+      justifyContent: "center",
+      width: 28,
+    },
+    actionMenuLabel: { color: theme.text, fontSize: 15, fontWeight: "800" },
+    actionMenuDangerLabel: { color: theme.dangerText },
+    documentActions: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+    documentActionButton: {
+      backgroundColor: theme.primaryPressed,
+      borderRadius: 8,
+      minHeight: 34,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+    },
+    documentActionText: { color: theme.primary, fontSize: 12, fontWeight: "900" },
+    documentDeleteButton: {
+      backgroundColor: theme.warningBackground,
+      borderRadius: 8,
+      minHeight: 34,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+    },
+    documentDeleteText: { color: theme.dangerText, fontSize: 12, fontWeight: "900" },
+    emptyDocumentCard: {
+      backgroundColor: theme.card,
+      borderColor: theme.border,
+      borderRadius: 8,
+      borderWidth: 1,
+      gap: 12,
+      padding: 20,
+    },
+    emptyDocumentTitle: { color: theme.text, fontSize: 18, fontWeight: "900" },
+    emptyDocumentText: { color: theme.textMuted, fontSize: 13, fontWeight: "700", lineHeight: 20 },
     addButton: {
       alignItems: "center",
       backgroundColor: theme.primary,
@@ -772,6 +2184,12 @@ function createStyles(theme: AppTheme) {
     },
     addButtonText: { color: theme.textInverse, fontSize: 24, fontWeight: "800", lineHeight: 27 },
     detailContent: { gap: 14, padding: 18, paddingBottom: 96 },
+    detailLoadingState: {
+      alignItems: "center",
+      justifyContent: "center",
+      minHeight: 180,
+      padding: 24,
+    },
     userDetailCard: {
       alignItems: "center",
       backgroundColor: theme.card,
@@ -798,6 +2216,14 @@ function createStyles(theme: AppTheme) {
       borderRadius: 8,
       borderWidth: 1,
       overflow: "hidden",
+    },
+    userControlCard: {
+      backgroundColor: theme.card,
+      borderColor: theme.border,
+      borderRadius: 8,
+      borderWidth: 1,
+      gap: 12,
+      padding: 16,
     },
     infoRow: {
       borderBottomColor: theme.border,
@@ -836,11 +2262,25 @@ function createStyles(theme: AppTheme) {
     formTitle: { color: theme.text, fontSize: 17, fontWeight: "900" },
     formSave: { color: theme.primary, fontSize: 15, fontWeight: "900" },
     disabledText: { opacity: 0.55 },
+    paginationRow: {
+      alignItems: "center",
+      flexDirection: "row",
+      justifyContent: "space-between",
+      marginTop: 6,
+    },
+    paginationButton: {
+      backgroundColor: theme.primaryPressed,
+      borderRadius: 8,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+    },
+    paginationButtonText: { color: theme.primary, fontSize: 13, fontWeight: "900" },
+    paginationText: { color: theme.textMuted, fontSize: 13, fontWeight: "900" },
     formBody: { gap: 16, padding: 18 },
     formField: { gap: 8 },
     formLabel: { color: theme.text, fontSize: 13, fontWeight: "900" },
     formInput: {
-      backgroundColor: theme.card,
+      backgroundColor: theme.inputBackground,
       borderColor: theme.border,
       borderRadius: 8,
       borderWidth: 1,
@@ -849,6 +2289,70 @@ function createStyles(theme: AppTheme) {
       paddingHorizontal: 14,
       paddingVertical: 13,
     },
+    iconSelectButton: {
+      alignItems: "center",
+      backgroundColor: theme.card,
+      borderColor: theme.border,
+      borderRadius: 8,
+      borderWidth: 1,
+      flexDirection: "row",
+      gap: 12,
+      minHeight: 58,
+      paddingHorizontal: 12,
+    },
+    iconSelectPreview: {
+      alignItems: "center",
+      backgroundColor: theme.primaryPressed,
+      borderRadius: 18,
+      height: 36,
+      justifyContent: "center",
+      width: 36,
+    },
+    iconSelectPreviewText: { color: theme.primary, fontSize: 15, fontWeight: "900" },
+    iconSelectCopy: { flex: 1 },
+    iconSelectTitle: { color: theme.text, fontSize: 14, fontWeight: "900" },
+    iconSelectSubtitle: { color: theme.textMuted, fontSize: 11, fontWeight: "700", marginTop: 3 },
+    iconSelectChevron: { color: theme.textMuted, fontSize: 24, fontWeight: "800" },
+    iconPickerContent: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 10,
+      padding: 18,
+      paddingBottom: 26,
+    },
+    iconPickerOption: {
+      alignItems: "center",
+      backgroundColor: theme.card,
+      borderColor: theme.border,
+      borderRadius: 8,
+      borderWidth: 1,
+      gap: 7,
+      minHeight: 86,
+      padding: 10,
+      width: "30%",
+    },
+    iconPickerOptionSelected: { backgroundColor: theme.primaryPressed, borderColor: theme.primary },
+    iconPickerBubble: {
+      alignItems: "center",
+      backgroundColor: theme.primaryPressed,
+      borderRadius: 20,
+      height: 40,
+      justifyContent: "center",
+      width: 40,
+    },
+    iconPickerLabel: { color: theme.text, fontSize: 11, fontWeight: "800", textAlign: "center" },
+    multilineInput: { minHeight: 92, textAlignVertical: "top" },
+    filePickerButton: {
+      backgroundColor: theme.card,
+      borderColor: theme.border,
+      borderRadius: 8,
+      borderStyle: "dashed",
+      borderWidth: 1,
+      gap: 4,
+      padding: 16,
+    },
+    filePickerTitle: { color: theme.text, fontSize: 15, fontWeight: "900" },
+    filePickerSubtitle: { color: theme.textMuted, fontSize: 12, fontWeight: "700" },
     typeToggleRow: { flexDirection: "row", gap: 10 },
     typeToggle: {
       alignItems: "center",

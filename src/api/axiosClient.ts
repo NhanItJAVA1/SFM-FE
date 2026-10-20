@@ -139,23 +139,41 @@ function logRequest(config: InternalAxiosRequestConfig) {
   console.log("=================================");
 }
 
+function summarizeResponseData(data: unknown) {
+  if (Array.isArray(data)) {
+    return { itemCount: data.length, type: "array" };
+  }
+
+  if (typeof data === "object" && data !== null && "items" in data) {
+    const { items, ...metadata } = data as Record<string, unknown>;
+
+    return {
+      ...metadata,
+      itemCount: Array.isArray(items) ? items.length : 0,
+      type: "paged",
+    };
+  }
+
+  return data;
+}
+
 function logResponse(response: { status: number; config: InternalAxiosRequestConfig; data: unknown }) {
   console.log("========== API RESPONSE ==========");
   console.log("METHOD:", response.config.method?.toUpperCase());
   console.log("URL:", `${response.config.baseURL ?? ""}${response.config.url ?? ""}`);
   console.log("STATUS:", response.status);
-  console.log("DATA:", response.data);
+  console.log("DATA:", summarizeResponseData(response.data));
   console.log("==================================");
 }
 
 function logError(error: AxiosError) {
-  console.error("=========== API ERROR ===========");
-  console.error("METHOD:", error.config?.method?.toUpperCase());
-  console.error("URL:", `${error.config?.baseURL ?? ""}${error.config?.url ?? ""}`);
-  console.error("STATUS:", error.response?.status);
-  console.error("DATA:", error.response?.data);
-  console.error("MESSAGE:", error.message);
-  console.error("=================================");
+  console.log("=========== API ERROR ===========");
+  console.log("METHOD:", error.config?.method?.toUpperCase());
+  console.log("URL:", `${error.config?.baseURL ?? ""}${error.config?.url ?? ""}`);
+  console.log("STATUS:", error.response?.status);
+  console.log("DATA:", summarizeResponseData(error.response?.data));
+  console.log("MESSAGE:", error.message);
+  console.log("=================================");
 }
 
 /**
@@ -183,7 +201,7 @@ async function refreshAccessToken() {
      * the normal authentication / retry flow.
      */
     const response = await axios.post<RefreshTokenResponse>(
-      "/auth/refresh-token",
+      "/v1/auth/refresh-token",
       {
         refreshToken,
       },
@@ -304,8 +322,6 @@ httpClient.interceptors.response.use(
   },
 
   async (error: AxiosError) => {
-    logError(error);
-
     const originalRequest = error.config as
       | (InternalAxiosRequestConfig & {
           _retry?: boolean;
@@ -316,6 +332,8 @@ httpClient.interceptors.response.use(
      * No original request -> just reject.
      */
     if (!originalRequest) {
+      logError(error);
+
       return Promise.reject(error);
     }
 
@@ -329,6 +347,8 @@ httpClient.interceptors.response.use(
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
 
+      console.log("🔐 Access token rejected. Trying refresh token flow.");
+
       const refreshed = await refreshAccessTokenOnce();
 
       if (refreshed) {
@@ -341,6 +361,8 @@ httpClient.interceptors.response.use(
         return httpClient.request(originalRequest);
       }
     }
+
+    logError(error);
 
     return Promise.reject(error);
   },
@@ -440,6 +462,12 @@ export const axiosClient = {
   put: <T = unknown>(path: string, body?: unknown) =>
     request<T>(path, {
       method: "PUT",
+      body,
+    }),
+
+  patch: <T = unknown>(path: string, body?: unknown) =>
+    request<T>(path, {
+      method: "PATCH",
       body,
     }),
 

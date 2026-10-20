@@ -1,24 +1,12 @@
+import { BottomPopup, BottomPopupSheet, BottomPopupPressable } from "@/components/bottom-popup";
+import { ScreenGradientBackground } from "@/components/screen-gradient-background";
+import { AmountSuggestions } from "@/components/amount-suggestions";
 import DateTimePicker, { DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import { router, useFocusEffect } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 import { SymbolView } from "expo-symbols";
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  ActivityIndicator,
-  Alert,
-  AppState,
-  Image,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { ActivityIndicator, Alert, AppState, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from "react-native";
 
 import { categoriesApi, Category, CategoryType } from "@/api/categoriesApi";
 import { FinancialAccount, financialAccountApi } from "@/api/financialAccountApi";
@@ -54,6 +42,7 @@ const VIETQR_BANK_APP_ENDPOINT =
 const BANK_LOGO_PREFETCH_LIMIT = 12;
 const PAYMENT_AUTO_SAVE_SECONDS = 30;
 const PAYMENT_AUTO_SAVE_STORAGE_KEY = "sfm.pendingPaymentAutoSave";
+const AMOUNT_ACCESSORY_ID = "create-transaction-amount-suggestions";
 
 type PendingPaymentAutoSave = {
   deadline: number;
@@ -117,6 +106,9 @@ export default function CreateScreen() {
   const [paymentBankApps, setPaymentBankApps] = useState<VietQRBankApp[]>([]);
 
   const [amount, setAmount] = useState<string>("");
+  const [amountSuggestionInput, setAmountSuggestionInput] = useState("");
+  const [isAmountFocused, setIsAmountFocused] = useState(false);
+  const amountInputRef = useRef<TextInput>(null);
   const [description, setDescription] = useState<string>("");
   const [location, setLocation] = useState<string>("");
   const [type, setType] = useState<TransactionType>("Expense");
@@ -215,6 +207,11 @@ export default function CreateScreen() {
     return clearPaymentAutoSaveTimers;
   }, [clearPaymentAutoSaveTimers]);
 
+  useFocusEffect(useCallback(() => () => {
+    setIsAmountFocused(false);
+    amountInputRef.current?.blur();
+  }, []));
+
   const buildTransactionPayload = useCallback((): CreateTransactionPayload | null => {
     if (!amount || isNaN(Number(amount))) {
       Alert.alert("Lỗi", "Vui lòng nhập số tiền hợp lệ");
@@ -245,6 +242,7 @@ export default function CreateScreen() {
 
   const resetForm = useCallback(() => {
     setAmount("");
+    setAmountSuggestionInput("");
     setDescription("");
     setLocation("");
     setType("Expense");
@@ -482,6 +480,7 @@ export default function CreateScreen() {
   if (isLoading) {
     return (
       <FocusedScreenTransition style={[styles.container, { backgroundColor: theme.screen }]}>
+        <ScreenGradientBackground />
         <View style={styles.loadingState}>
           <ActivityIndicator color={theme.primary} />
         </View>
@@ -491,9 +490,9 @@ export default function CreateScreen() {
 
   return (
     <FocusedScreenTransition style={[styles.container, { backgroundColor: theme.screen }]}>
+      <ScreenGradientBackground />
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 84 : 0}
         style={styles.keyboardView}
       >
         <View style={styles.header}>
@@ -516,9 +515,14 @@ export default function CreateScreen() {
             <View style={styles.inputGroup}>
               <Text style={[styles.inputLabel, { color: theme.textSubtle }]}>Số tiền</Text>
               <TextInput
+                ref={amountInputRef}
+                accessibilityLabel="Số tiền"
                 style={[styles.amountInput, { color: theme.primary }]}
                 value={amount}
-                onChangeText={setAmount}
+                onChangeText={(value) => { setAmount(value); setAmountSuggestionInput(value); }}
+                onFocus={() => setIsAmountFocused(true)}
+                onBlur={() => setIsAmountFocused(false)}
+                inputAccessoryViewID={Platform.OS === "ios" ? AMOUNT_ACCESSORY_ID : undefined}
                 keyboardType="numeric"
                 placeholder="0"
                 placeholderTextColor={theme.textSubtle}
@@ -675,15 +679,22 @@ export default function CreateScreen() {
             )}
           </Pressable>
         </ScrollView>
+        <AmountSuggestions
+          nativeID={AMOUNT_ACCESSORY_ID}
+          input={amountSuggestionInput}
+          selectedAmount={amount}
+          focused={isAmountFocused && !isAccountPickerVisible && !isCategoryPickerVisible && !isTypePickerVisible && !isDatePickerVisible && !isPaymentBankPickerVisible}
+          onSelect={(value) => { setAmount(String(value)); amountInputRef.current?.focus(); }}
+        />
       </KeyboardAvoidingView>
 
       {/* Pickers */}
-      <Modal visible={isAccountPickerVisible} transparent animationType="slide">
+      <BottomPopup visible={isAccountPickerVisible} transparent animationType="fade">
         <Pressable
           style={[styles.modalOverlay, { backgroundColor: theme.overlay }]}
           onPress={() => setIsAccountPickerVisible(false)}
         >
-          <View style={[styles.modalContent, { backgroundColor: theme.card }]}>
+          <BottomPopupSheet style={[styles.modalContent, { backgroundColor: theme.sheet }]}>
             <Text style={[styles.modalTitle, { color: theme.text }]}>Chọn tài khoản</Text>
             <ScrollView>
               {(accounts ?? []).map((account) => (
@@ -705,16 +716,16 @@ export default function CreateScreen() {
                 </Pressable>
               ))}
             </ScrollView>
-          </View>
+          </BottomPopupSheet>
         </Pressable>
-      </Modal>
+      </BottomPopup>
 
-      <Modal visible={isCategoryPickerVisible} transparent animationType="slide">
+      <BottomPopup visible={isCategoryPickerVisible} transparent animationType="fade">
         <Pressable
           style={[styles.modalOverlay, { backgroundColor: theme.overlay }]}
           onPress={() => setIsCategoryPickerVisible(false)}
         >
-          <View style={[styles.modalContent, { backgroundColor: theme.card }]}>
+          <BottomPopupSheet style={[styles.modalContent, { backgroundColor: theme.sheet }]}>
             <Text style={[styles.modalTitle, { color: theme.text }]}>Chọn danh mục</Text>
             <ScrollView>
               {availableCategories.map((category) => (
@@ -736,16 +747,16 @@ export default function CreateScreen() {
                 </Pressable>
               ))}
             </ScrollView>
-          </View>
+          </BottomPopupSheet>
         </Pressable>
-      </Modal>
+      </BottomPopup>
 
-      <Modal visible={isTypePickerVisible} transparent animationType="slide">
+      <BottomPopup visible={isTypePickerVisible} transparent animationType="fade">
         <Pressable
           style={[styles.modalOverlay, { backgroundColor: theme.overlay }]}
           onPress={() => setIsTypePickerVisible(false)}
         >
-          <View style={[styles.modalContent, { backgroundColor: theme.card }]}>
+          <BottomPopupSheet style={[styles.modalContent, { backgroundColor: theme.sheet }]}>
             <Text style={[styles.modalTitle, { color: theme.text }]}>Chọn loại giao dịch</Text>
             {transactionTypes.map((t) => (
               <Pressable
@@ -760,16 +771,16 @@ export default function CreateScreen() {
                 <Text style={[styles.pickerItemText, { color: theme.text }]}>{t.label}</Text>
               </Pressable>
             ))}
-          </View>
+          </BottomPopupSheet>
         </Pressable>
-      </Modal>
+      </BottomPopup>
 
-      <Modal visible={isPaymentBankPickerVisible} transparent animationType="slide">
+      <BottomPopup visible={isPaymentBankPickerVisible} transparent animationType="fade">
         <Pressable
           style={[styles.modalOverlay, { backgroundColor: theme.overlay }]}
           onPress={() => setIsPaymentBankPickerVisible(false)}
         >
-          <View style={[styles.modalContent, { backgroundColor: theme.card }]}>
+          <BottomPopupSheet style={[styles.modalContent, { backgroundColor: theme.sheet }]}>
             <Text style={[styles.modalTitle, { color: theme.text }]}>Chọn ngân hàng thanh toán</Text>
             <ScrollView>
               {(paymentBankApps ?? []).map((bankApp) => (
@@ -796,25 +807,25 @@ export default function CreateScreen() {
                 </Pressable>
               ))}
             </ScrollView>
-          </View>
+          </BottomPopupSheet>
         </Pressable>
-      </Modal>
+      </BottomPopup>
 
       {isDatePickerVisible && Platform.OS === "android" ? (
         <DateTimePicker value={transactionDate} mode="datetime" display="default" onChange={handleDateChange} />
       ) : null}
 
-      <Modal
+      <BottomPopup
         visible={isDatePickerVisible && Platform.OS !== "android"}
         transparent
-        animationType="slide"
+        animationType="fade"
         onRequestClose={() => setIsDatePickerVisible(false)}
       >
         <Pressable
           style={[styles.modalOverlay, { backgroundColor: theme.overlay }]}
           onPress={() => setIsDatePickerVisible(false)}
         >
-          <Pressable style={[styles.datePickerContent, { backgroundColor: theme.card }]}>
+          <BottomPopupPressable style={[styles.datePickerContent, { backgroundColor: theme.sheet }]}>
             <View style={styles.datePickerHeader}>
               <Pressable onPress={() => setIsDatePickerVisible(false)} hitSlop={10}>
                 <Text style={[styles.datePickerAction, { color: theme.textSubtle }]}>Hủy</Text>
@@ -834,9 +845,9 @@ export default function CreateScreen() {
               themeVariant={themeMode}
               style={styles.datePicker}
             />
-          </Pressable>
+          </BottomPopupPressable>
         </Pressable>
-      </Modal>
+      </BottomPopup>
     </FocusedScreenTransition>
   );
 }
