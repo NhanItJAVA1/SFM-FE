@@ -1,7 +1,7 @@
 import { BottomPopup, BottomPopupSheet } from "@/components/bottom-popup";
 import { router, useFocusEffect } from "expo-router";
 import { useCallback, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, FlatList, Keyboard, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { ScreenGradientBackground } from "@/components/screen-gradient-background";
 import { ArrowDown, ArrowDownToLine, ArrowUp, ChartNoAxesCombined, Check, ChevronLeft, ChevronRight, Funnel, Landmark, LayoutGrid, ReceiptText, Search, SlidersHorizontal, Sparkles, Wallet, X } from "lucide-react-native";
@@ -263,7 +263,11 @@ export default function TransactionsScreen() {
                   </Pressable>
                 ) : null}
               </View>
-              <Pressable accessibilityRole="button" accessibilityLabel="Bộ lọc giao dịch" onPress={() => showAnomaliesOnly ? setIsAnomalyFilterOpen(true) : setIsAccountPickerOpen(true)} style={styles.toolbarButton}>
+              <Pressable accessibilityRole="button" accessibilityLabel="Bộ lọc giao dịch" onPress={() => {
+                Keyboard.dismiss();
+                if (showAnomaliesOnly) setIsAnomalyFilterOpen(true);
+                else setIsAccountPickerOpen(true);
+              }} style={styles.toolbarButton}>
                 <Funnel size={21} color={theme.text} />
                 {(showAnomaliesOnly ? activeFilterCount : listFilterCount) > 0 ? <View style={styles.toolbarBadge}><Text style={styles.toolbarBadgeText}>{showAnomaliesOnly ? activeFilterCount : listFilterCount}</Text></View> : null}
               </Pressable>
@@ -330,7 +334,7 @@ export default function TransactionsScreen() {
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={activeFilterCount ? `Bộ lọc, ${activeFilterCount} điều kiện đang chọn` : "Bộ lọc giao dịch bất thường"}
-                  onPress={() => setIsAnomalyFilterOpen(true)}
+                  onPress={() => { Keyboard.dismiss(); setIsAnomalyFilterOpen(true); }}
                   style={styles.anomalyFilterButton}
                 >
                   <SlidersHorizontal size={18} color={theme.text} />

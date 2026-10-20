@@ -1,11 +1,11 @@
 import { useMemo, useState } from "react";
 import { ImageBackground, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 import {
-  ArrowLeft, Banknote, Briefcase, Car, ChevronDown, CircleDollarSign,
+  ArrowLeft, BadgeDollarSign, Banknote, Briefcase, Car, ChevronDown, CircleDollarSign,
   Gamepad2, Gift, GraduationCap, Headset, HeartPulse, Home, LayoutGrid,
-  MoreHorizontal, PiggyBank, Plane, ReceiptText, ShoppingBag, Utensils, Wallet,
+  PiggyBank, Plane, ReceiptText, Shapes, ShoppingBag, TrendingUp, Utensils, Wallet,
   type LucideIcon,
 } from "lucide-react-native";
 
@@ -41,7 +41,10 @@ const categoryIcons: Record<string, { Icon: LucideIcon; color: string }> = {
   saving: { Icon: PiggyBank, color: "#d69440" },
   travel: { Icon: Plane, color: "#3997cb" },
   cash: { Icon: Banknote, color: "#24b299" },
-  other: { Icon: MoreHorizontal, color: "#7d8fa1" },
+  salary: { Icon: Banknote, color: "#24b299" },
+  bonus: { Icon: BadgeDollarSign, color: "#d69440" },
+  investment: { Icon: TrendingUp, color: "#3997cb" },
+  other: { Icon: Shapes, color: "#7d8fa1" },
 };
 
 export function getTransactionMonthRange(month: string | null) {
@@ -93,7 +96,7 @@ export function TransactionFilterScreen({
 
   return (
     <Modal animationType="slide" visible={visible} onRequestClose={onClose}>
-      <View style={styles.screen}>
+      <SafeAreaProvider style={styles.screen}>
         <ScreenGradientBackground darkOnly />
         {!isDark ? <View pointerEvents="none" style={styles.background}>
           <ImageBackground source={background} imageStyle={styles.backgroundImage} style={StyleSheet.absoluteFill} />
@@ -177,7 +180,9 @@ export function TransactionFilterScreen({
                   <Text style={styles.serviceText}>Tất cả</Text>
                 </Pressable>
                 {categories.map((category) => {
-                  const { Icon, color } = categoryIcons[category.icon ?? "other"] ?? categoryIcons.other;
+                  const iconKey = category.icon?.trim().toLowerCase() || "other";
+                  const fallback = category.type === "Income" ? categoryIcons.income : categoryIcons.other;
+                  const { Icon, color } = iconKey === "other" ? fallback : categoryIcons[iconKey] ?? fallback;
                   return (
                     <Pressable
                       key={category.id}
@@ -205,7 +210,7 @@ export function TransactionFilterScreen({
             </Pressable>
           </View>
         </SafeAreaView>
-      </View>
+      </SafeAreaProvider>
     </Modal>
   );
 }
