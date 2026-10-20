@@ -130,12 +130,16 @@ function getNoCacheHeaders(method?: RequestOptions["method"]): Record<string, st
  */
 
 function logRequest(config: InternalAxiosRequestConfig) {
+  if (!__DEV__) {
+    return;
+  }
+
   console.log("========== API REQUEST ==========");
   console.log("METHOD:", config.method?.toUpperCase());
   console.log("URL:", config.url);
   console.log("FULL URL:", `${config.baseURL ?? ""}${config.url ?? ""}`);
   console.log("HEADERS:", getSafeHeaders(config.headers as unknown as Record<string, unknown>));
-  console.log("DATA:", config.data);
+  console.log("DATA:", config.data instanceof FormData ? "[FormData payload]" : config.data);
   console.log("=================================");
 }
 
@@ -425,6 +429,8 @@ async function uploadFormData<T = unknown>(path: string, formData: FormData): Pr
   const response = await httpClient.post<T>(path, formData, {
     headers: {
       Accept: "application/json",
+      // Remove inherited JSON defaults; the native/browser adapter adds the boundary.
+      "Content-Type": undefined,
       /*
        * Don't manually set Content-Type:
        *
