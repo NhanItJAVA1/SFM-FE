@@ -137,7 +137,7 @@ export type AIChatResponse = {
 
 export type AIForecastTrainPayload = {
   asOf: string;
-  userId: number[];
+  userId?: number[];
 };
 
 export type ForecastTrainingMetrics = {

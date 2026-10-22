@@ -441,11 +441,6 @@ export default function AdminScreen() {
   }
 
   async function trainSelectedUsers() {
-    if (trainingUserIds.length === 0) {
-      showAdminMessage("Chưa chọn user", "Chọn ít nhất một user để train model.");
-      return;
-    }
-
     const asOfDate = new Date(`${trainingAsOf}T00:00:00`);
     if (
       !/^\d{4}-\d{2}-\d{2}$/.test(trainingAsOf) ||
@@ -458,7 +453,10 @@ export default function AdminScreen() {
 
     try {
       setIsTrainingForecast(true);
-      const response = await aiApi.trainForecast({ asOf: trainingAsOf, userId: trainingUserIds });
+      const payload = trainingUserIds.length > 0
+        ? { asOf: trainingAsOf, userId: trainingUserIds }
+        : { asOf: trainingAsOf };
+      const response = await aiApi.trainForecast(payload);
       setTrainingResult(response.data);
     } catch (error) {
       showAdminMessage("Train model thất bại", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
@@ -1097,18 +1095,20 @@ export default function AdminScreen() {
               />
               <View style={styles.trainingActions}>
                 <View>
-                  <Text style={styles.rowSubtitle}>Chọn một hoặc nhiều user để lấy dữ liệu train.</Text>
+                  <Text style={styles.rowSubtitle}>Để trống lựa chọn để train với toàn bộ user.</Text>
                   <Text style={styles.rowSubtitle}>ID đã chọn: {trainingUserIds.join(", ") || "chưa có"}</Text>
                 </View>
                 <Pressable
-                  disabled={isTrainingForecast || trainingUserIds.length === 0}
+                  disabled={isTrainingForecast}
                   onPress={() => void trainSelectedUsers()}
-                  style={[styles.fullSaveButton, (isTrainingForecast || trainingUserIds.length === 0) && styles.disabledText]}
+                  style={[styles.fullSaveButton, isTrainingForecast && styles.disabledText]}
                 >
                   {isTrainingForecast ? (
                     <ActivityIndicator color={theme.textInverse} />
                   ) : (
-                    <Text style={styles.fullSaveButtonText}>Train {trainingUserIds.length} user</Text>
+                    <Text style={styles.fullSaveButtonText}>
+                      {trainingUserIds.length > 0 ? `Train ${trainingUserIds.length} user` : "Train toàn bộ user"}
+                    </Text>
                   )}
                 </Pressable>
               </View>
