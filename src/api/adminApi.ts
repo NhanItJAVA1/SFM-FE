@@ -20,6 +20,8 @@ export type AdminUser = {
   status?: AdminUserStatus;
   role: AdminUserRole;
   createdAt: string;
+  firstFinancialAccountCreatedAt?: string | null;
+  deletedAt?: string | null;
 };
 
 export type AdminUserQuery = {

@@ -1,16 +1,26 @@
 import { router, useFocusEffect } from "expo-router";
-import { Fragment, useCallback, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Alert, ImageBackground, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Sparkles } from "lucide-react-native";
-import Svg, { Circle, Defs, LinearGradient, Line, Path, Rect, Stop, Text as SvgText } from "react-native-svg";
+import { Fragment, useCallback, useMemo, useRef, useState } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  ImageBackground,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import Svg, { Circle, Defs, Line, LinearGradient, Path, Rect, Stop, Text as SvgText } from "react-native-svg";
 
 import type { AIAnalysis } from "@/api/aiApi";
 import { categoriesApi, Category } from "@/api/categoriesApi";
 import { FinancialAccount, financialAccountApi } from "@/api/financialAccountApi";
 import { CategorySpendingResponse, Transaction, transactionsApi, TransactionType } from "@/api/transactionsApi";
-import { FocusedScreenTransition } from "@/components/screen-transition";
 import { ScreenGradientBackground } from "@/components/screen-gradient-background";
+import { FocusedScreenTransition } from "@/components/screen-transition";
 import { useAIAnalysis } from "@/hooks/use-ai-analysis";
 import { useAppTheme } from "@/hooks/use-app-theme";
 import { useThemeMode } from "@/hooks/use-theme-mode";
@@ -158,8 +168,7 @@ function buildLinePath(points: { day: number; value: number }[], rangeDays: numb
 
   return points
     .map((point, index) => {
-      const x =
-        rangeDays <= 1 ? forecastChart.left : forecastChart.left + ((point.day - 1) / (rangeDays - 1)) * xRange;
+      const x = rangeDays <= 1 ? forecastChart.left : forecastChart.left + ((point.day - 1) / (rangeDays - 1)) * xRange;
       const y = forecastChart.bottom - (Math.max(point.value, 0) / maxValue) * yRange;
 
       return `${index === 0 ? "M" : "L"} ${x.toFixed(1)} ${y.toFixed(1)}`;
@@ -432,25 +441,28 @@ export default function HomeScreen() {
           <View style={[styles.overviewStaticContent, { paddingTop: 12 + insets.top }]}>
             <View style={styles.header}>
               <View style={styles.headerCopy}>
-                <Text numberOfLines={1} style={styles.userName}>Hi, {displayName}!</Text>
+                <Text numberOfLines={1} style={styles.userName}>
+                  Hi, {displayName}!
+                </Text>
               </View>
               <View style={styles.aiChatPlaceholder} />
             </View>
 
             <Pressable onPress={() => setIsAccountsVisible((visible) => !visible)}>
               <Text style={styles.heroLabel}>Số dư</Text>
-              <Text style={styles.heroBalance}>
-                {formatMoney(totalBalance, currency)}
-              </Text>
+              <Text style={styles.heroBalance}>{formatMoney(totalBalance, currency)}</Text>
             </Pressable>
           </View>
         </ImageBackground>
-        <View pointerEvents="none" style={[styles.bottomSurfaceGuard, isDark && { backgroundColor: theme.screenGradient.bottom.color }]} />
+        <View
+          pointerEvents="none"
+          style={[styles.bottomSurfaceGuard, isDark && { backgroundColor: theme.screenGradient.bottom.color }]}
+        />
         <ScrollView
           contentContainerStyle={styles.content}
           onScroll={({ nativeEvent }) => {
             const isVisible = nativeEvent.contentOffset.y + chatButtonBottom < contentSurfaceTop - 32;
-            setIsChatButtonVisible((current) => current === isVisible ? current : isVisible);
+            setIsChatButtonVisible((current) => (current === isVisible ? current : isVisible));
           }}
           scrollEventThrottle={16}
           refreshControl={
@@ -493,11 +505,7 @@ export default function HomeScreen() {
                     <EmptyState title="Chưa có ví" description="Tạo ví đầu tiên để bắt đầu theo dõi số dư." />
                   ) : (
                     activeAccounts.map((account) => (
-                      <HeroAccountRow
-                        key={account.id}
-                        account={account}
-                        currency={currency}
-                      />
+                      <HeroAccountRow key={account.id} account={account} currency={currency} />
                     ))
                   )}
                 </View>
@@ -542,49 +550,49 @@ export default function HomeScreen() {
                   />
                 </View>
 
-              <SectionHeading
-                title="Chi tiêu nhiều nhất"
-                action="Chi tiết"
-                onAction={() => router.push("/(tabs)/user")}
-              />
-              <View style={styles.categoryCard}>
-                {topCategories.length === 0 ? (
-                  <EmptyState
-                    title="Chưa có chi tiêu"
-                    description="Các danh mục phát sinh trong tháng sẽ hiện ở đây."
-                  />
-                ) : (
-                  topCategories.map((category, index) => (
-                    <CategoryRow
-                      key={category.categoryId ?? category.categoryName}
-                      category={category}
-                      index={index}
-                      currency={currency}
+                <SectionHeading
+                  title="Chi tiêu nhiều nhất"
+                  action="Chi tiết"
+                  onAction={() => router.push("/(tabs)/user")}
+                />
+                <View style={styles.categoryCard}>
+                  {topCategories.length === 0 ? (
+                    <EmptyState
+                      title="Chưa có chi tiêu"
+                      description="Các danh mục phát sinh trong tháng sẽ hiện ở đây."
                     />
-                  ))
-                )}
-              </View>
+                  ) : (
+                    topCategories.map((category, index) => (
+                      <CategoryRow
+                        key={category.categoryId ?? category.categoryName}
+                        category={category}
+                        index={index}
+                        currency={currency}
+                      />
+                    ))
+                  )}
+                </View>
 
-              <SectionHeading
-                title="Giao dịch gần đây"
-                action="Xem tất cả"
-                onAction={() => router.push("/(tabs)/transactions")}
-              />
-              <View style={styles.transactionCard}>
-                {recentTransactions.length === 0 ? (
-                  <EmptyState title="Chưa có giao dịch" description="Giao dịch mới nhất trong tháng sẽ hiện ở đây." />
-                ) : (
-                  recentTransactions.map((transaction) => (
-                    <TransactionRow
-                      key={transaction.id}
-                      account={accountMap.get(transaction.accountId)}
-                      category={transaction.categoryId ? categoryMap.get(transaction.categoryId) : undefined}
-                      currency={currency}
-                      transaction={transaction}
-                    />
-                  ))
-                )}
-              </View>
+                <SectionHeading
+                  title="Giao dịch gần đây"
+                  action="Xem tất cả"
+                  onAction={() => router.push("/(tabs)/transactions")}
+                />
+                <View style={styles.transactionCard}>
+                  {recentTransactions.length === 0 ? (
+                    <EmptyState title="Chưa có giao dịch" description="Giao dịch mới nhất trong tháng sẽ hiện ở đây." />
+                  ) : (
+                    recentTransactions.map((transaction) => (
+                      <TransactionRow
+                        key={transaction.id}
+                        account={accountMap.get(transaction.accountId)}
+                        category={transaction.categoryId ? categoryMap.get(transaction.categoryId) : undefined}
+                        currency={currency}
+                        transaction={transaction}
+                      />
+                    ))
+                  )}
+                </View>
               </>
             )}
           </View>
@@ -595,10 +603,7 @@ export default function HomeScreen() {
               setChatButtonBottom(nativeEvent.layout.y + nativeEvent.layout.height);
             }}
             pointerEvents={isChatButtonVisible ? "box-none" : "none"}
-            style={[
-              styles.aiChatOverlay,
-              { top: 24 + insets.top, opacity: isChatButtonVisible ? 1 : 0 },
-            ]}
+            style={[styles.aiChatOverlay, { top: 24 + insets.top, opacity: isChatButtonVisible ? 1 : 0 }]}
           >
             <Pressable
               accessibilityLabel="Mở trợ lý tài chính AI"
@@ -606,7 +611,7 @@ export default function HomeScreen() {
               accessibilityElementsHidden={!isChatButtonVisible}
               importantForAccessibility={isChatButtonVisible ? "auto" : "no-hide-descendants"}
               disabled={!isChatButtonVisible}
-              onPress={() => router.push('/ai-chat')}
+              onPress={() => router.push("/ai-chat")}
               style={styles.aiChatButton}
             >
               <Sparkles color={theme.textInverse} size={19} strokeWidth={2.6} />
@@ -717,8 +722,12 @@ function MetricPill({
   const sizeStyle = size === "compact" ? styles.metricPillCompact : null;
   const content = (
     <>
-      <Text numberOfLines={1} style={styles.metricLabel}>{label}</Text>
-      <Text adjustsFontSizeToFit minimumFontScale={0.78} numberOfLines={1} style={styles.metricValue}>{value}</Text>
+      <Text numberOfLines={1} style={styles.metricLabel}>
+        {label}
+      </Text>
+      <Text adjustsFontSizeToFit minimumFontScale={0.78} numberOfLines={1} style={styles.metricValue}>
+        {value}
+      </Text>
     </>
   );
 
@@ -730,11 +739,7 @@ function MetricPill({
     );
   }
 
-  return (
-    <View style={[styles.metricPill, sizeStyle, toneStyle]}>
-      {content}
-    </View>
-  );
+  return <View style={[styles.metricPill, sizeStyle, toneStyle]}>{content}</View>;
 }
 
 function SpendingForecastChart({
@@ -755,11 +760,7 @@ function SpendingForecastChart({
   const forecastEndDate = readString(forecast, "forecastEndDate", "ForecastEndDate");
   const forecastModel = readString(forecast, "model", "Model");
   const forecastStatus = readString(forecast, "status", "Status");
-  const actualMonthToDateExpense = readNumber(
-    forecast,
-    "actualMonthToDateExpense",
-    "ActualMonthToDateExpense",
-  );
+  const actualMonthToDateExpense = readNumber(forecast, "actualMonthToDateExpense", "ActualMonthToDateExpense");
   const dailyForecasts = readArray(forecast, "dailyForecasts", "DailyForecasts");
   const daysInMonth = getDaysInMonthFromDate(forecastAsOf ?? forecastEndDate, dailySpending.length || 31);
   const now = new Date();
@@ -772,13 +773,14 @@ function SpendingForecastChart({
     Math.max(isCurrentMonthForecast ? now.getDate() : getDayOfMonth(forecastAsOf), 1),
     daysInMonth,
   );
-  const actualPoints = dailySpending.slice(0, asOfDay).reduce<{ day: number; value: number }[]>((points, amount, index) => {
-    const runningTotal = (points[points.length - 1]?.value ?? 0) + amount;
+  const actualPoints = dailySpending
+    .slice(0, asOfDay)
+    .reduce<{ day: number; value: number }[]>((points, amount, index) => {
+      const runningTotal = (points[points.length - 1]?.value ?? 0) + amount;
 
-    return [...points, { day: index + 1, value: runningTotal }];
-  }, []);
-  const actualTotal =
-    actualMonthToDateExpense ?? actualPoints[actualPoints.length - 1]?.value ?? 0;
+      return [...points, { day: index + 1, value: runningTotal }];
+    }, []);
+  const actualTotal = actualMonthToDateExpense ?? actualPoints[actualPoints.length - 1]?.value ?? 0;
   if (actualPoints.length > 0 && actualMonthToDateExpense !== undefined) {
     actualPoints[actualPoints.length - 1] = {
       ...actualPoints[actualPoints.length - 1],
@@ -805,11 +807,7 @@ function SpendingForecastChart({
   const hasActualData = actualPoints.some((point) => point.value > 0);
   const hasForecastData = forecastPoints.length > 1;
   const maxValue = getNiceChartMax(
-    Math.max(
-      1,
-      ...actualPoints.map((point) => point.value),
-      ...forecastPoints.map((point) => point.value),
-    ) * 1.08,
+    Math.max(1, ...actualPoints.map((point) => point.value), ...forecastPoints.map((point) => point.value)) * 1.08,
   );
   const actualPath = buildLinePath(actualPoints, daysInMonth, maxValue);
   const forecastPath = buildLinePath(forecastPoints, daysInMonth, maxValue);
@@ -819,8 +817,7 @@ function SpendingForecastChart({
       ? forecastChart.left
       : forecastChart.left + ((asOfDay - 1) / (daysInMonth - 1)) * (forecastChart.right - forecastChart.left);
   const actualEndY =
-    forecastChart.bottom -
-    (Math.max(actualTotal, 0) / maxValue) * (forecastChart.bottom - forecastChart.top);
+    forecastChart.bottom - (Math.max(actualTotal, 0) / maxValue) * (forecastChart.bottom - forecastChart.top);
   const actualLabelText = formatAxisMoney(actualTotal);
   const actualLabelWidth = actualLabelText.length * 6;
   const actualCalloutLength = 98;
@@ -832,12 +829,10 @@ function SpendingForecastChart({
       ? forecastChart.left
       : forecastChart.left + ((forecastEnd.day - 1) / (daysInMonth - 1)) * (forecastChart.right - forecastChart.left);
   const endY =
-    forecastChart.bottom -
-    (Math.max(forecastEnd.value, 0) / maxValue) * (forecastChart.bottom - forecastChart.top);
+    forecastChart.bottom - (Math.max(forecastEnd.value, 0) / maxValue) * (forecastChart.bottom - forecastChart.top);
   const forecastEndLabelX = Math.min(Math.max(endX, forecastChart.left + 42), forecastChart.right - 4);
   const forecastEndLabelAnchor = endX > forecastChart.right - 42 ? "end" : "middle";
-  const forecastLabel =
-    forecastModel && forecastModel !== "LSTM" ? "AI dự đoán (fallback)" : "AI dự đoán";
+  const forecastLabel = "AI dự đoán";
   const gridRatios = [0.2, 0.4, 0.6, 0.8];
   const xAxisDays = Array.from(new Set([1, 7, 14, 21, 28, daysInMonth])).filter((day) => day <= daysInMonth);
 
@@ -854,15 +849,16 @@ function SpendingForecastChart({
       <View style={styles.forecastSummaryRow}>
         <View>
           <Text style={styles.reportLabel}>
-            Đã chi đến hiện tại: <Text style={styles.negativeText}>{asOfDay}/{daysInMonth}</Text>
+            Đã chi đến hiện tại:{" "}
+            <Text style={styles.negativeText}>
+              {asOfDay}/{daysInMonth}
+            </Text>
           </Text>
           <Text style={[styles.forecastSummaryValue, styles.negativeText]}>{formatPlainMoney(actualTotal)}</Text>
         </View>
         <View style={styles.forecastSummaryRight}>
           <Text style={styles.reportLabel}>Tổng dự kiến sau {forecastPoints.length - 1} ngày</Text>
-          <Text style={styles.forecastSummaryValue}>
-            {formatPlainMoney(forecastEnd.value)}
-          </Text>
+          <Text style={styles.forecastSummaryValue}>{formatPlainMoney(forecastEnd.value)}</Text>
         </View>
       </View>
       <View style={styles.forecastDivider}>
@@ -870,7 +866,11 @@ function SpendingForecastChart({
         <View style={[styles.forecastDividerSegment, styles.forecastDividerPrediction]} />
       </View>
       <View style={styles.forecastChartCanvas}>
-        <Svg height={forecastChart.svgHeight} width="100%" viewBox={`0 0 ${forecastChart.width} ${forecastChart.svgHeight}`}>
+        <Svg
+          height={forecastChart.svgHeight}
+          width="100%"
+          viewBox={`0 0 ${forecastChart.width} ${forecastChart.svgHeight}`}
+        >
           <Defs>
             <LinearGradient id="pastAreaFade" x1="1" x2="0" y1="0" y2="0">
               <Stop offset="0" stopColor={theme.textMuted} stopOpacity={0.16} />
@@ -985,7 +985,9 @@ function SpendingForecastChart({
               strokeWidth={2.5}
             />
           ) : null}
-          {hasForecastData ? <Circle cx={endX} cy={endY} fill={theme.sheet} r={4} stroke={theme.primary} strokeWidth={2} /> : null}
+          {hasForecastData ? (
+            <Circle cx={endX} cy={endY} fill={theme.sheet} r={4} stroke={theme.primary} strokeWidth={2} />
+          ) : null}
           {hasForecastData ? (
             <SvgText
               fill={theme.primary}
@@ -998,7 +1000,14 @@ function SpendingForecastChart({
               {formatAxisMoney(forecastEnd.value)}
             </SvgText>
           ) : null}
-          <Circle cx={asOfX} cy={forecastChart.bottom} fill={theme.sheet} r={3} stroke={theme.textMuted} strokeWidth={1.5} />
+          <Circle
+            cx={asOfX}
+            cy={forecastChart.bottom}
+            fill={theme.sheet}
+            r={3}
+            stroke={theme.textMuted}
+            strokeWidth={1.5}
+          />
           {xAxisDays.map((day) => {
             const x =
               daysInMonth <= 1
@@ -1057,13 +1066,7 @@ function SpendingForecastChart({
 }
 
 // Tài khoản trong Tổng số dư
-function HeroAccountRow({
-  account,
-  currency,
-}: {
-  account: FinancialAccount;
-  currency: string;
-}) {
+function HeroAccountRow({ account, currency }: { account: FinancialAccount; currency: string }) {
   const styles = useHomeStyles();
   const meta = accountTypeMeta[account.type] || { color: "#8fa49a", icon: "●", label: "Ví" };
 

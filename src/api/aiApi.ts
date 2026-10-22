@@ -137,14 +137,14 @@ export type AIChatResponse = {
 
 export type AIForecastTrainPayload = {
   asOf: string;
-  userId?: number[];
+  userIds?: number[];
 };
 
 export type ForecastTrainingMetrics = {
   dailyMAE: number;
   dailyRMSE: number;
-  dailyWAPE: number;
-  sevenDayTotalWAPE: number;
+  dailyWAPE: number | null;
+  sevenDayTotalWAPE: number | null;
 };
 
 export type ForecastTrainingSplitPart = {
@@ -190,5 +190,5 @@ export const aiApi = {
   analysis: () => axiosClient.post<AIAnalysis>('/v1/FinancialAdvisor/analyze'),
   chat: (payload: AIChatPayload) => axiosClient.post<AIChatResponse>('/v1/AI/chat', payload),
   trainForecast: (payload: AIForecastTrainPayload) =>
-    axiosClient.post<ForecastTrainingResponse>('/v1/forecast/train', payload),
+    axiosClient.post<ForecastTrainingResponse>('/v1/admin/forecast/train', payload),
 };

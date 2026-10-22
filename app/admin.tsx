@@ -2,6 +2,11 @@ import { BottomPopup, BottomPopupSheet } from "@/components/bottom-popup";
 import * as DocumentPicker from "expo-document-picker";
 import { router, useFocusEffect } from "expo-router";
 import {
+  ArrowUpRight,
+  BookOpen,
+  FolderOpen,
+  SlidersHorizontal,
+  Users,
   Banknote,
   Briefcase,
   Car,
@@ -24,8 +29,7 @@ import {
   Utensils,
   Wallet,
 } from "lucide-react-native";
-import { type ComponentType, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import DateTimePicker, { type DateTimePickerEvent } from "@react-native-community/datetimepicker";
+import { type ComponentType, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -35,18 +39,18 @@ import {
   type AdminUserRole,
   type AdminUserStatus,
 } from "@/api/adminApi";
-import { aiApi, type ForecastTrainingMetrics, type ForecastTrainingResponse } from "@/api/aiApi";
 import { authApi } from "@/api/authApi";
 import { type Category, type CategoryType } from "@/api/categoriesApi";
 import { RAG_DOCUMENT_UPLOAD_CONTENT_TYPE, ragDocumentsApi, type RagDocument } from "@/api/ragDocumentsApi";
 import { FocusedScreenTransition } from "@/components/screen-transition";
-import { useAppTheme } from "@/hooks/use-app-theme";
+import { adminStyleSheet, useAdminFonts, useAdminTheme, type AdminTheme } from "@/components/admin/admin-design";
+import { AdminShell, type AdminView } from "@/components/admin/admin-shell";
+import { ForecastTrainingWorkspace } from "@/components/admin/forecast-training-workspace";
+import { ForecastTrainingResult } from "@/components/admin/forecast-training-result";
 import { getAuthRefreshToken, getAuthUser } from "@/stores/authSession";
 import { clearAuthSession } from "@/stores/persistedAuthSession";
-import type { AppTheme } from "@/theme/appTheme";
 import { isAdminUser } from "@/utils/authRole";
 
-type AdminView = "dashboard" | "users" | "categories" | "documents" | "training";
 type CategoryFormState = {
   icon: string;
   name: string;
@@ -140,10 +144,10 @@ function confirmAdminAction(title: string, message: string, onConfirm: () => voi
 }
 
 function useAdminStyles() {
-  const theme = useAppTheme();
+  const theme = useAdminTheme();
   const { width } = useWindowDimensions();
 
-  return useMemo(() => createStyles(theme, width >= 900), [theme, width]);
+  return createStyles(theme, width >= 1100);
 }
 
 function formatDate(value: string | null | undefined) {
@@ -169,12 +173,6 @@ function getRequestErrorMessage(error: unknown) {
   }
 
   return error instanceof Error ? error.message : "Vui lòng thử lại sau.";
-}
-
-function formatTrainingNumber(value: number, currency?: string) {
-  const formatted = new Intl.NumberFormat("vi-VN", { maximumFractionDigits: currency ? 0 : 2 }).format(value);
-
-  return currency ? `${formatted} ${currency}` : formatted;
 }
 
 function getCategoryTypeLabel(type: Category["type"]) {
@@ -232,23 +230,19 @@ function formatFileSize(size?: number) {
 }
 
 export default function AdminScreen() {
-  const theme = useAppTheme();
+  const theme = useAdminTheme();
   const styles = useAdminStyles();
+  const [fontsLoaded, fontError] = useAdminFonts();
   const currentUser = getAuthUser();
   const [view, setView] = useState<AdminView>("dashboard");
+  const [hasOpenedTraining, setHasOpenedTraining] = useState(false);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [ragDocuments, setRagDocuments] = useState<RagDocument[]>([]);
   const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
-  const [trainingUserIds, setTrainingUserIds] = useState<number[]>([]);
-  const [trainingAsOf, setTrainingAsOf] = useState("2025-12-31");
-  const [isTrainingDatePickerVisible, setIsTrainingDatePickerVisible] = useState(false);
-  const [isTrainingForecast, setIsTrainingForecast] = useState(false);
-  const [trainingResult, setTrainingResult] = useState<ForecastTrainingResponse | null>(null);
   const [userSearch, setUserSearch] = useState("");
   const [userRoleFilter, setUserRoleFilter] = useState<AdminUserRole | "All">("All");
   const [userStatusFilter, setUserStatusFilter] = useState<AdminUserStatus | "All">("All");
-  const [isTrainingFilterVisible, setIsTrainingFilterVisible] = useState(false);
   const [userPage, setUserPage] = useState(1);
   const [userPageSize] = useState(20);
   const [userTotalCount, setUserTotalCount] = useState(0);
@@ -275,6 +269,7 @@ export default function AdminScreen() {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [adminLoadWarnings, setAdminLoadWarnings] = useState<string[]>([]);
+  const hasRequestedAdminDataRef = useRef(false);
   const ragMetadataOpenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const defaultCategories = categories;
@@ -380,10 +375,11 @@ export default function AdminScreen() {
     useCallback(() => {
       if (isAdminUser(currentUser)) {
         loadAdminData({
-          silent: users.length > 0 || categories.length > 0 || ragDocuments.length > 0,
+          silent: hasRequestedAdminDataRef.current,
         });
+        hasRequestedAdminDataRef.current = true;
       }
-    }, [categories.length, currentUser, loadAdminData, ragDocuments.length, users.length]),
+    }, [currentUser, loadAdminData]),
   );
 
   async function openUserDetail(user: AdminUser) {
@@ -414,55 +410,6 @@ export default function AdminScreen() {
   function updateUserStatusFilter(nextStatus: AdminUserStatus | "All") {
     setUserStatusFilter(nextStatus);
     setUserPage(1);
-  }
-
-  function handleTrainingDateChange(event: DateTimePickerEvent, date?: Date) {
-    if (event.type === "dismissed") {
-      setIsTrainingDatePickerVisible(false);
-      return;
-    }
-
-    if (date) {
-      const year = date.getFullYear();
-      const month = String(date.getMonth() + 1).padStart(2, "0");
-      const day = String(date.getDate()).padStart(2, "0");
-      setTrainingAsOf(`${year}-${month}-${day}`);
-    }
-
-    if (Platform.OS === "android") {
-      setIsTrainingDatePickerVisible(false);
-    }
-  }
-
-  function toggleTrainingUser(userId: number) {
-    setTrainingUserIds((current) =>
-      current.includes(userId) ? current.filter((id) => id !== userId) : [...current, userId],
-    );
-  }
-
-  async function trainSelectedUsers() {
-    const asOfDate = new Date(`${trainingAsOf}T00:00:00`);
-    if (
-      !/^\d{4}-\d{2}-\d{2}$/.test(trainingAsOf) ||
-      Number.isNaN(asOfDate.getTime()) ||
-      asOfDate.toISOString().slice(0, 10) !== trainingAsOf
-    ) {
-      showAdminMessage("Ngày không hợp lệ", "Nhập ngày theo định dạng YYYY-MM-DD.");
-      return;
-    }
-
-    try {
-      setIsTrainingForecast(true);
-      const payload = trainingUserIds.length > 0
-        ? { asOf: trainingAsOf, userId: trainingUserIds }
-        : { asOf: trainingAsOf };
-      const response = await aiApi.trainForecast(payload);
-      setTrainingResult(response.data);
-    } catch (error) {
-      showAdminMessage("Train model thất bại", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
-    } finally {
-      setIsTrainingForecast(false);
-    }
   }
 
   function requestUpdateUserStatus(user: AdminUser, status: AdminUserStatus) {
@@ -823,6 +770,22 @@ export default function AdminScreen() {
     }
   }
 
+  function navigateAdmin(nextView: AdminView) {
+    setSelectedUser(null);
+    if (nextView === "training") setHasOpenedTraining(true);
+    if (nextView !== view) {
+      setUserSearch("");
+      setUserRoleFilter("All");
+      setUserStatusFilter("All");
+      setUserPage(1);
+    }
+    setView(nextView);
+  }
+
+  if (!fontsLoaded && !fontError) {
+    return <View style={[styles.screen, styles.detailLoadingState]}><ActivityIndicator color={theme.primary} /></View>;
+  }
+
   if (!isAdminUser(currentUser)) {
     return (
       <FocusedScreenTransition style={styles.screen}>
@@ -836,525 +799,399 @@ export default function AdminScreen() {
     );
   }
 
-  if (selectedUser) {
-    return (
-      <FocusedScreenTransition style={styles.screen} triggerKey="admin-user-detail" variant="slide-left">
-        <SafeAreaView style={styles.screen} edges={["top"]}>
-          <View style={styles.header}>
-            <Pressable onPress={() => setSelectedUser(null)} hitSlop={12}>
-              <Text style={styles.backText}>‹ Users</Text>
-            </Pressable>
-            <Text style={styles.headerTitle}>Thông tin user</Text>
-            <View style={styles.headerSpacer} />
-          </View>
+  function renderContent() {
+    if (selectedUser) {
+      return (
+        <FocusedScreenTransition style={styles.screen} triggerKey="admin-user-detail" variant="fade">
+          <View style={styles.screen}>
+            <View style={styles.header}>
+              <Pressable onPress={() => setSelectedUser(null)} hitSlop={12}>
+                <Text style={styles.backText}>‹ Danh sách</Text>
+              </Pressable>
+              <Text style={styles.headerTitle}>Thông tin người dùng</Text>
+              <View style={styles.headerSpacer} />
+            </View>
 
-          <ScrollView contentContainerStyle={styles.detailContent}>
-            <View style={styles.userDetailCard}>
-              <View style={styles.userAvatar}>
-                <Text style={styles.userAvatarText}>
-                  {(selectedUser.displayName ?? selectedUser.username ?? "U").charAt(0).toUpperCase()}
+            <ScrollView contentContainerStyle={styles.detailContent}>
+              <View style={styles.userDetailCard}>
+                <View style={styles.userAvatar}>
+                  <Text style={styles.userAvatarText}>
+                    {(selectedUser.displayName ?? selectedUser.username ?? "U").charAt(0).toUpperCase()}
+                  </Text>
+                </View>
+                <Text style={styles.userDetailName}>{selectedUser.displayName ?? selectedUser.username}</Text>
+                <Text style={styles.userDetailEmail}>{selectedUser.email}</Text>
+              </View>
+
+              <View style={styles.infoCard}>
+                <InfoRow label="ID" value={String(selectedUser.id)} />
+                <InfoRow label="Username" value={selectedUser.username} />
+                <InfoRow label="Email" value={selectedUser.email} />
+                <InfoRow label="Display name" value={selectedUser.displayName ?? "Chưa có"} />
+                <InfoRow label="Role" value={selectedUser.role} />
+                <InfoRow label="Status" value={getUserStatusLabel(selectedUser.status)} />
+                <InfoRow label="Ngày tạo" value={formatDate(selectedUser.createdAt)} />
+                <InfoRow label="Avatar" value={selectedUser.avatarUrl ? "Có" : "Không"} />
+              </View>
+
+              <View style={styles.userControlCard}>
+                <Text style={styles.sectionLabel}>Trạng thái</Text>
+                <View style={styles.typeToggleRow}>
+                  {userStatusOptions.map((status) => (
+                    <Pressable
+                      key={status}
+                      disabled={processingUserId === selectedUser.id}
+                      onPress={() => requestUpdateUserStatus(selectedUser, status)}
+                      style={[styles.typeToggle, selectedUser.status === status && styles.typeToggleSelected]}
+                    >
+                      <Text
+                        style={[
+                          styles.typeToggleText,
+                          selectedUser.status === status && styles.typeToggleTextSelected,
+                        ]}
+                      >
+                        {getUserStatusLabel(status)}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+
+                <Text style={styles.sectionLabel}>Vai trò</Text>
+                <View style={styles.typeToggleRow}>
+                  {userRoleOptions.map((role) => (
+                    <Pressable
+                      key={role}
+                      disabled={processingUserId === selectedUser.id}
+                      onPress={() => requestUpdateUserRole(selectedUser, role)}
+                      style={[styles.typeToggle, selectedUser.role === role && styles.typeToggleSelected]}
+                    >
+                      <Text
+                        style={[styles.typeToggleText, selectedUser.role === role && styles.typeToggleTextSelected]}
+                      >
+                        {role}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+            </ScrollView>
+          </View>
+        </FocusedScreenTransition>
+      );
+    }
+
+    if (view === "users") {
+      return (
+        <FocusedScreenTransition style={styles.screen} triggerKey={view} variant="fade">
+          <View style={styles.screen}>
+            <View style={styles.header}>
+              <Pressable onPress={() => navigateAdmin("dashboard")} hitSlop={12}>
+                <Text style={styles.backText}>‹ Admin</Text>
+              </Pressable>
+              <Text style={styles.headerTitle}>Người dùng</Text>
+              <Text style={styles.headerCount}>{userTotalCount}</Text>
+            </View>
+
+            <ScrollView
+              contentContainerStyle={styles.listContent}
+              refreshControl={
+                <RefreshControl
+                  refreshing={isRefreshing}
+                  onRefresh={() => loadAdminData({ refresh: true })}
+                  tintColor={theme.primary}
+                />
+              }
+            >
+              <View style={styles.userFilterCard}>
+                <TextInput
+                  autoCapitalize="none"
+                  onChangeText={updateUserSearch}
+                  placeholder="Tìm theo tên hoặc email…"
+                  placeholderTextColor={theme.inputPlaceholder}
+                  style={styles.formInput}
+                  value={userSearch}
+                />
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
+                  {(["All", ...userRoleOptions] as (AdminUserRole | "All")[]).map((role) => (
+                    <FilterChip
+                      key={role}
+                      label={role === "All" ? "Tất cả vai trò" : role === "Admin" ? "Quản trị viên" : "Người dùng"}
+                      selected={userRoleFilter === role}
+                      onPress={() => updateUserRoleFilter(role)}
+                    />
+                  ))}
+                </ScrollView>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
+                  {(["All", ...userStatusOptions] as (AdminUserStatus | "All")[]).map((status) => (
+                    <FilterChip
+                      key={status}
+                      label={status === "All" ? "Tất cả trạng thái" : getUserStatusLabel(status)}
+                      selected={userStatusFilter === status}
+                      onPress={() => updateUserStatusFilter(status)}
+                    />
+                  ))}
+                </ScrollView>
+              </View>
+
+              {isLoadingUsers ? (
+                <View style={styles.loadingCard}>
+                  <ActivityIndicator color={theme.primary} />
+                  <Text style={styles.loadingText}>Đang tải user...</Text>
+                </View>
+              ) : users.length === 0 ? (
+                <View style={styles.emptyDocumentCard}>
+                  <Text style={styles.emptyDocumentTitle}>Không có user</Text>
+                  <Text style={styles.emptyDocumentText}>Thử đổi từ khóa tìm kiếm hoặc bộ lọc.</Text>
+                </View>
+              ) : (
+              <View style={styles.userTable}>
+                <View style={styles.tableHeading}><Text style={styles.tableHeadingText}>NGƯỜI DÙNG</Text><Text style={styles.tableHeadingText}>{userTotalCount} tài khoản</Text></View>
+                {(users ?? []).map(user => <AdminUserRow key={user.id} user={user} onPress={() => openUserDetail(user)} />)}
+              </View>
+              )}
+
+              <View style={styles.paginationRow}>
+                <Pressable
+                  disabled={userPage <= 1 || isRefreshing}
+                  onPress={() => setUserPage((page) => Math.max(1, page - 1))}
+                  style={[styles.paginationButton, (userPage <= 1 || isRefreshing) && styles.disabledText]}
+                >
+                  <Text style={styles.paginationButtonText}>Trước</Text>
+                </Pressable>
+                <Text style={styles.paginationText}>
+                  Trang {userPage}/{userTotalPages}
                 </Text>
-              </View>
-              <Text style={styles.userDetailName}>{selectedUser.displayName ?? selectedUser.username}</Text>
-              <Text style={styles.userDetailEmail}>{selectedUser.email}</Text>
-            </View>
-
-            <View style={styles.infoCard}>
-              <InfoRow label="ID" value={String(selectedUser.id)} />
-              <InfoRow label="Username" value={selectedUser.username} />
-              <InfoRow label="Email" value={selectedUser.email} />
-              <InfoRow label="Display name" value={selectedUser.displayName ?? "Chưa có"} />
-              <InfoRow label="Role" value={selectedUser.role} />
-              <InfoRow label="Status" value={getUserStatusLabel(selectedUser.status)} />
-              <InfoRow label="Ngày tạo" value={formatDate(selectedUser.createdAt)} />
-              <InfoRow label="Avatar" value={selectedUser.avatarUrl ? "Có" : "Không"} />
-            </View>
-
-            <View style={styles.userControlCard}>
-              <Text style={styles.sectionLabel}>Trạng thái</Text>
-              <View style={styles.typeToggleRow}>
-                {userStatusOptions.map((status) => (
-                  <Pressable
-                    key={status}
-                    disabled={processingUserId === selectedUser.id}
-                    onPress={() => requestUpdateUserStatus(selectedUser, status)}
-                    style={[styles.typeToggle, selectedUser.status === status && styles.typeToggleSelected]}
-                  >
-                    <Text
-                      style={[
-                        styles.typeToggleText,
-                        selectedUser.status === status && styles.typeToggleTextSelected,
-                      ]}
-                    >
-                      {getUserStatusLabel(status)}
-                    </Text>
-                  </Pressable>
-                ))}
-              </View>
-
-              <Text style={styles.sectionLabel}>Vai trò</Text>
-              <View style={styles.typeToggleRow}>
-                {userRoleOptions.map((role) => (
-                  <Pressable
-                    key={role}
-                    disabled={processingUserId === selectedUser.id}
-                    onPress={() => requestUpdateUserRole(selectedUser, role)}
-                    style={[styles.typeToggle, selectedUser.role === role && styles.typeToggleSelected]}
-                  >
-                    <Text
-                      style={[styles.typeToggleText, selectedUser.role === role && styles.typeToggleTextSelected]}
-                    >
-                      {role}
-                    </Text>
-                  </Pressable>
-                ))}
-              </View>
-            </View>
-          </ScrollView>
-        </SafeAreaView>
-      </FocusedScreenTransition>
-    );
-  }
-
-  if (view === "users") {
-    return (
-      <FocusedScreenTransition style={styles.screen} triggerKey={view} variant="slide-left">
-        <SafeAreaView style={styles.screen} edges={["top"]}>
-          <View style={styles.header}>
-            <Pressable onPress={() => setView("dashboard")} hitSlop={12}>
-              <Text style={styles.backText}>‹ Admin</Text>
-            </Pressable>
-            <Text style={styles.headerTitle}>Users</Text>
-            <Text style={styles.headerCount}>{userTotalCount}</Text>
-          </View>
-
-          <ScrollView
-            contentContainerStyle={styles.listContent}
-            refreshControl={
-              <RefreshControl
-                refreshing={isRefreshing}
-                onRefresh={() => loadAdminData({ refresh: true })}
-                tintColor={theme.primary}
-              />
-            }
-          >
-            <View style={styles.userFilterCard}>
-              <TextInput
-                autoCapitalize="none"
-                onChangeText={updateUserSearch}
-                placeholder="Tìm username, email, display name"
-                placeholderTextColor={theme.inputPlaceholder}
-                style={styles.formInput}
-                value={userSearch}
-              />
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
-                {(["All", ...userRoleOptions] as (AdminUserRole | "All")[]).map((role) => (
-                  <FilterChip
-                    key={role}
-                    label={role === "All" ? "Tất cả role" : role}
-                    selected={userRoleFilter === role}
-                    onPress={() => updateUserRoleFilter(role)}
-                  />
-                ))}
-              </ScrollView>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
-                {(["All", ...userStatusOptions] as (AdminUserStatus | "All")[]).map((status) => (
-                  <FilterChip
-                    key={status}
-                    label={status === "All" ? "Tất cả trạng thái" : getUserStatusLabel(status)}
-                    selected={userStatusFilter === status}
-                    onPress={() => updateUserStatusFilter(status)}
-                  />
-                ))}
-              </ScrollView>
-            </View>
-
-            {isLoadingUsers ? (
-              <View style={styles.loadingCard}>
-                <ActivityIndicator color={theme.primary} />
-                <Text style={styles.loadingText}>Đang tải user...</Text>
-              </View>
-            ) : users.length === 0 ? (
-              <View style={styles.emptyDocumentCard}>
-                <Text style={styles.emptyDocumentTitle}>Không có user</Text>
-                <Text style={styles.emptyDocumentText}>Thử đổi từ khóa tìm kiếm hoặc bộ lọc.</Text>
-              </View>
-            ) : (
-            (users ?? []).map((user) => (
-              <Pressable key={user.id} style={styles.userRow} onPress={() => openUserDetail(user)}>
-                <View style={styles.userMiniAvatar}>
-                  <Text style={styles.userMiniAvatarText}>
-                    {(user.displayName ?? user.username ?? "U").charAt(0).toUpperCase()}
-                  </Text>
-                </View>
-                <View style={styles.rowCopy}>
-                  <Text style={styles.rowTitle}>{user.displayName ?? user.username}</Text>
-                  <Text style={styles.rowSubtitle}>
-                    @{user.username} · {user.email}
-                  </Text>
-                  <Text style={styles.rowSubtitle}>
-                    {getUserStatusLabel(user.status)} · {formatDate(user.createdAt)}
-                  </Text>
-                </View>
-                <View style={[styles.roleBadge, user.role === "Admin" && styles.roleBadgeAdmin]}>
-                  <Text style={[styles.roleBadgeText, user.role === "Admin" && styles.roleBadgeTextAdmin]}>
-                    {user.role}
-                  </Text>
-                </View>
-              </Pressable>
-            ))
-            )}
-
-            <View style={styles.paginationRow}>
-              <Pressable
-                disabled={userPage <= 1 || isRefreshing}
-                onPress={() => setUserPage((page) => Math.max(1, page - 1))}
-                style={[styles.paginationButton, (userPage <= 1 || isRefreshing) && styles.disabledText]}
-              >
-                <Text style={styles.paginationButtonText}>Trước</Text>
-              </Pressable>
-              <Text style={styles.paginationText}>
-                Trang {userPage}/{userTotalPages}
-              </Text>
-              <Pressable
-                disabled={userPage >= userTotalPages || isRefreshing}
-                onPress={() => setUserPage((page) => Math.min(userTotalPages, page + 1))}
-                style={[
-                  styles.paginationButton,
-                  (userPage >= userTotalPages || isRefreshing) && styles.disabledText,
-                ]}
-              >
-                <Text style={styles.paginationButtonText}>Sau</Text>
-              </Pressable>
-            </View>
-          </ScrollView>
-        </SafeAreaView>
-      </FocusedScreenTransition>
-    );
-  }
-
-  if (view === "training") {
-    return (
-      <FocusedScreenTransition style={styles.screen} triggerKey={view} variant="slide-left">
-        <SafeAreaView style={styles.screen} edges={["top"]}>
-          <View style={styles.header}>
-            <Pressable onPress={() => setView("dashboard")} hitSlop={12}>
-              <Text style={styles.backText}>‹ Admin</Text>
-            </Pressable>
-            <Text style={styles.headerTitle}>Train forecast model</Text>
-            <Text style={styles.headerCount}>{trainingUserIds.length} đã chọn</Text>
-          </View>
-
-          <ScrollView
-            contentContainerStyle={styles.listContent}
-            refreshControl={
-              <RefreshControl
-                refreshing={isRefreshing}
-                onRefresh={() => loadAdminData({ refresh: true })}
-                tintColor={theme.primary}
-              />
-            }
-          >
-            <View style={styles.trainingControls}>
-              <View style={styles.formField}>
-                <Text style={styles.formLabel}>As of</Text>
-                {Platform.OS === "web" ? (
-                  <input
-                    aria-label="Chọn ngày As of"
-                    type="date"
-                    value={trainingAsOf}
-                    onChange={(event) => setTrainingAsOf(event.currentTarget.value)}
-                    style={{
-                      backgroundColor: theme.inputBackground,
-                      borderColor: theme.border,
-                      borderRadius: 8,
-                      borderStyle: "solid",
-                      borderWidth: 1,
-                      boxSizing: "border-box",
-                      color: theme.text,
-                      fontFamily: "inherit",
-                      fontSize: 16,
-                      minHeight: 48,
-                      padding: "0 14px",
-                      width: "100%",
-                    }}
-                  />
-                ) : (
-                  <Pressable style={styles.trainingDateButton} onPress={() => setIsTrainingDatePickerVisible(true)}>
-                    <Text style={styles.trainingDateText}>{trainingAsOf}</Text>
-                  </Pressable>
-                )}
-              </View>
-              <TextInput
-                autoCapitalize="none"
-                onChangeText={updateUserSearch}
-                placeholder="Tìm username, email, display name"
-                placeholderTextColor={theme.inputPlaceholder}
-                style={styles.formInput}
-                value={userSearch}
-              />
-              <View style={styles.trainingActions}>
-                <View>
-                  <Text style={styles.rowSubtitle}>Để trống lựa chọn để train với toàn bộ user.</Text>
-                  <Text style={styles.rowSubtitle}>ID đã chọn: {trainingUserIds.join(", ") || "chưa có"}</Text>
-                </View>
                 <Pressable
-                  disabled={isTrainingForecast}
-                  onPress={() => void trainSelectedUsers()}
-                  style={[styles.fullSaveButton, isTrainingForecast && styles.disabledText]}
+                  disabled={userPage >= userTotalPages || isRefreshing}
+                  onPress={() => setUserPage((page) => Math.min(userTotalPages, page + 1))}
+                  style={[
+                    styles.paginationButton,
+                    (userPage >= userTotalPages || isRefreshing) && styles.disabledText,
+                  ]}
                 >
-                  {isTrainingForecast ? (
-                    <ActivityIndicator color={theme.textInverse} />
-                  ) : (
-                    <Text style={styles.fullSaveButtonText}>
-                      {trainingUserIds.length > 0 ? `Train ${trainingUserIds.length} user` : "Train toàn bộ user"}
-                    </Text>
-                  )}
+                  <Text style={styles.paginationButtonText}>Sau</Text>
                 </Pressable>
               </View>
-              <View style={styles.trainingFilterActions}>
-                <Pressable style={styles.trainingFilterButton} onPress={() => setIsTrainingFilterVisible(true)}>
-                  <Text style={styles.trainingFilterButtonText}>Bộ lọc</Text>
-                  {(userRoleFilter !== "All" || userStatusFilter !== "All") ? (
-                    <Text style={styles.trainingFilterSummary}>
-                      {[userRoleFilter !== "All" ? userRoleFilter : null, userStatusFilter !== "All" ? getUserStatusLabel(userStatusFilter) : null]
-                        .filter(Boolean)
-                        .join(" · ")}
-                    </Text>
-                  ) : null}
-                </Pressable>
-              </View>
+            </ScrollView>
+          </View>
+        </FocusedScreenTransition>
+      );
+    }
+
+    if (view === "training") {
+      return null;
+    }
+
+    if (view === "categories") {
+      return (
+        <FocusedScreenTransition style={styles.screen} triggerKey={view} variant="fade">
+          <View style={styles.screen}>
+            <View style={styles.header}>
+              <Pressable onPress={() => navigateAdmin("dashboard")} hitSlop={12}>
+                <Text style={styles.backText}>‹ Admin</Text>
+              </Pressable>
+              <Text style={styles.headerTitle}>Danh mục mặc định</Text>
+              <Pressable style={styles.addButton} onPress={openAddDefaultCategory}>
+                <Text style={styles.addButtonText}>+</Text>
+              </Pressable>
             </View>
 
-            {trainingResult ? <ForecastTrainingResult result={trainingResult} /> : null}
-
-            {isLoadingUsers ? (
-              <View style={styles.loadingCard}>
-                <ActivityIndicator color={theme.primary} />
-                <Text style={styles.loadingText}>Đang tải user...</Text>
-              </View>
-            ) : users.length === 0 ? (
-              <View style={styles.emptyDocumentCard}>
-                <Text style={styles.emptyDocumentTitle}>Không có user</Text>
-                <Text style={styles.emptyDocumentText}>Thử đổi từ khóa hoặc bộ lọc.</Text>
-              </View>
-            ) : (
-              users.map((user) => {
-                const isSelected = trainingUserIds.includes(user.id);
-
-                return (
-                  <Pressable key={user.id} style={styles.trainingUserRow} onPress={() => toggleTrainingUser(user.id)}>
-                    <View style={[styles.trainingCheckbox, isSelected && styles.trainingCheckboxSelected]}>
-                      {isSelected ? <Text style={styles.trainingCheckboxMark}>✓</Text> : null}
-                    </View>
-                    <View style={styles.rowCopy}>
-                      <Text style={styles.rowTitle}>{user.displayName ?? user.username}</Text>
-                      <Text style={styles.rowSubtitle}>@{user.username} · {user.email}</Text>
-                    </View>
-                    <View style={[styles.roleBadge, user.role === "Admin" && styles.roleBadgeAdmin]}>
-                      <Text style={[styles.roleBadgeText, user.role === "Admin" && styles.roleBadgeTextAdmin]}>{user.role}</Text>
-                    </View>
+            <ScrollView
+              contentContainerStyle={styles.categoryContent}
+              refreshControl={
+                <RefreshControl
+                  refreshing={isRefreshing}
+                  onRefresh={() => loadAdminData({ refresh: true })}
+                  tintColor={theme.primary}
+                />
+              }
+            >
+              {(defaultCategories ?? []).map((category) => (
+                <Pressable key={category.id} style={styles.categoryRow} onPress={() => openEditDefaultCategory(category)}>
+                  <View style={styles.categoryIcon}>
+                    <CategoryIconMark icon={category.icon} />
+                  </View>
+                  <View style={styles.rowCopy}>
+                    <Text style={styles.rowTitle}>{category.name}</Text>
+                    <Text style={styles.rowSubtitle}>
+                      {getCategoryTypeLabel(category.type)} · {category.icon ?? "no icon"}
+                    </Text>
+                  </View>
+                  <Pressable
+                    style={styles.deleteCategoryButton}
+                    onPress={(event) => {
+                      event.stopPropagation();
+                      requestDeleteDefaultCategory(category);
+                    }}
+                    hitSlop={8}
+                  >
+                    <Text style={styles.deleteCategoryText}>Xóa</Text>
                   </Pressable>
-                );
-              })
-            )}
+                </Pressable>
+              ))}
+            </ScrollView>
 
-            <View style={styles.paginationRow}>
-              <Pressable
-                disabled={userPage <= 1 || isRefreshing}
-                onPress={() => setUserPage((page) => Math.max(1, page - 1))}
-                style={[styles.paginationButton, (userPage <= 1 || isRefreshing) && styles.disabledText]}
-              >
-                <Text style={styles.paginationButtonText}>Trước</Text>
-              </Pressable>
-              <Text style={styles.paginationText}>Trang {userPage}/{userTotalPages} · {userTotalCount} user</Text>
-              <Pressable
-                disabled={userPage >= userTotalPages || isRefreshing}
-                onPress={() => setUserPage((page) => Math.min(userTotalPages, page + 1))}
-                style={[styles.paginationButton, (userPage >= userTotalPages || isRefreshing) && styles.disabledText]}
-              >
-                <Text style={styles.paginationButtonText}>Sau</Text>
-              </Pressable>
-            </View>
-          </ScrollView>
-          {isTrainingDatePickerVisible && Platform.OS === "android" ? (
-            <DateTimePicker
-              value={new Date(`${trainingAsOf}T00:00:00`)}
-              mode="date"
-              display="default"
-              onChange={handleTrainingDateChange}
+            <CategoryFormModal
+              form={categoryForm}
+              iconPickerVisible={isCategoryIconPickerVisible}
+              isSaving={isSavingCategory}
+              onChange={setCategoryForm}
+              onClose={closeCategoryForm}
+              onCloseIconPicker={() => setIsCategoryIconPickerVisible(false)}
+              onOpenIconPicker={() => setIsCategoryIconPickerVisible(true)}
+              onSelectIcon={(icon) => {
+                setCategoryForm((current) => ({ ...current, icon }));
+                setIsCategoryIconPickerVisible(false);
+              }}
+              onSubmit={saveDefaultCategory}
+              theme={theme}
+              title={editingCategory ? "Sửa category mặc định" : "Thêm category mặc định"}
+              visible={isCategoryFormVisible}
             />
-          ) : null}
-          <BottomPopup
-            animationType="fade"
-            transparent
-            visible={isTrainingDatePickerVisible && Platform.OS === "ios"}
-            onRequestClose={() => setIsTrainingDatePickerVisible(false)}
-          >
-            <View style={styles.modalOverlay}>
-              <Pressable style={styles.modalBackdrop} onPress={() => setIsTrainingDatePickerVisible(false)} />
-              <BottomPopupSheet style={styles.categoryFormSheet}>
-                <View style={styles.formHeader}>
-                  <Pressable onPress={() => setIsTrainingDatePickerVisible(false)} hitSlop={12}>
-                    <Text style={styles.formClose}>Hủy</Text>
-                  </Pressable>
-                  <Text style={styles.formTitle}>Chọn ngày</Text>
-                  <Pressable onPress={() => setIsTrainingDatePickerVisible(false)} hitSlop={12}>
-                    <Text style={styles.formSave}>Xong</Text>
-                  </Pressable>
-                </View>
-                <DateTimePicker
-                  value={new Date(`${trainingAsOf}T00:00:00`)}
-                  mode="date"
-                  display="spinner"
-                  onChange={handleTrainingDateChange}
-                />
-              </BottomPopupSheet>
-            </View>
-          </BottomPopup>
-          <BottomPopup
-            animationType="fade"
-            transparent
-            visible={isTrainingFilterVisible}
-            onRequestClose={() => setIsTrainingFilterVisible(false)}
-          >
-            <View style={styles.modalOverlay}>
-              <Pressable style={styles.modalBackdrop} onPress={() => setIsTrainingFilterVisible(false)} />
-              <BottomPopupSheet style={styles.categoryFormSheet}>
-                <View style={styles.formHeader}>
-                  <Pressable onPress={() => setIsTrainingFilterVisible(false)} hitSlop={12}>
-                    <Text style={styles.formClose}>Đóng</Text>
-                  </Pressable>
-                  <Text style={styles.formTitle}>Bộ lọc user</Text>
-                  <Pressable
-                    onPress={() => {
-                      updateUserRoleFilter("All");
-                      updateUserStatusFilter("All");
-                    }}
-                    hitSlop={12}
-                  >
-                    <Text style={styles.formSave}>Xóa lọc</Text>
-                  </Pressable>
-                </View>
-                <View style={styles.trainingFilterSection}>
-                  <Text style={styles.formLabel}>Vai trò</Text>
-                  <View style={styles.trainingFilters}>
-                    {(["All", ...userRoleOptions] as (AdminUserRole | "All")[]).map((role) => (
-                      <FilterChip
-                        key={role}
-                        label={role === "All" ? "Tất cả" : role}
-                        selected={userRoleFilter === role}
-                        onPress={() => updateUserRoleFilter(role)}
-                      />
-                    ))}
-                  </View>
-                  <Text style={styles.formLabel}>Trạng thái</Text>
-                  <View style={styles.trainingFilters}>
-                    {(["All", ...userStatusOptions] as (AdminUserStatus | "All")[]).map((status) => (
-                      <FilterChip
-                        key={status}
-                        label={status === "All" ? "Tất cả" : getUserStatusLabel(status)}
-                        selected={userStatusFilter === status}
-                        onPress={() => updateUserStatusFilter(status)}
-                      />
-                    ))}
-                  </View>
-                </View>
-              </BottomPopupSheet>
-            </View>
-          </BottomPopup>
-        </SafeAreaView>
-      </FocusedScreenTransition>
-    );
-  }
-
-  if (view === "categories") {
-    return (
-      <FocusedScreenTransition style={styles.screen} triggerKey={view} variant="slide-left">
-        <SafeAreaView style={styles.screen} edges={["top"]}>
-          <View style={styles.header}>
-            <Pressable onPress={() => setView("dashboard")} hitSlop={12}>
-              <Text style={styles.backText}>‹ Admin</Text>
-            </Pressable>
-            <Text style={styles.headerTitle}>Category mặc định</Text>
-            <Pressable style={styles.addButton} onPress={openAddDefaultCategory}>
-              <Text style={styles.addButtonText}>+</Text>
-            </Pressable>
           </View>
+        </FocusedScreenTransition>
+      );
+    }
 
-          <ScrollView
-            contentContainerStyle={styles.categoryContent}
-            refreshControl={
-              <RefreshControl
-                refreshing={isRefreshing}
-                onRefresh={() => loadAdminData({ refresh: true })}
-                tintColor={theme.primary}
-              />
-            }
-          >
-            {(defaultCategories ?? []).map((category) => (
-              <Pressable key={category.id} style={styles.categoryRow} onPress={() => openEditDefaultCategory(category)}>
-                <View style={styles.categoryIcon}>
-                  <CategoryIconMark icon={category.icon} />
-                </View>
-                <View style={styles.rowCopy}>
-                  <Text style={styles.rowTitle}>{category.name}</Text>
-                  <Text style={styles.rowSubtitle}>
-                    {getCategoryTypeLabel(category.type)} · {category.icon ?? "no icon"}
-                  </Text>
-                </View>
-                <Pressable
-                  style={styles.deleteCategoryButton}
-                  onPress={(event) => {
-                    event.stopPropagation();
-                    requestDeleteDefaultCategory(category);
-                  }}
-                  hitSlop={8}
-                >
-                  <Text style={styles.deleteCategoryText}>Xóa</Text>
-                </Pressable>
+    if (view === "documents") {
+      return (
+        <FocusedScreenTransition style={styles.screen} triggerKey={view} variant="fade">
+          <View style={styles.screen}>
+            <View style={styles.header}>
+              <Pressable onPress={() => navigateAdmin("dashboard")} hitSlop={12}>
+                <Text style={styles.backText}>‹ Admin</Text>
               </Pressable>
-            ))}
-          </ScrollView>
+              <Text style={styles.headerTitle}>Tài liệu RAG</Text>
+              <Pressable style={styles.addButton} onPress={openRagUpload}>
+                <Text style={styles.addButtonText}>+</Text>
+              </Pressable>
+            </View>
 
-          <CategoryFormModal
-            form={categoryForm}
-            iconPickerVisible={isCategoryIconPickerVisible}
-            isSaving={isSavingCategory}
-            onChange={setCategoryForm}
-            onClose={closeCategoryForm}
-            onCloseIconPicker={() => setIsCategoryIconPickerVisible(false)}
-            onOpenIconPicker={() => setIsCategoryIconPickerVisible(true)}
-            onSelectIcon={(icon) => {
-              setCategoryForm((current) => ({ ...current, icon }));
-              setIsCategoryIconPickerVisible(false);
-            }}
-            onSubmit={saveDefaultCategory}
-            theme={theme}
-            title={editingCategory ? "Sửa category mặc định" : "Thêm category mặc định"}
-            visible={isCategoryFormVisible}
-          />
-        </SafeAreaView>
-      </FocusedScreenTransition>
-    );
-  }
+            <ScrollView
+              contentContainerStyle={styles.documentContent}
+              refreshControl={
+                <RefreshControl
+                  refreshing={isRefreshing}
+                  onRefresh={() => loadAdminData({ refresh: true })}
+                  tintColor={theme.primary}
+                />
+              }
+            >
+              {ragDocuments.length === 0 ? (
+                <View style={styles.emptyDocumentCard}>
+                  <Text style={styles.emptyDocumentTitle}>Chưa có tài liệu</Text>
+                  <Text style={styles.emptyDocumentText}>Upload tài liệu đầu tiên để tạo nguồn dữ liệu RAG.</Text>
+                  <Pressable style={styles.fullSaveButton} onPress={openRagUpload}>
+                    <Text style={styles.fullSaveButtonText}>Upload tài liệu</Text>
+                  </Pressable>
+                </View>
+              ) : (
+                ragDocuments.map((document) => (
+                  <RagDocumentRow
+                    key={document.id}
+                    document={document}
+                    isProcessing={processingDocumentId === document.id}
+                    onDelete={() => requestDeleteRagDocument(document)}
+                    onMore={() => setActionMenuRagDocument(document)}
+                  />
+                ))
+              )}
+            </ScrollView>
 
-  if (view === "documents") {
-    return (
-      <FocusedScreenTransition style={styles.screen} triggerKey={view} variant="slide-left">
-        <SafeAreaView style={styles.screen} edges={["top"]}>
-          <View style={styles.header}>
-            <Pressable onPress={() => setView("dashboard")} hitSlop={12}>
-              <Text style={styles.backText}>‹ Admin</Text>
-            </Pressable>
-            <Text style={styles.headerTitle}>Tài liệu RAG</Text>
-            <Pressable style={styles.addButton} onPress={openRagUpload}>
-              <Text style={styles.addButtonText}>+</Text>
-            </Pressable>
+            <RagUploadModal
+              form={ragUploadForm}
+              isUploading={isUploadingRagDocument}
+              onChange={setRagUploadForm}
+              onClose={() => {
+                if (!isUploadingRagDocument) {
+                  setIsRagUploadVisible(false);
+                }
+              }}
+              onPickFile={pickRagDocumentFile}
+              onSubmit={uploadRagDocument}
+              theme={theme}
+              visible={isRagUploadVisible}
+            />
+            <RagActionMenuModal
+              document={actionMenuRagDocument}
+              isProcessing={actionMenuRagDocument ? processingDocumentId === actionMenuRagDocument.id : false}
+              onClose={() => setActionMenuRagDocument(null)}
+              onDelete={() => {
+                if (actionMenuRagDocument) {
+                  requestDeleteRagDocument(actionMenuRagDocument);
+                }
+              }}
+              onDetail={() => {
+                if (actionMenuRagDocument) {
+                  const document = actionMenuRagDocument;
+
+                  setActionMenuRagDocument(null);
+                  void openRagDocumentDetail(document);
+                }
+              }}
+              onEdit={() => {
+                if (actionMenuRagDocument) {
+                  queueOpenEditRagMetadata(actionMenuRagDocument);
+                }
+              }}
+              onReindex={() => {
+                if (actionMenuRagDocument) {
+                  const document = actionMenuRagDocument;
+
+                  setActionMenuRagDocument(null);
+                  void reindexRagDocument(document);
+                }
+              }}
+            />
+            <RagDetailModal
+              document={selectedRagDocument}
+              isLoading={isLoadingRagDetail}
+              isProcessing={selectedRagDocument ? processingDocumentId === selectedRagDocument.id : false}
+              onClose={() => {
+                setIsRagDetailVisible(false);
+                setSelectedRagDocument(null);
+              }}
+              onDelete={() => {
+                if (selectedRagDocument) {
+                  requestDeleteRagDocument(selectedRagDocument);
+                }
+              }}
+              onEdit={() => {
+                if (selectedRagDocument) {
+                  queueOpenEditRagMetadata(selectedRagDocument, { closeDetail: true });
+                }
+              }}
+              onReindex={() => {
+                if (selectedRagDocument) {
+                  void reindexRagDocument(selectedRagDocument);
+                }
+              }}
+              visible={isRagDetailVisible}
+            />
+            <RagMetadataModal
+              form={ragMetadataForm}
+              isSaving={isSavingRagMetadata}
+              onChange={setRagMetadataForm}
+              onClose={() => {
+                if (!isSavingRagMetadata) {
+                  setIsRagMetadataVisible(false);
+                  setEditingRagDocument(null);
+                }
+              }}
+              onSubmit={saveRagMetadata}
+              theme={theme}
+              visible={isRagMetadataVisible}
+            />
           </View>
+        </FocusedScreenTransition>
+      );
+    }
 
+    return (
+      <FocusedScreenTransition style={styles.screen} triggerKey={view} variant="fade">
+        <View style={styles.screen}>
           <ScrollView
-            contentContainerStyle={styles.documentContent}
+            contentContainerStyle={styles.content}
             refreshControl={
               <RefreshControl
                 refreshing={isRefreshing}
@@ -1362,425 +1199,101 @@ export default function AdminScreen() {
                 tintColor={theme.primary}
               />
             }
+            showsVerticalScrollIndicator={false}
           >
-            {ragDocuments.length === 0 ? (
-              <View style={styles.emptyDocumentCard}>
-                <Text style={styles.emptyDocumentTitle}>Chưa có tài liệu</Text>
-                <Text style={styles.emptyDocumentText}>Upload tài liệu đầu tiên để tạo nguồn dữ liệu RAG.</Text>
-                <Pressable style={styles.fullSaveButton} onPress={openRagUpload}>
-                  <Text style={styles.fullSaveButtonText}>Upload tài liệu</Text>
-                </Pressable>
+            <View style={styles.welcomeRow}>
+              <View style={styles.welcomeCopy}>
+                <Text style={styles.eyebrow}>KHÔNG GIAN QUẢN TRỊ</Text>
+                <Text style={styles.title}>Tổng quan hệ thống</Text>
+                <Text style={styles.pageDescription}>Quản lý người dùng, dữ liệu và tri thức trong một không gian.</Text>
+              </View>
+              <Pressable accessibilityRole="button" onPress={() => loadAdminData({ refresh: true })} disabled={isRefreshing} style={({ hovered }) => [styles.refreshButton, hovered && styles.hoverSurface]}>
+                {isRefreshing ? <ActivityIndicator size="small" color={theme.textMuted} /> : <RotateCw size={14} color={theme.textMuted} />}<Text style={styles.refreshText}>Làm mới</Text>
+              </Pressable>
+            </View>
+
+            {adminLoadWarnings.length > 0 ? (
+              <View style={styles.loadWarningCard}>
+                {adminLoadWarnings.map((warning) => (
+                  <Text key={warning} style={styles.loadWarningText}>{warning}</Text>
+                ))}
+              </View>
+            ) : null}
+
+            {isLoading ? (
+              <View style={styles.loadingCard}>
+                <ActivityIndicator color={theme.primary} />
+                <Text style={styles.loadingText}>Đang tải dữ liệu admin...</Text>
               </View>
             ) : (
-              ragDocuments.map((document) => (
-                <RagDocumentRow
-                  key={document.id}
-                  document={document}
-                  isProcessing={processingDocumentId === document.id}
-                  onDelete={() => requestDeleteRagDocument(document)}
-                  onMore={() => setActionMenuRagDocument(document)}
-                />
-              ))
+              <>
+                <View style={styles.tileGrid}>
+                  <AdminTile Icon={Users} label="Người dùng" metric={userTotalCount} note="Tài khoản trong hệ thống" onPress={() => navigateAdmin("users")} />
+                  <AdminTile Icon={FolderOpen} label="Danh mục" metric={defaultCategories.length} note="Danh mục mặc định" onPress={() => navigateAdmin("categories")} />
+                  <AdminTile Icon={BookOpen} label="Tài liệu tri thức" metric={ragDocuments.length} note="Nguồn dữ liệu cho trợ lý AI" onPress={() => navigateAdmin("documents")} />
+                </View>
+
+                <View style={styles.overviewGrid}>
+                  <View style={styles.overviewMain}>
+                    <View style={styles.panelHeading}><View><Text style={styles.panelTitle}>Người dùng</Text><Text style={styles.panelSubtitle}>Tài khoản trong danh sách hiện tại</Text></View><Pressable accessibilityRole="button" onPress={() => navigateAdmin("users")} style={styles.inlineLink}><Text style={styles.inlineLinkText}>Xem tất cả</Text><ArrowUpRight size={14} color={theme.primary} /></Pressable></View>
+                    {users.length === 0 ? <Text style={styles.panelEmpty}>Chưa có người dùng để hiển thị.</Text> : users.slice(0, 5).map(user => <AdminUserRow key={user.id} user={user} onPress={() => openUserDetail(user)} compact />)}
+                  </View>
+                  <View style={styles.overviewAside}>
+                    <View style={styles.panelHeading}><View><Text style={styles.panelTitle}>Kho tri thức</Text><Text style={styles.panelSubtitle}>Trạng thái xử lý tài liệu</Text></View><BookOpen size={18} color={theme.textMuted} /></View>
+                    <View style={styles.knowledgeStats}>
+                      <StatRow label="Đã lập chỉ mục" value={String(ragDocuments.filter(doc => doc.status === "Indexed").length)} />
+                      <StatRow label="Đang xử lý" value={String(ragDocuments.filter(doc => doc.status === "Processing").length)} />
+                      <StatRow label="Bản nháp" value={String(ragDocuments.filter(doc => doc.status === "Draft").length)} />
+                      <StatRow label="Cần kiểm tra" value={String(ragDocuments.filter(doc => doc.status === "Failed").length)} />
+                    </View>
+                    <Pressable accessibilityRole="button" style={styles.panelFooter} onPress={() => navigateAdmin("documents")}><Text style={styles.inlineLinkText}>Quản lý tài liệu</Text><ArrowUpRight size={14} color={theme.primary} /></Pressable>
+                  </View>
+                </View>
+                <Pressable accessibilityRole="button" onPress={() => navigateAdmin("training")} style={({ hovered }) => [styles.trainingEntry, hovered && styles.hoverSurface]}>
+                  <View style={styles.trainingEntryIcon}><SlidersHorizontal size={20} color={theme.primary} /></View><View style={styles.rowCopy}><Text style={styles.panelTitle}>Mô hình dự báo</Text><Text style={styles.panelSubtitle}>Chọn dữ liệu người dùng và quản lý quá trình huấn luyện.</Text></View><ArrowUpRight size={18} color={theme.textMuted} />
+                </Pressable>
+              </>
             )}
           </ScrollView>
-
-          <RagUploadModal
-            form={ragUploadForm}
-            isUploading={isUploadingRagDocument}
-            onChange={setRagUploadForm}
-            onClose={() => {
-              if (!isUploadingRagDocument) {
-                setIsRagUploadVisible(false);
-              }
-            }}
-            onPickFile={pickRagDocumentFile}
-            onSubmit={uploadRagDocument}
-            theme={theme}
-            visible={isRagUploadVisible}
-          />
-          <RagActionMenuModal
-            document={actionMenuRagDocument}
-            isProcessing={actionMenuRagDocument ? processingDocumentId === actionMenuRagDocument.id : false}
-            onClose={() => setActionMenuRagDocument(null)}
-            onDelete={() => {
-              if (actionMenuRagDocument) {
-                requestDeleteRagDocument(actionMenuRagDocument);
-              }
-            }}
-            onDetail={() => {
-              if (actionMenuRagDocument) {
-                const document = actionMenuRagDocument;
-
-                setActionMenuRagDocument(null);
-                void openRagDocumentDetail(document);
-              }
-            }}
-            onEdit={() => {
-              if (actionMenuRagDocument) {
-                queueOpenEditRagMetadata(actionMenuRagDocument);
-              }
-            }}
-            onReindex={() => {
-              if (actionMenuRagDocument) {
-                const document = actionMenuRagDocument;
-
-                setActionMenuRagDocument(null);
-                void reindexRagDocument(document);
-              }
-            }}
-          />
-          <RagDetailModal
-            document={selectedRagDocument}
-            isLoading={isLoadingRagDetail}
-            isProcessing={selectedRagDocument ? processingDocumentId === selectedRagDocument.id : false}
-            onClose={() => {
-              setIsRagDetailVisible(false);
-              setSelectedRagDocument(null);
-            }}
-            onDelete={() => {
-              if (selectedRagDocument) {
-                requestDeleteRagDocument(selectedRagDocument);
-              }
-            }}
-            onEdit={() => {
-              if (selectedRagDocument) {
-                queueOpenEditRagMetadata(selectedRagDocument, { closeDetail: true });
-              }
-            }}
-            onReindex={() => {
-              if (selectedRagDocument) {
-                void reindexRagDocument(selectedRagDocument);
-              }
-            }}
-            visible={isRagDetailVisible}
-          />
-          <RagMetadataModal
-            form={ragMetadataForm}
-            isSaving={isSavingRagMetadata}
-            onChange={setRagMetadataForm}
-            onClose={() => {
-              if (!isSavingRagMetadata) {
-                setIsRagMetadataVisible(false);
-                setEditingRagDocument(null);
-              }
-            }}
-            onSubmit={saveRagMetadata}
-            theme={theme}
-            visible={isRagMetadataVisible}
-          />
-        </SafeAreaView>
+        </View>
       </FocusedScreenTransition>
     );
   }
 
   return (
-    <FocusedScreenTransition style={styles.screen} triggerKey={view} variant="slide-right">
-      <SafeAreaView style={styles.screen} edges={["top"]}>
-        <ScrollView
-          contentContainerStyle={styles.content}
-          refreshControl={
-            <RefreshControl
-              refreshing={isRefreshing}
-              onRefresh={() => loadAdminData({ refresh: true })}
-              tintColor={theme.primary}
-            />
-          }
-          showsVerticalScrollIndicator={false}
-        >
-          <View style={styles.welcomeRow}>
-            <View>
-              <Text style={styles.eyebrow}>ADMIN CONSOLE</Text>
-              <Text style={styles.title}>Xin chào, {currentUser?.displayName ?? currentUser?.username}</Text>
-            </View>
-            <View style={styles.adminActions}>
-              <View style={styles.adminAvatar}>
-                <Text style={styles.adminAvatarText}>A</Text>
-              </View>
-              <Pressable
-                style={[styles.logoutButton, isLoggingOut && styles.disabledText]}
-                onPress={confirmLogout}
-                disabled={isLoggingOut}
-              >
-                {isLoggingOut ? (
-                  <ActivityIndicator color={theme.textInverse} />
-                ) : (
-                  <Text style={styles.logoutButtonText}>Đăng xuất</Text>
-                )}
-              </Pressable>
-            </View>
-          </View>
-
-          {adminLoadWarnings.length > 0 ? (
-            <View style={styles.loadWarningCard}>
-              {adminLoadWarnings.map((warning) => (
-                <Text key={warning} style={styles.loadWarningText}>{warning}</Text>
-              ))}
-            </View>
-          ) : null}
-
-          {isLoading ? (
-            <View style={styles.loadingCard}>
-              <ActivityIndicator color={theme.primary} />
-              <Text style={styles.loadingText}>Đang tải dữ liệu admin...</Text>
-            </View>
-          ) : (
-            <>
-              <View style={styles.tileGrid}>
-                <AdminTile
-                  color="#58c768"
-                  label="User"
-                  metric={users.length}
-                  note="Quản lý người dùng"
-                  onPress={() => setView("users")}
-                />
-                <AdminTile
-                  color="#4a90e2"
-                  label="Category"
-                  metric={defaultCategories.length}
-                  note="Danh mục mặc định"
-                  onPress={() => setView("categories")}
-                />
-                <AdminTile
-                  color="#8b5cf6"
-                  label="RAG Docs"
-                  metric={ragDocuments.length}
-                  note="Tài liệu tri thức AI"
-                  onPress={() => setView("documents")}
-                />
-                <AdminTile
-                  color="#e58a32"
-                  label="Train AI"
-                  metric={trainingUserIds.length}
-                  note="Chọn user để train forecast"
-                  onPress={() => {
-                    setIsLoading(true);
-                    setUserRoleFilter("User");
-                    setUserPage(1);
-                    setView("training");
-                  }}
-                />
-              </View>
-
-              <Text style={styles.sectionLabel}>Thống kê hệ thống</Text>
-              <View style={styles.statsCard}>
-                <StatRow label="Tổng user" value={String(users.length)} />
-                <StatRow label="Category mặc định" value={String(defaultCategories.length)} />
-                <StatRow label="Tài liệu RAG" value={String(ragDocuments.length)} />
-              </View>
-            </>
-          )}
-        </ScrollView>
-      </SafeAreaView>
-    </FocusedScreenTransition>
+    <AdminShell view={view} onNavigate={navigateAdmin} name={currentUser?.displayName ?? currentUser?.username ?? "Admin"} onLogout={confirmLogout} isLoggingOut={isLoggingOut}>
+      <View style={[styles.screen, view === "training" && styles.hidden]}>{renderContent()}</View>
+      {hasOpenedTraining ? <View style={[styles.screen, view !== "training" && styles.hidden]}><ForecastTrainingWorkspace active={view === "training"} renderResult={result => <ForecastTrainingResult result={result} />} /></View> : null}
+    </AdminShell>
   );
 }
 
-function AdminTile({
-  color,
-  label,
-  metric,
-  note,
-  onPress,
-}: {
-  color: string;
-  label: string;
-  metric: number;
-  note: string;
-  onPress: () => void;
+function AdminTile({ Icon, label, metric, note, onPress }: {
+  Icon: CategoryIconComponent; label: string; metric: number; note: string; onPress: () => void;
 }) {
   const styles = useAdminStyles();
-
+  const theme = useAdminTheme();
   return (
-    <Pressable style={[styles.tile, { backgroundColor: color }]} onPress={onPress}>
-      <Text style={styles.tileLabel}>{label}</Text>
-      <Text style={styles.tileMetric}>{metric}</Text>
-      <Text style={styles.tileNote}>{note}</Text>
+    <Pressable accessibilityRole="button" style={({ hovered, pressed }) => [styles.tile, (hovered || pressed) && styles.tileHovered]} onPress={onPress}>
+      <View style={styles.tileTop}><Text style={styles.tileLabel}>{label}</Text><Icon size={18} strokeWidth={1.6} color={theme.textMuted} /></View>
+      <Text style={styles.tileMetric}>{new Intl.NumberFormat("vi-VN").format(metric)}</Text>
+      <View style={styles.tileTop}><Text style={styles.tileNote}>{note}</Text><ArrowUpRight size={14} color={theme.textMuted} /></View>
     </Pressable>
   );
 }
 
-function ForecastTrainingResult({ result }: { result: ForecastTrainingResponse }) {
+function AdminUserRow({ user, onPress, compact = false }: { user: AdminUser; onPress: () => void; compact?: boolean }) {
   const styles = useAdminStyles();
-  const [isDetailsVisible, setIsDetailsVisible] = useState(false);
-  const validationModels = result.evaluation.validation.models;
-  const testModels = result.evaluation.test.models;
-  const modelNames = [...new Set([...Object.keys(validationModels), ...Object.keys(testModels)])];
-  const baselineName = result.evaluation.saveCheck.baseline;
-  const baselineValidation = validationModels[baselineName];
-  const baselineTest = testModels[baselineName];
-  const selectedModelName = Object.entries(validationModels)
-    .filter(([name]) => name !== baselineName)
-    .sort((left, right) => left[1].sevenDayTotalWAPE - right[1].sevenDayTotalWAPE)[0]?.[0]
-    ?? modelNames[0];
-  const selectedValidation = selectedModelName ? validationModels[selectedModelName] : undefined;
-  const selectedTest = selectedModelName ? testModels[selectedModelName] : undefined;
-  const splits = [
-    ["Train", result.split.train],
-    ["Validation", result.split.validation],
-    ["Test", result.split.test],
-  ] as const;
-
-  function getWapeImprovement(candidate?: number, baseline?: number) {
-    if (candidate === undefined || baseline === undefined || baseline === 0) {
-      return "Chưa có số liệu so sánh";
-    }
-
-    const percentage = ((baseline - candidate) / baseline) * 100;
-
-    return percentage >= 0
-      ? `Giảm ${formatTrainingNumber(percentage)}% so với ${baselineName}`
-      : `Cao hơn ${formatTrainingNumber(Math.abs(percentage))}% so với ${baselineName}`;
-  }
-
-  return (
-    <View style={styles.trainingResultPanel}>
-      <View style={styles.trainingResultHeader}>
-        <View style={styles.rowCopy}>
-          <Text style={styles.trainingResultTitle}>Kết quả train</Text>
-          <Text style={styles.rowSubtitle}>{result.modelVersion}</Text>
-        </View>
-        <View style={[styles.trainingStatusBadge, result.saved ? styles.trainingStatusSaved : styles.trainingStatusNotSaved]}>
-          <Text style={[styles.trainingStatusText, !result.saved && styles.trainingStatusTextWarning]}>
-            {result.saved ? "Đã lưu model" : "Chưa lưu model"} · {result.status}
-          </Text>
-        </View>
-      </View>
-
-      <View style={styles.trainingExecutiveGrid}>
-        <View style={styles.trainingExecutiveCard}>
-          <Text style={styles.trainingExecutiveLabel}>WAPE dự báo 7 ngày · Validation</Text>
-          <Text style={styles.trainingExecutiveValue}>
-            {selectedValidation ? `${formatTrainingNumber(selectedValidation.sevenDayTotalWAPE)}%` : "—"}
-          </Text>
-          <Text style={styles.trainingResultNote}>{selectedModelName ?? "Chưa có model"} · càng thấp càng tốt</Text>
-        </View>
-        <View style={styles.trainingExecutiveCard}>
-          <Text style={styles.trainingExecutiveLabel}>WAPE dự báo 7 ngày · Test</Text>
-          <Text style={styles.trainingExecutiveValue}>
-            {selectedTest ? `${formatTrainingNumber(selectedTest.sevenDayTotalWAPE)}%` : "—"}
-          </Text>
-          <Text style={styles.trainingResultNote}>{getWapeImprovement(selectedTest?.sevenDayTotalWAPE, baselineTest?.sevenDayTotalWAPE)}</Text>
-        </View>
-        <View style={styles.trainingExecutiveCard}>
-          <Text style={styles.trainingExecutiveLabel}>User sử dụng được</Text>
-          <Text style={styles.trainingExecutiveValue}>
-            {formatTrainingNumber(result.dataset.usableUserCount)} / {formatTrainingNumber(result.dataset.inputUserCount)}
-          </Text>
-          <Text style={styles.trainingResultNote}>
-            {formatTrainingNumber(result.dataset.skippedIncomeWindowCount)} income windows bị bỏ qua
-          </Text>
-        </View>
-      </View>
-
-      <View style={styles.trainingContextCard}>
-        <Text style={styles.trainingSplitTitle}>Dữ liệu đến {result.dataset.asOf} · {result.dataset.currency}</Text>
-        <Text style={styles.trainingResultNote}>
-          Sai số đo tỷ lệ giữa dự báo và thực tế. So sánh model với baseline {baselineName}; test là dữ liệu theo thời gian chưa dùng để chọn model.
-        </Text>
-        <Text style={styles.trainingLimitationText}>Giới hạn dữ liệu: {result.dataset.limitation}</Text>
-      </View>
-
-      <View style={[styles.trainingSaveCheck, result.evaluation.saveCheck.passed ? styles.trainingStatusSaved : styles.trainingStatusNotSaved]}>
-        <Text style={[styles.trainingSaveCheckTitle, !result.evaluation.saveCheck.passed && styles.trainingSaveCheckTitleWarning]}>
-          {result.evaluation.saveCheck.passed ? "Model vượt điều kiện lưu" : "Model chưa vượt điều kiện lưu"}
-        </Text>
-        <Text style={styles.trainingResultNote}>
-          Đánh giá bằng {result.evaluation.saveCheck.metric} so với baseline {baselineName}.
-        </Text>
-      </View>
-
-      <Pressable onPress={() => setIsDetailsVisible((visible) => !visible)} style={styles.trainingDetailsToggle}>
-        <Text style={styles.trainingDetailsToggleText}>{isDetailsVisible ? "Ẩn chi tiết đánh giá" : "Xem chi tiết đánh giá"}</Text>
-        <Text style={styles.trainingDetailsToggleIcon}>{isDetailsVisible ? "−" : "+"}</Text>
-      </Pressable>
-
-      {isDetailsVisible ? (
-        <View style={styles.trainingDetailsBody}>
-          <Text style={styles.sectionLabel}>Dataset</Text>
-          <View style={styles.trainingResultGrid}>
-            <TrainingResultStat label="User đầu vào" value={formatTrainingNumber(result.dataset.inputUserCount)} />
-            <TrainingResultStat label="User sử dụng được" value={formatTrainingNumber(result.dataset.usableUserCount)} />
-            <TrainingResultStat label="User bị bỏ qua" value={formatTrainingNumber(result.dataset.skippedUserCount)} />
-            <TrainingResultStat label="Income windows bị bỏ qua" value={formatTrainingNumber(result.dataset.skippedIncomeWindowCount)} />
-            <TrainingResultStat label="Forecast windows" value={formatTrainingNumber(result.dataset.forecastWindowCount)} />
-            <TrainingResultStat label="Tổng rows" value={formatTrainingNumber(result.dataset.rowCount)} />
-            <TrainingResultStat label="Stride" value={`${result.dataset.originStrideDays} ngày`} />
-            <TrainingResultStat label="Chế độ dữ liệu" value={result.dataset.historicalMode} />
-          </View>
-
-          <Text style={styles.sectionLabel}>Chia tập dữ liệu</Text>
-          <View style={styles.trainingSplitGrid}>
-            {splits.map(([label, split]) => (
-              <View key={label} style={styles.trainingSplitCard}>
-                <Text style={styles.trainingSplitTitle}>{label}</Text>
-                <Text style={styles.trainingSplitValue}>{formatTrainingNumber(split.rowCount)} rows · {split.userCount} users</Text>
-                <Text style={styles.trainingResultNote}>{split.firstOrigin} → {split.lastOrigin}</Text>
-              </View>
-            ))}
-          </View>
-          <Text style={styles.trainingResultNote}>
-            {result.split.method} · purge {result.split.purgeHorizonDays} ngày · bỏ {result.split.discardedRows} rows
-          </Text>
-
-          <Text style={styles.sectionLabel}>Chỉ số từng model</Text>
-          <Text style={styles.trainingResultNote}>
-            Validation: {formatTrainingNumber(result.evaluation.validation.sampleCount)} samples · Test: {formatTrainingNumber(result.evaluation.test.sampleCount)} samples
-          </Text>
-          {modelNames.map((modelName) => (
-            <ForecastModelMetrics
-              key={modelName}
-              modelName={modelName}
-              validation={validationModels[modelName]}
-              test={testModels[modelName]}
-              currency={result.dataset.currency}
-            />
-          ))}
-          <Text style={styles.trainingResultNote}>Kết quả kiểm tra lưu: {result.evaluation.saveCheck.reason}</Text>
-        </View>
-      ) : null}
-    </View>
-  );
-}
-
-function TrainingResultStat({ label, value }: { label: string; value: string }) {
-  const styles = useAdminStyles();
-
-  return (
-    <View style={styles.trainingResultStat}>
-      <Text style={styles.trainingResultNote}>{label}</Text>
-      <Text style={styles.trainingResultStatValue}>{value}</Text>
-    </View>
-  );
-}
-
-function ForecastModelMetrics({
-  modelName,
-  validation,
-  test,
-  currency,
-}: {
-  modelName: string;
-  validation?: ForecastTrainingMetrics;
-  test?: ForecastTrainingMetrics;
-  currency: string;
-}) {
-  const styles = useAdminStyles();
-
-  function formatMetrics(label: string, metrics?: ForecastTrainingMetrics) {
-    if (!metrics) {
-      return `${label}: không có dữ liệu`;
-    }
-
-    return `${label} — MAE ${formatTrainingNumber(metrics.dailyMAE, currency)} · RMSE ${formatTrainingNumber(metrics.dailyRMSE, currency)} · WAPE ${formatTrainingNumber(metrics.dailyWAPE)}% · 7 ngày ${formatTrainingNumber(metrics.sevenDayTotalWAPE)}%`;
-  }
-
-  return (
-    <View style={styles.trainingModelCard}>
-      <Text style={styles.trainingModelName}>{modelName}</Text>
-      <Text style={styles.trainingMetricText}>{formatMetrics("Validation", validation)}</Text>
-      <Text style={styles.trainingMetricText}>{formatMetrics("Test", test)}</Text>
-    </View>
-  );
+  const theme = useAdminTheme();
+  const desktop = useWindowDimensions().width >= 1100;
+  return <Pressable accessibilityRole="button" onPress={onPress} style={({ hovered, pressed }) => [styles.userRow, compact && styles.compactUserRow, (hovered || pressed) && styles.hoverSurface]}>
+    <View style={styles.userMiniAvatar}><Text style={styles.userMiniAvatarText}>{(user.displayName || user.username || "U").charAt(0).toUpperCase()}</Text></View>
+    <View style={styles.rowCopy}><Text numberOfLines={1} style={styles.rowTitle}>{user.displayName || user.username}</Text><Text numberOfLines={1} style={styles.rowSubtitle}>{user.email}</Text></View>
+    {!compact && desktop ? <View style={styles.userStatusColumn}><View style={styles.statusLine}><View style={[styles.statusDot, { backgroundColor: user.status === "Active" ? theme.primary : theme.textMuted }]} /><Text style={styles.rowSubtitle}>{getUserStatusLabel(user.status)}</Text></View><Text style={styles.rowSubtitle}>{formatDate(user.createdAt)}</Text></View> : null}
+    {!compact && !desktop ? <Text style={styles.mobileStatus}>{getUserStatusLabel(user.status)}</Text> : null}
+    <View style={[styles.roleBadge, user.role === "Admin" && styles.roleBadgeAdmin]}><Text style={[styles.roleBadgeText, user.role === "Admin" && styles.roleBadgeTextAdmin]}>{user.role === "Admin" ? "Quản trị" : "Thành viên"}</Text></View>
+    {desktop && !compact ? <ArrowUpRight size={15} color={theme.textMuted} /> : null}
+  </Pressable>;
 }
 
 function RagDocumentRow({
@@ -1794,7 +1307,7 @@ function RagDocumentRow({
   onDelete: () => void;
   onMore: () => void;
 }) {
-  const theme = useAppTheme();
+  const theme = useAdminTheme();
   const styles = useAdminStyles();
 
   return (
@@ -1859,7 +1372,7 @@ function RagActionMenuModal({
   onEdit: () => void;
   onReindex: () => void;
 }) {
-  const theme = useAppTheme();
+  const theme = useAdminTheme();
   const styles = useAdminStyles();
   const statusLabel = document ? getRagDocumentStatusLabel(document) : "";
   const canReindex = statusLabel.toLowerCase() !== "draft";
@@ -2047,7 +1560,7 @@ function RagUploadModal({
   onClose: () => void;
   onPickFile: () => void;
   onSubmit: () => void;
-  theme: AppTheme;
+  theme: AdminTheme;
   visible: boolean;
 }) {
   const styles = useAdminStyles();
@@ -2148,7 +1661,7 @@ function RagMetadataModal({
   onChange: (form: RagMetadataFormState) => void;
   onClose: () => void;
   onSubmit: () => void;
-  theme: AppTheme;
+  theme: AdminTheme;
   visible: boolean;
 }) {
   const styles = useAdminStyles();
@@ -2254,7 +1767,7 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 }
 
 function CategoryIconMark({ icon }: { icon: string | null | undefined }) {
-  const theme = useAppTheme();
+  const theme = useAdminTheme();
   const styles = useAdminStyles();
   const iconOption = getCategoryIconOption(icon);
 
@@ -2274,7 +1787,7 @@ function CategoryIconPickerContent({
   onSelect: (icon: string) => void;
   selectedIcon: string;
 }) {
-  const theme = useAppTheme();
+  const theme = useAdminTheme();
   const styles = useAdminStyles();
 
   return (
@@ -2335,7 +1848,7 @@ function CategoryFormModal({
   onOpenIconPicker: () => void;
   onSelectIcon: (icon: string) => void;
   onSubmit: () => void;
-  theme: AppTheme;
+  theme: AdminTheme;
   title: string;
   visible: boolean;
 }) {
@@ -2450,64 +1963,49 @@ function CategoryFormModal({
   );
 }
 
-function createStyles(theme: AppTheme, isDesktop: boolean) {
-  return StyleSheet.create({
+function createStyles(theme: AdminTheme, isDesktop: boolean) {
+  return adminStyleSheet({
     screen: { backgroundColor: theme.screen, flex: 1 },
-    content: { alignSelf: "center", width: "100%", maxWidth: isDesktop ? 1320 : undefined, padding: isDesktop ? 32 : 18, paddingBottom: isDesktop ? 48 : 96 },
-    welcomeRow: {
-      alignItems: "center",
-      flexDirection: "row",
-      justifyContent: "space-between",
-      marginBottom: 20,
-      marginTop: 8,
-    },
-    eyebrow: { color: theme.textMuted, fontSize: 11, fontWeight: "900" },
-    title: { color: theme.text, fontSize: isDesktop ? 32 : 24, fontWeight: "900", marginTop: 4, maxWidth: isDesktop ? 680 : 260 },
-    adminAvatar: {
-      alignItems: "center",
-      backgroundColor: theme.card,
-      borderColor: theme.border,
-      borderRadius: 24,
-      borderWidth: 1,
-      height: 48,
-      justifyContent: "center",
-      width: 48,
-    },
-    adminAvatarText: { color: theme.text, fontSize: 20, fontWeight: "900" },
-    adminActions: { alignItems: "flex-end", gap: 8 },
-    logoutButton: {
-      alignItems: "center",
-      backgroundColor: theme.danger,
-      borderRadius: 8,
-      justifyContent: "center",
-      minHeight: 34,
-      minWidth: 92,
-      paddingHorizontal: 12,
-    },
-    logoutButtonText: { color: theme.textInverse, fontSize: 13, fontWeight: "900" },
-    tileGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
-    tile: {
-      borderRadius: 8,
-      flexBasis: isDesktop ? "22%" : "30%",
-      flexGrow: 1,
-      minHeight: isDesktop ? 164 : 128,
-      minWidth: isDesktop ? 220 : 120,
-      padding: isDesktop ? 22 : 14,
-      shadowColor: "#000",
-      shadowOpacity: 0.14,
-      shadowRadius: 12,
-    },
-    tileLabel: { color: theme.textInverse, fontSize: 14, fontWeight: "900" },
-    tileMetric: { color: theme.textInverse, fontSize: isDesktop ? 42 : 34, fontWeight: "900", marginTop: isDesktop ? 32 : 20 },
-    tileNote: { color: theme.textInverse, fontSize: 11, fontWeight: "700", opacity: 0.88 },
-    sectionLabel: { color: theme.textMuted, fontSize: 12, fontWeight: "900", marginBottom: 10, marginTop: 22 },
-    statsCard: {
-      backgroundColor: theme.card,
-      borderColor: theme.border,
-      borderRadius: 8,
-      borderWidth: 1,
-      overflow: "hidden",
-    },
+    hidden: { display: "none" },
+    content: { alignSelf: "center", width: "100%", maxWidth: 1360, padding: isDesktop ? 36 : 18, paddingBottom: 48 },
+    welcomeRow: { alignItems: "flex-start", flexDirection: "row", gap: 12, justifyContent: "space-between", marginBottom: 28, marginTop: 4 },
+    welcomeCopy: { flex: 1, minWidth: 0 },
+    eyebrow: { color: theme.textMuted, fontSize: 10, fontWeight: "500", letterSpacing: 1.4, marginBottom: 9 },
+    title: { color: theme.text, fontSize: isDesktop ? 27 : 23, fontWeight: "600", letterSpacing: -0.8, lineHeight: isDesktop ? 36 : 31 },
+    pageDescription: { color: theme.textMuted, fontSize: 13, lineHeight: 21, marginTop: 7 },
+    refreshButton: { flexDirection: "row", alignItems: "center", gap: 7, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.card, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 7 },
+    refreshText: { color: theme.textMuted, fontSize: 12, fontWeight: "500" },
+    hoverSurface: { backgroundColor: theme.cardAlt },
+    tileGrid: { flexDirection: "row", flexWrap: "wrap", gap: 16, marginBottom: 26 },
+    tile: { backgroundColor: theme.card, borderColor: theme.border, borderWidth: 1, borderRadius: 10, flexBasis: isDesktop ? "29%" : "100%", flexGrow: 1, minWidth: 0, padding: 22 },
+    tileHovered: { borderColor: theme.primary },
+    tileTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
+    tileLabel: { color: theme.textMuted, fontSize: 13, fontWeight: "500" },
+    tileMetric: { color: theme.text, fontSize: 34, fontWeight: "600", letterSpacing: -1, lineHeight: 44, marginTop: 15, marginBottom: 12, fontVariant: ["tabular-nums"] },
+    tileNote: { color: theme.textMuted, fontSize: 11, lineHeight: 17 },
+    sectionLabel: { color: theme.text, fontSize: 13, fontWeight: "500", marginBottom: 10, marginTop: 16 },
+    statsCard: { backgroundColor: theme.card, borderColor: theme.border, borderRadius: 10, borderWidth: 1, overflow: "hidden" },
+    overviewGrid: { flexDirection: isDesktop ? "row" : "column", alignItems: "stretch", gap: 20 },
+    overviewMain: { flex: isDesktop ? 1.65 : undefined, minWidth: 0, backgroundColor: theme.card, borderColor: theme.border, borderWidth: 1, borderRadius: 10, overflow: "hidden" },
+    overviewAside: { flex: isDesktop ? 1 : undefined, minWidth: 0, backgroundColor: theme.card, borderColor: theme.border, borderWidth: 1, borderRadius: 10, overflow: "hidden" },
+    panelHeading: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12, padding: 20, borderBottomColor: theme.border, borderBottomWidth: 1 },
+    panelTitle: { color: theme.text, fontSize: 14, fontWeight: "600", lineHeight: 21 },
+    panelSubtitle: { color: theme.textMuted, fontSize: 12, lineHeight: 19, marginTop: 3 },
+    inlineLink: { flexDirection: "row", alignItems: "center", gap: 4, paddingVertical: 5 },
+    inlineLinkText: { color: theme.primary, fontSize: 11, fontWeight: "500" },
+    panelEmpty: { color: theme.textMuted, fontSize: 13, padding: 24 },
+    knowledgeStats: { paddingHorizontal: 4, paddingVertical: 7 },
+    panelFooter: { borderTopColor: theme.border, borderTopWidth: 1, flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: 18 },
+    trainingEntry: { flexDirection: "row", alignItems: "center", gap: 15, backgroundColor: theme.card, borderWidth: 1, borderColor: theme.border, borderRadius: 10, marginTop: 22, padding: 20 },
+    trainingEntryIcon: { backgroundColor: theme.primaryPressed, width: 42, height: 42, borderRadius: 9, alignItems: "center", justifyContent: "center" },
+    userTable: { borderWidth: 1, borderColor: theme.border, borderRadius: 10, overflow: "hidden", backgroundColor: theme.card },
+    tableHeading: { flexDirection: "row", justifyContent: "space-between", paddingHorizontal: 20, paddingVertical: 13, backgroundColor: theme.cardAlt, borderBottomWidth: 1, borderBottomColor: theme.border },
+    tableHeadingText: { color: theme.textMuted, fontSize: 10, fontWeight: "500", letterSpacing: 0.6 },
+    compactUserRow: { minHeight: 68, paddingHorizontal: 20 },
+    userStatusColumn: { width: 190, gap: 3 },
+    statusLine: { flexDirection: "row", alignItems: "center", gap: 6 },
+    statusDot: { width: 6, height: 6, borderRadius: 3, marginTop: 3 },
+    mobileStatus: { color: theme.textMuted, fontSize: 10, maxWidth: 62, lineHeight: 16 },
     loadWarningCard: {
       backgroundColor: theme.warningBackground,
       borderColor: theme.border,
@@ -2517,34 +2015,34 @@ function createStyles(theme: AppTheme, isDesktop: boolean) {
       marginBottom: 18,
       padding: 14,
     },
-    loadWarningText: { color: theme.dangerText, fontSize: 13, fontWeight: "700", lineHeight: 19 },
+    loadWarningText: { color: theme.dangerText, fontSize: 13, fontWeight: "400", lineHeight: 19 },
     statRow: {
       alignItems: "center",
       borderBottomColor: theme.border,
       borderBottomWidth: StyleSheet.hairlineWidth,
       flexDirection: "row",
       justifyContent: "space-between",
-      minHeight: 58,
+      minHeight: 43,
       paddingHorizontal: 16,
     },
-    statLabel: { color: theme.textMuted, fontSize: 14, fontWeight: "800" },
-    statValue: { color: theme.text, fontSize: 18, fontWeight: "900" },
+    statLabel: { color: theme.textMuted, fontSize: 12, fontWeight: "400" },
+    statValue: { color: theme.text, fontSize: 14, fontWeight: "500", fontVariant: ["tabular-nums"] },
     header: {
       alignItems: "center",
       flexDirection: "row",
       justifyContent: "space-between",
       alignSelf: "center",
       width: "100%",
-      maxWidth: isDesktop ? 1320 : undefined,
+      maxWidth: 1360,
       paddingBottom: 14,
-      paddingHorizontal: isDesktop ? 32 : 18,
+      paddingHorizontal: isDesktop ? 36 : 18,
       paddingTop: isDesktop ? 28 : 12,
     },
-    backText: { color: theme.primary, fontSize: 17, fontWeight: "800" },
-    headerTitle: { color: theme.text, fontSize: 20, fontWeight: "900" },
+    backText: { color: theme.textMuted, fontSize: 12, fontWeight: "500" },
+    headerTitle: { color: theme.text, fontSize: isDesktop ? 23 : 17, fontWeight: "600", flex: 1, textAlign: "center", letterSpacing: -0.4 },
     headerSpacer: { width: 74 },
-    headerCount: { color: theme.textMuted, fontSize: 14, fontWeight: "900", minWidth: 74, textAlign: "right" },
-    listContent: { alignSelf: "center", width: "100%", maxWidth: isDesktop ? 1320 : undefined, gap: isDesktop ? 12 : 10, padding: isDesktop ? 32 : 18, paddingBottom: isDesktop ? 48 : 96 },
+    headerCount: { color: theme.textMuted, fontSize: 14, fontWeight: "600", minWidth: 74, textAlign: "right" },
+    listContent: { alignSelf: "center", width: "100%", maxWidth: 1360, gap: 16, padding: isDesktop ? 36 : 18, paddingBottom: isDesktop ? 48 : 96 },
     userFilterCard: {
       backgroundColor: theme.card,
       borderColor: theme.border,
@@ -2553,172 +2051,24 @@ function createStyles(theme: AppTheme, isDesktop: boolean) {
       gap: 10,
       padding: 12,
     },
-    trainingControls: {
-      backgroundColor: theme.card,
-      borderColor: theme.border,
-      borderRadius: 8,
-      borderWidth: 1,
-      gap: 14,
-      padding: 16,
-    },
-    trainingActions: { alignItems: "flex-start", gap: 10 },
-    trainingFilters: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-    trainingFilterActions: { alignItems: "flex-start" },
-    trainingFilterButton: {
-      alignItems: "center",
-      backgroundColor: theme.cardAlt,
-      borderColor: theme.border,
-      borderRadius: 8,
-      borderWidth: 1,
-      flexDirection: "row",
-      flexWrap: "wrap",
-      gap: 8,
-      minHeight: 42,
-      paddingHorizontal: 14,
-      paddingVertical: 9,
-    },
-    trainingFilterButtonText: { color: theme.text, fontSize: 14, fontWeight: "800" },
-    trainingFilterSummary: { color: theme.textMuted, fontSize: 13, fontWeight: "700" },
-    trainingFilterSection: { gap: 12, padding: 18 },
-    trainingDateButton: {
-      backgroundColor: theme.inputBackground,
-      borderColor: theme.border,
-      borderRadius: 8,
-      borderWidth: 1,
-      justifyContent: "center",
-      minHeight: 48,
-      paddingHorizontal: 14,
-    },
-    trainingDateText: { color: theme.text, fontSize: 16 },
-    trainingUserRow: {
-      alignItems: "center",
-      backgroundColor: theme.card,
-      borderColor: theme.border,
-      borderRadius: 8,
-      borderWidth: 1,
-      flexDirection: "row",
-      gap: 12,
-      minHeight: 72,
-      padding: 14,
-    },
-    trainingCheckbox: {
-      alignItems: "center",
-      borderColor: theme.border,
-      borderRadius: 5,
-      borderWidth: 1,
-      height: 22,
-      justifyContent: "center",
-      width: 22,
-    },
-    trainingCheckboxSelected: { backgroundColor: theme.primary, borderColor: theme.primary },
-    trainingCheckboxMark: { color: theme.textInverse, fontSize: 15, fontWeight: "900" },
-    trainingResultPanel: {
-      backgroundColor: theme.card,
-      borderColor: theme.border,
-      borderRadius: 10,
-      borderWidth: 1,
-      gap: 10,
-      padding: isDesktop ? 22 : 16,
-    },
-    trainingResultHeader: { alignItems: "center", flexDirection: "row", flexWrap: "wrap", gap: 12, justifyContent: "space-between" },
-    trainingResultTitle: { color: theme.text, fontSize: 20, fontWeight: "900" },
-    trainingStatusBadge: { alignSelf: "flex-start", borderRadius: 14, paddingHorizontal: 10, paddingVertical: 7 },
-    trainingStatusSaved: { backgroundColor: theme.goodBackground },
-    trainingStatusNotSaved: { backgroundColor: theme.warningBackground },
-    trainingStatusText: { color: theme.goodText, fontSize: 12, fontWeight: "900" },
-    trainingStatusTextWarning: { color: theme.warning, fontSize: 12, fontWeight: "900" },
-    trainingExecutiveGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-    trainingExecutiveCard: {
-      backgroundColor: theme.cardAlt,
-      borderRadius: 9,
-      flexBasis: isDesktop ? "30%" : "100%",
-      flexGrow: 1,
-      gap: 6,
-      minWidth: 180,
-      padding: 14,
-    },
-    trainingExecutiveLabel: { color: theme.textMuted, fontSize: 12, fontWeight: "800" },
-    trainingExecutiveValue: { color: theme.text, fontSize: 25, fontWeight: "900" },
-    trainingContextCard: { backgroundColor: theme.cardAlt, borderRadius: 8, gap: 6, padding: 13 },
-    trainingLimitationText: { color: theme.warning, fontSize: 12, fontWeight: "700", lineHeight: 18 },
-    trainingDetailsToggle: {
-      alignItems: "center",
-      borderColor: theme.border,
-      borderRadius: 8,
-      borderWidth: 1,
-      flexDirection: "row",
-      justifyContent: "space-between",
-      minHeight: 44,
-      paddingHorizontal: 12,
-    },
-    trainingDetailsToggleText: { color: theme.primary, fontSize: 13, fontWeight: "900" },
-    trainingDetailsToggleIcon: { color: theme.primary, fontSize: 22, fontWeight: "800" },
-    trainingDetailsBody: { gap: 8 },
-    trainingResultGrid: { flexDirection: "row", flexWrap: "wrap", gap: 9 },
-    trainingResultStat: {
-      backgroundColor: theme.cardAlt,
-      borderRadius: 8,
-      flexBasis: isDesktop ? "22%" : "46%",
-      flexGrow: 1,
-      gap: 4,
-      minWidth: 125,
-      padding: 11,
-    },
-    trainingResultStatValue: { color: theme.text, fontSize: 15, fontWeight: "900" },
-    trainingResultNote: { color: theme.textMuted, fontSize: 12, fontWeight: "700", lineHeight: 18 },
-    trainingSplitGrid: { flexDirection: "row", flexWrap: "wrap", gap: 9 },
-    trainingSplitCard: {
-      backgroundColor: theme.cardAlt,
-      borderRadius: 8,
-      flexBasis: isDesktop ? "30%" : "100%",
-      flexGrow: 1,
-      gap: 5,
-      minWidth: 180,
-      padding: 12,
-    },
-    trainingSplitTitle: { color: theme.text, fontSize: 14, fontWeight: "900" },
-    trainingSplitValue: { color: theme.text, fontSize: 13, fontWeight: "800" },
-    trainingModelCard: { backgroundColor: theme.cardAlt, borderRadius: 8, gap: 7, padding: 12 },
-    trainingModelName: { color: theme.text, fontSize: 14, fontWeight: "900" },
-    trainingMetricText: { color: theme.textMuted, fontSize: 12, fontWeight: "700", lineHeight: 19 },
-    trainingSaveCheck: { borderRadius: 8, gap: 5, padding: 12 },
-    trainingSaveCheckTitle: { color: theme.goodText, fontSize: 14, fontWeight: "900" },
-    trainingSaveCheckTitleWarning: { color: theme.warning, fontSize: 14, fontWeight: "900" },
     filterRow: { gap: 8 },
     filterChip: {
       backgroundColor: theme.cardAlt,
       borderColor: theme.border,
-      borderRadius: 18,
+      borderRadius: 6,
       borderWidth: 1,
       paddingHorizontal: 12,
       paddingVertical: 8,
     },
-    filterChipSelected: { backgroundColor: theme.primary, borderColor: theme.primary },
-    filterChipText: { color: theme.textMuted, fontSize: 12, fontWeight: "900" },
-    filterChipTextSelected: { color: theme.textInverse },
-    userRow: {
-      alignItems: "center",
-      backgroundColor: theme.card,
-      borderColor: theme.border,
-      borderRadius: 8,
-      borderWidth: 1,
-      flexDirection: "row",
-      minHeight: 76,
-      padding: 12,
-    },
-    userMiniAvatar: {
-      alignItems: "center",
-      backgroundColor: theme.avatar,
-      borderRadius: 22,
-      height: 44,
-      justifyContent: "center",
-      marginRight: 12,
-      width: 44,
-    },
-    userMiniAvatarText: { color: theme.textInverse, fontSize: 18, fontWeight: "900" },
-    rowCopy: { flex: 1 },
-    rowTitle: { color: theme.text, fontSize: 16, fontWeight: "900" },
-    rowSubtitle: { color: theme.textMuted, fontSize: 13, fontWeight: "700", marginTop: 3 },
+    filterChipSelected: { backgroundColor: theme.primaryPressed, borderColor: theme.primary },
+    filterChipText: { color: theme.textMuted, fontSize: 12, fontWeight: "600" },
+    filterChipTextSelected: { color: theme.primary },
+    userRow: { alignItems: "center", backgroundColor: theme.card, borderBottomColor: theme.border, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: "row", gap: 14, minHeight: 80, padding: 18 },
+    userMiniAvatar: { alignItems: "center", backgroundColor: theme.cardAlt, borderRadius: 9, height: 36, justifyContent: "center", width: 36 },
+    userMiniAvatarText: { color: theme.textMuted, fontSize: 13, fontWeight: "500" },
+    rowCopy: { flex: 1, minWidth: 0 },
+    rowTitle: { color: theme.text, fontSize: 13, fontWeight: "500", lineHeight: 20 },
+    rowSubtitle: { color: theme.textMuted, fontSize: 12, fontWeight: "400", marginTop: 3, lineHeight: 18 },
     roleBadge: {
       backgroundColor: theme.cardAlt,
       borderRadius: 12,
@@ -2726,10 +2076,10 @@ function createStyles(theme: AppTheme, isDesktop: boolean) {
       paddingVertical: 5,
     },
     roleBadgeAdmin: { backgroundColor: theme.primaryPressed },
-    roleBadgeText: { color: theme.textMuted, fontSize: 11, fontWeight: "900" },
+    roleBadgeText: { color: theme.textMuted, fontSize: 11, fontWeight: "600" },
     roleBadgeTextAdmin: { color: theme.primary },
-    categoryContent: { alignSelf: "center", width: "100%", maxWidth: isDesktop ? 1320 : undefined, gap: 10, padding: isDesktop ? 32 : 18, paddingBottom: isDesktop ? 48 : 96 },
-    documentContent: { alignSelf: "center", width: "100%", maxWidth: isDesktop ? 1320 : undefined, gap: 10, padding: isDesktop ? 32 : 18, paddingBottom: isDesktop ? 48 : 96 },
+    categoryContent: { alignSelf: "center", width: "100%", maxWidth: 1360, gap: 10, padding: isDesktop ? 36 : 18, paddingBottom: isDesktop ? 48 : 96 },
+    documentContent: { alignSelf: "center", width: "100%", maxWidth: 1360, gap: 10, padding: isDesktop ? 36 : 18, paddingBottom: isDesktop ? 48 : 96 },
     categoryRow: {
       alignItems: "center",
       backgroundColor: theme.card,
@@ -2749,15 +2099,15 @@ function createStyles(theme: AppTheme, isDesktop: boolean) {
       marginRight: 12,
       width: 40,
     },
-    categoryIconText: { color: theme.primary, fontSize: 16, fontWeight: "900" },
-    defaultTag: { color: theme.primary, fontSize: 12, fontWeight: "900" },
+    categoryIconText: { color: theme.primary, fontSize: 16, fontWeight: "600" },
+    defaultTag: { color: theme.primary, fontSize: 12, fontWeight: "600" },
     deleteCategoryButton: {
       backgroundColor: theme.warningBackground,
       borderRadius: 8,
       paddingHorizontal: 10,
       paddingVertical: 7,
     },
-    deleteCategoryText: { color: theme.dangerText, fontSize: 12, fontWeight: "900" },
+    deleteCategoryText: { color: theme.dangerText, fontSize: 12, fontWeight: "600" },
     documentCard: {
       backgroundColor: theme.card,
       borderColor: theme.border,
@@ -2777,18 +2127,18 @@ function createStyles(theme: AppTheme, isDesktop: boolean) {
     },
     documentListMain: { flex: 1, gap: 10, minWidth: 0 },
     documentTopRow: { alignItems: "flex-start", flexDirection: "row", gap: 10, justifyContent: "space-between" },
-    documentDescription: { color: theme.textMuted, fontSize: 13, fontWeight: "700", lineHeight: 19 },
+    documentDescription: { color: theme.textMuted, fontSize: 13, fontWeight: "400", lineHeight: 19 },
     documentMetaRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
     documentMetaText: {
       backgroundColor: theme.cardAlt,
       borderRadius: 8,
       color: theme.textMuted,
       fontSize: 11,
-      fontWeight: "900",
+      fontWeight: "600",
       paddingHorizontal: 8,
       paddingVertical: 5,
     },
-    documentError: { color: theme.dangerText, fontSize: 12, fontWeight: "800", lineHeight: 18 },
+    documentError: { color: theme.dangerText, fontSize: 12, fontWeight: "500", lineHeight: 18 },
     documentStatusBadge: {
       backgroundColor: theme.cardAlt,
       borderRadius: 12,
@@ -2798,7 +2148,7 @@ function createStyles(theme: AppTheme, isDesktop: boolean) {
     documentStatusGood: { backgroundColor: theme.goodBackground },
     documentStatusDanger: { backgroundColor: `${theme.danger}22` },
     documentStatusWarning: { backgroundColor: theme.warningBackground },
-    documentStatusText: { color: theme.text, fontSize: 11, fontWeight: "900" },
+    documentStatusText: { color: theme.text, fontSize: 11, fontWeight: "600" },
     documentActionRail: { alignItems: "center", gap: 8 },
     documentIconButton: {
       alignItems: "center",
@@ -2828,7 +2178,7 @@ function createStyles(theme: AppTheme, isDesktop: boolean) {
     actionMenuTitle: {
       color: theme.text,
       fontSize: 16,
-      fontWeight: "900",
+      fontWeight: "600",
       marginBottom: 8,
     },
     actionMenuItem: {
@@ -2845,7 +2195,7 @@ function createStyles(theme: AppTheme, isDesktop: boolean) {
       justifyContent: "center",
       width: 28,
     },
-    actionMenuLabel: { color: theme.text, fontSize: 15, fontWeight: "800" },
+    actionMenuLabel: { color: theme.text, fontSize: 15, fontWeight: "500" },
     actionMenuDangerLabel: { color: theme.dangerText },
     documentActions: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
     documentActionButton: {
@@ -2855,7 +2205,7 @@ function createStyles(theme: AppTheme, isDesktop: boolean) {
       paddingHorizontal: 12,
       paddingVertical: 8,
     },
-    documentActionText: { color: theme.primary, fontSize: 12, fontWeight: "900" },
+    documentActionText: { color: theme.primary, fontSize: 12, fontWeight: "600" },
     documentDeleteButton: {
       backgroundColor: theme.warningBackground,
       borderRadius: 8,
@@ -2863,7 +2213,7 @@ function createStyles(theme: AppTheme, isDesktop: boolean) {
       paddingHorizontal: 12,
       paddingVertical: 8,
     },
-    documentDeleteText: { color: theme.dangerText, fontSize: 12, fontWeight: "900" },
+    documentDeleteText: { color: theme.dangerText, fontSize: 12, fontWeight: "600" },
     emptyDocumentCard: {
       backgroundColor: theme.card,
       borderColor: theme.border,
@@ -2872,8 +2222,8 @@ function createStyles(theme: AppTheme, isDesktop: boolean) {
       gap: 12,
       padding: 20,
     },
-    emptyDocumentTitle: { color: theme.text, fontSize: 18, fontWeight: "900" },
-    emptyDocumentText: { color: theme.textMuted, fontSize: 13, fontWeight: "700", lineHeight: 20 },
+    emptyDocumentTitle: { color: theme.text, fontSize: 18, fontWeight: "600" },
+    emptyDocumentText: { color: theme.textMuted, fontSize: 13, fontWeight: "400", lineHeight: 20 },
     addButton: {
       alignItems: "center",
       backgroundColor: theme.primary,
@@ -2882,8 +2232,8 @@ function createStyles(theme: AppTheme, isDesktop: boolean) {
       justifyContent: "center",
       width: 36,
     },
-    addButtonText: { color: theme.textInverse, fontSize: 24, fontWeight: "800", lineHeight: 27 },
-    detailContent: { gap: 14, padding: 18, paddingBottom: 96 },
+    addButtonText: { color: theme.textInverse, fontSize: 24, fontWeight: "500", lineHeight: 27 },
+    detailContent: { alignSelf: "center", width: "100%", maxWidth: 900, gap: 18, padding: isDesktop ? 36 : 18, paddingBottom: 48 },
     detailLoadingState: {
       alignItems: "center",
       justifyContent: "center",
@@ -2900,16 +2250,16 @@ function createStyles(theme: AppTheme, isDesktop: boolean) {
     },
     userAvatar: {
       alignItems: "center",
-      backgroundColor: theme.avatar,
+      backgroundColor: theme.primaryPressed,
       borderRadius: 35,
       height: 70,
       justifyContent: "center",
       marginBottom: 12,
       width: 70,
     },
-    userAvatarText: { color: theme.textInverse, fontSize: 30, fontWeight: "900" },
-    userDetailName: { color: theme.text, fontSize: 21, fontWeight: "900" },
-    userDetailEmail: { color: theme.textMuted, fontSize: 14, fontWeight: "700", marginTop: 5 },
+    userAvatarText: { color: theme.primary, fontSize: 30, fontWeight: "600" },
+    userDetailName: { color: theme.text, fontSize: 21, fontWeight: "600" },
+    userDetailEmail: { color: theme.textMuted, fontSize: 14, fontWeight: "400", marginTop: 5 },
     infoCard: {
       backgroundColor: theme.card,
       borderColor: theme.border,
@@ -2932,9 +2282,9 @@ function createStyles(theme: AppTheme, isDesktop: boolean) {
       paddingHorizontal: 16,
       paddingVertical: 12,
     },
-    infoLabel: { color: theme.textMuted, fontSize: 12, fontWeight: "900" },
-    infoValue: { color: theme.text, fontSize: 15, fontWeight: "800" },
-    modalOverlay: { flex: 1, justifyContent: "flex-end" },
+    infoLabel: { color: theme.textMuted, fontSize: 12, fontWeight: "600" },
+    infoValue: { color: theme.text, fontSize: 15, fontWeight: "500" },
+    modalOverlay: { flex: 1, justifyContent: isDesktop ? "center" : "flex-end" },
     modalBackdrop: {
       backgroundColor: theme.overlay,
       bottom: 0,
@@ -2944,9 +2294,15 @@ function createStyles(theme: AppTheme, isDesktop: boolean) {
       top: 0,
     },
     categoryFormSheet: {
+      alignSelf: "center",
+      width: "100%",
+      maxWidth: isDesktop ? 580 : undefined,
+      maxHeight: "90%",
       backgroundColor: theme.sheet,
-      borderTopLeftRadius: 8,
-      borderTopRightRadius: 8,
+      borderRadius: isDesktop ? 12 : 0,
+      borderTopLeftRadius: 12,
+      borderTopRightRadius: 12,
+      overflow: "hidden",
       paddingBottom: 24,
     },
     formHeader: {
@@ -2958,9 +2314,9 @@ function createStyles(theme: AppTheme, isDesktop: boolean) {
       minHeight: 60,
       paddingHorizontal: 18,
     },
-    formClose: { color: theme.textMuted, fontSize: 15, fontWeight: "900" },
-    formTitle: { color: theme.text, fontSize: 17, fontWeight: "900" },
-    formSave: { color: theme.primary, fontSize: 15, fontWeight: "900" },
+    formClose: { color: theme.textMuted, fontSize: 15, fontWeight: "600" },
+    formTitle: { color: theme.text, fontSize: 17, fontWeight: "600" },
+    formSave: { color: theme.primary, fontSize: 15, fontWeight: "600" },
     disabledText: { opacity: 0.55 },
     paginationRow: {
       alignItems: "center",
@@ -2974,20 +2330,20 @@ function createStyles(theme: AppTheme, isDesktop: boolean) {
       paddingHorizontal: 14,
       paddingVertical: 10,
     },
-    paginationButtonText: { color: theme.primary, fontSize: 13, fontWeight: "900" },
-    paginationText: { color: theme.textMuted, fontSize: 13, fontWeight: "900" },
+    paginationButtonText: { color: theme.primary, fontSize: 13, fontWeight: "600" },
+    paginationText: { color: theme.textMuted, fontSize: 13, fontWeight: "600" },
     formBody: { gap: 16, padding: 18 },
     formField: { gap: 8 },
-    formLabel: { color: theme.text, fontSize: 13, fontWeight: "900" },
+    formLabel: { color: theme.text, fontSize: 13, fontWeight: "600" },
     formInput: {
       backgroundColor: theme.inputBackground,
       borderColor: theme.border,
       borderRadius: 8,
       borderWidth: 1,
       color: theme.text,
-      fontSize: 16,
-      paddingHorizontal: 14,
-      paddingVertical: 13,
+      fontSize: 14,
+      paddingHorizontal: 13,
+      paddingVertical: 11,
     },
     iconSelectButton: {
       alignItems: "center",
@@ -3008,11 +2364,11 @@ function createStyles(theme: AppTheme, isDesktop: boolean) {
       justifyContent: "center",
       width: 36,
     },
-    iconSelectPreviewText: { color: theme.primary, fontSize: 15, fontWeight: "900" },
+    iconSelectPreviewText: { color: theme.primary, fontSize: 15, fontWeight: "600" },
     iconSelectCopy: { flex: 1 },
-    iconSelectTitle: { color: theme.text, fontSize: 14, fontWeight: "900" },
-    iconSelectSubtitle: { color: theme.textMuted, fontSize: 11, fontWeight: "700", marginTop: 3 },
-    iconSelectChevron: { color: theme.textMuted, fontSize: 24, fontWeight: "800" },
+    iconSelectTitle: { color: theme.text, fontSize: 14, fontWeight: "600" },
+    iconSelectSubtitle: { color: theme.textMuted, fontSize: 11, fontWeight: "400", marginTop: 3 },
+    iconSelectChevron: { color: theme.textMuted, fontSize: 24, fontWeight: "500" },
     iconPickerContent: {
       flexDirection: "row",
       flexWrap: "wrap",
@@ -3040,7 +2396,7 @@ function createStyles(theme: AppTheme, isDesktop: boolean) {
       justifyContent: "center",
       width: 40,
     },
-    iconPickerLabel: { color: theme.text, fontSize: 11, fontWeight: "800", textAlign: "center" },
+    iconPickerLabel: { color: theme.text, fontSize: 11, fontWeight: "500", textAlign: "center" },
     multilineInput: { minHeight: 92, textAlignVertical: "top" },
     filePickerButton: {
       backgroundColor: theme.card,
@@ -3051,8 +2407,8 @@ function createStyles(theme: AppTheme, isDesktop: boolean) {
       gap: 4,
       padding: 16,
     },
-    filePickerTitle: { color: theme.text, fontSize: 15, fontWeight: "900" },
-    filePickerSubtitle: { color: theme.textMuted, fontSize: 12, fontWeight: "700" },
+    filePickerTitle: { color: theme.text, fontSize: 15, fontWeight: "600" },
+    filePickerSubtitle: { color: theme.textMuted, fontSize: 12, fontWeight: "400" },
     typeToggleRow: { flexDirection: "row", gap: 10 },
     typeToggle: {
       alignItems: "center",
@@ -3065,7 +2421,7 @@ function createStyles(theme: AppTheme, isDesktop: boolean) {
       justifyContent: "center",
     },
     typeToggleSelected: { backgroundColor: theme.primary, borderColor: theme.primary },
-    typeToggleText: { color: theme.text, fontSize: 14, fontWeight: "900" },
+    typeToggleText: { color: theme.text, fontSize: 14, fontWeight: "600" },
     typeToggleTextSelected: { color: theme.textInverse },
     fullSaveButton: {
       alignItems: "center",
@@ -3074,7 +2430,7 @@ function createStyles(theme: AppTheme, isDesktop: boolean) {
       justifyContent: "center",
       minHeight: 50,
     },
-    fullSaveButtonText: { color: theme.textInverse, fontSize: 16, fontWeight: "900" },
+    fullSaveButtonText: { color: theme.textInverse, fontSize: 16, fontWeight: "600" },
     loadingCard: {
       alignItems: "center",
       backgroundColor: theme.card,
@@ -3084,7 +2440,7 @@ function createStyles(theme: AppTheme, isDesktop: boolean) {
       gap: 10,
       padding: 26,
     },
-    loadingText: { color: theme.textMuted, fontSize: 14, fontWeight: "700" },
+    loadingText: { color: theme.textMuted, fontSize: 14, fontWeight: "400" },
     deniedCard: {
       backgroundColor: theme.card,
       borderColor: theme.border,
@@ -3093,7 +2449,7 @@ function createStyles(theme: AppTheme, isDesktop: boolean) {
       margin: 18,
       padding: 20,
     },
-    deniedTitle: { color: theme.text, fontSize: 18, fontWeight: "900" },
-    deniedText: { color: theme.textMuted, fontSize: 14, fontWeight: "700", lineHeight: 21, marginTop: 8 },
+    deniedTitle: { color: theme.text, fontSize: 18, fontWeight: "600" },
+    deniedText: { color: theme.textMuted, fontSize: 14, fontWeight: "400", lineHeight: 21, marginTop: 8 },
   });
 }
