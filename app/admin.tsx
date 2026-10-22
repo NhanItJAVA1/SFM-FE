@@ -25,6 +25,7 @@ import {
   Wallet,
 } from "lucide-react-native";
 import { type ComponentType, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import DateTimePicker, { type DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -241,6 +242,7 @@ export default function AdminScreen() {
   const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
   const [trainingUserIds, setTrainingUserIds] = useState<number[]>([]);
   const [trainingAsOf, setTrainingAsOf] = useState("2025-12-31");
+  const [isTrainingDatePickerVisible, setIsTrainingDatePickerVisible] = useState(false);
   const [isTrainingForecast, setIsTrainingForecast] = useState(false);
   const [trainingResult, setTrainingResult] = useState<ForecastTrainingResponse | null>(null);
   const [userSearch, setUserSearch] = useState("");
@@ -412,6 +414,24 @@ export default function AdminScreen() {
   function updateUserStatusFilter(nextStatus: AdminUserStatus | "All") {
     setUserStatusFilter(nextStatus);
     setUserPage(1);
+  }
+
+  function handleTrainingDateChange(event: DateTimePickerEvent, date?: Date) {
+    if (event.type === "dismissed") {
+      setIsTrainingDatePickerVisible(false);
+      return;
+    }
+
+    if (date) {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, "0");
+      const day = String(date.getDate()).padStart(2, "0");
+      setTrainingAsOf(`${year}-${month}-${day}`);
+    }
+
+    if (Platform.OS === "android") {
+      setIsTrainingDatePickerVisible(false);
+    }
   }
 
   function toggleTrainingUser(userId: number) {
@@ -1040,14 +1060,32 @@ export default function AdminScreen() {
             <View style={styles.trainingControls}>
               <View style={styles.formField}>
                 <Text style={styles.formLabel}>As of</Text>
-                <TextInput
-                  autoCapitalize="none"
-                  onChangeText={setTrainingAsOf}
-                  placeholder="YYYY-MM-DD"
-                  placeholderTextColor={theme.inputPlaceholder}
-                  style={styles.formInput}
-                  value={trainingAsOf}
-                />
+                {Platform.OS === "web" ? (
+                  <input
+                    aria-label="Chọn ngày As of"
+                    type="date"
+                    value={trainingAsOf}
+                    onChange={(event) => setTrainingAsOf(event.currentTarget.value)}
+                    style={{
+                      backgroundColor: theme.inputBackground,
+                      borderColor: theme.border,
+                      borderRadius: 8,
+                      borderStyle: "solid",
+                      borderWidth: 1,
+                      boxSizing: "border-box",
+                      color: theme.text,
+                      fontFamily: "inherit",
+                      fontSize: 16,
+                      minHeight: 48,
+                      padding: "0 14px",
+                      width: "100%",
+                    }}
+                  />
+                ) : (
+                  <Pressable style={styles.trainingDateButton} onPress={() => setIsTrainingDatePickerVisible(true)}>
+                    <Text style={styles.trainingDateText}>{trainingAsOf}</Text>
+                  </Pressable>
+                )}
               </View>
               <TextInput
                 autoCapitalize="none"
@@ -1139,6 +1177,41 @@ export default function AdminScreen() {
               </Pressable>
             </View>
           </ScrollView>
+          {isTrainingDatePickerVisible && Platform.OS === "android" ? (
+            <DateTimePicker
+              value={new Date(`${trainingAsOf}T00:00:00`)}
+              mode="date"
+              display="default"
+              onChange={handleTrainingDateChange}
+            />
+          ) : null}
+          <BottomPopup
+            animationType="fade"
+            transparent
+            visible={isTrainingDatePickerVisible && Platform.OS === "ios"}
+            onRequestClose={() => setIsTrainingDatePickerVisible(false)}
+          >
+            <View style={styles.modalOverlay}>
+              <Pressable style={styles.modalBackdrop} onPress={() => setIsTrainingDatePickerVisible(false)} />
+              <BottomPopupSheet style={styles.categoryFormSheet}>
+                <View style={styles.formHeader}>
+                  <Pressable onPress={() => setIsTrainingDatePickerVisible(false)} hitSlop={12}>
+                    <Text style={styles.formClose}>Hủy</Text>
+                  </Pressable>
+                  <Text style={styles.formTitle}>Chọn ngày</Text>
+                  <Pressable onPress={() => setIsTrainingDatePickerVisible(false)} hitSlop={12}>
+                    <Text style={styles.formSave}>Xong</Text>
+                  </Pressable>
+                </View>
+                <DateTimePicker
+                  value={new Date(`${trainingAsOf}T00:00:00`)}
+                  mode="date"
+                  display="spinner"
+                  onChange={handleTrainingDateChange}
+                />
+              </BottomPopupSheet>
+            </View>
+          </BottomPopup>
           <BottomPopup
             animationType="fade"
             transparent
@@ -2507,6 +2580,16 @@ function createStyles(theme: AppTheme, isDesktop: boolean) {
     trainingFilterButtonText: { color: theme.text, fontSize: 14, fontWeight: "800" },
     trainingFilterSummary: { color: theme.textMuted, fontSize: 13, fontWeight: "700" },
     trainingFilterSection: { gap: 12, padding: 18 },
+    trainingDateButton: {
+      backgroundColor: theme.inputBackground,
+      borderColor: theme.border,
+      borderRadius: 8,
+      borderWidth: 1,
+      justifyContent: "center",
+      minHeight: 48,
+      paddingHorizontal: 14,
+    },
+    trainingDateText: { color: theme.text, fontSize: 16 },
     trainingUserRow: {
       alignItems: "center",
       backgroundColor: theme.card,
