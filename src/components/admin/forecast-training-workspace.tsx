@@ -8,6 +8,7 @@ import type { AdminUser } from '@/api/adminApi';
 import { BottomPopup, BottomPopupSheet } from '@/components/bottom-popup';
 import { FocusedScreenTransition } from '@/components/screen-transition';
 import { adminStyleSheet, useAdminTheme, type AdminTheme } from './admin-design';
+import { ForecastModelVersions } from './forecast-model-versions';
 import { canTrainUser, getTrainingErrorMessage, getTrainingUserIssue, isTrainingDateValid, loadTrainingUsers } from './training-users';
 
 const pageSize = 10;
@@ -32,8 +33,11 @@ export function ForecastTrainingWorkspace({ renderResult, active = true }: {
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [page, setPage] = useState(1);
   const [asOf, setAsOf] = useState('2025-12-31');
+  const [historyMonths, setHistoryMonths] = useState('12');
+  const [useAllHistory, setUseAllHistory] = useState(false);
   const [datePickerVisible, setDatePickerVisible] = useState(false);
   const [result, setResult] = useState<ForecastTrainingResponse | null>(null);
+  const [workspaceTab, setWorkspaceTab] = useState<'versions' | 'training'>('versions');
   const requestRef = useRef(0);
   const runningRef = useRef(false);
   const mountedRef = useRef(true);
@@ -81,7 +85,8 @@ export function ForecastTrainingWorkspace({ renderResult, active = true }: {
   const trainingCount = scope === 'all' ? eligibleUsers.length : selectedUsers.length;
   const isBusy = isLoading || isTraining;
   const dateValid = isTrainingDateValid(asOf);
-  const canSubmit = !isBusy && !loadError && dateValid && trainingCount >= 2;
+  const historyMonthsValid = useAllHistory || (/^\d+$/.test(historyMonths) && Number(historyMonths) >= 1 && Number(historyMonths) <= 120);
+  const canSubmit = !isBusy && !loadError && dateValid && historyMonthsValid && trainingCount >= 2;
 
   function toggleUser(user: AdminUser) {
     if (!canTrainUser(user, asOf) || isBusy) return;
@@ -139,7 +144,9 @@ export function ForecastTrainingWorkspace({ renderResult, active = true }: {
         throw new Error('Một số người dùng không còn đủ điều kiện theo ngày chốt. Danh sách đã được cập nhật; vui lòng kiểm tra lý do và chọn lại trước khi huấn luyện.');
       }
       if (userIds.length < 2) throw new Error('Cần ít nhất 2 người dùng đang hoạt động và có tài khoản tài chính trước hoặc trong ngày chốt.');
-      const response = await aiApi.trainForecast(scope === 'all' ? { asOf } : { asOf, userIds });
+      // Gửi rõ kỳ lịch sử cho cả hai phạm vi user; null là toàn bộ lịch sử theo contract BE.
+      const payload = { asOf, historyMonths: useAllHistory ? null : Number(historyMonths) };
+      const response = await aiApi.trainForecast(scope === 'all' ? payload : { ...payload, userIds });
       if (mountedRef.current) setResult(response.data);
     } catch (error) {
       if (mountedRef.current) setTrainingError(getTrainingErrorMessage(error, asOf));
@@ -156,12 +163,16 @@ export function ForecastTrainingWorkspace({ renderResult, active = true }: {
       <View style={styles.pageHeading}>
         <View style={styles.headingCopy}>
           <Text style={styles.eyebrow}>MÔ HÌNH DỰ BÁO</Text>
-          <Text style={styles.title}>Huấn luyện mô hình AI</Text>
-          <Text style={styles.description}>Thiết lập dữ liệu và đánh giá chất lượng mô hình dự báo chi tiêu.</Text>
+          <Text style={styles.title}>{workspaceTab === 'versions' ? 'Quản lý mô hình dự báo' : 'Huấn luyện mô hình AI'}</Text>
+          <Text style={styles.description}>Xem lịch sử, đánh giá chất lượng và chọn phiên bản dự báo chi tiêu.</Text>
         </View>
         <View style={styles.stateBadge}><CircleDashed size={14} color={theme.textMuted} /><Text style={styles.stateText}>{isTraining ? 'Đang huấn luyện' : result ? 'Đã có kết quả' : 'Chưa chạy huấn luyện'}</Text></View>
       </View>
 
+      <View style={styles.workspaceTabs}>
+        {(['versions', 'training'] as const).map(key => <Pressable key={key} accessibilityRole="tab" accessibilityState={{ selected: workspaceTab === key }} onPress={() => setWorkspaceTab(key)} style={[styles.workspaceTab, workspaceTab === key && styles.workspaceTabActive]}><Text style={[styles.smallText, workspaceTab === key && styles.accentText]}>{key === 'versions' ? 'Kho phiên bản' : 'Huấn luyện mới'}</Text></Pressable>)}
+      </View>
+      {workspaceTab === 'versions' ? <ForecastModelVersions active={active} busy={isTraining} refreshKey={result?.runId} onTrainNew={() => setWorkspaceTab('training')} /> : <>
       <View style={styles.workspace}>
         <View style={styles.userPanel}>
           <View style={styles.panelHeading}>
@@ -200,6 +211,17 @@ export function ForecastTrainingWorkspace({ renderResult, active = true }: {
               {Platform.OS === 'web' ? <input aria-label="Ngày chốt dữ liệu" type="date" disabled={isTraining} value={asOf} onChange={event => changeAsOf(event.currentTarget.value)} style={{ backgroundColor: theme.inputBackground, color: theme.text, colorScheme: theme.screen === '#14171c' ? 'dark' : 'light', fontFamily: 'AdminInter, sans-serif', fontSize: 13, border: `1px solid ${theme.border}`, borderRadius: 7, minHeight: 42, padding: '0 12px', width: '100%', boxSizing: 'border-box' }} /> : <Pressable accessibilityRole="button" accessibilityLabel="Ngày chốt dữ liệu" disabled={isTraining} onPress={() => setDatePickerVisible(true)} style={styles.dateButton}><CalendarDays size={16} color={theme.textMuted} /><Text style={styles.dateText}>{asOf.split('-').reverse().join('/')}</Text></Pressable>}
               {!dateValid ? <Text style={styles.errorText}>Chọn ngày hợp lệ để tiếp tục.</Text> : null}
             </View>
+            <View style={styles.field}>
+              <Text style={styles.label}>Lịch sử huấn luyện</Text>
+              <Text style={styles.helpText}>Chọn số tháng giao dịch tính lùi từ ngày chốt. Mặc định 12 tháng.</Text>
+              <TextInput accessibilityLabel="Số tháng lịch sử huấn luyện" value={historyMonths} editable={!isTraining && !useAllHistory} inputMode="numeric" keyboardType="number-pad" placeholder="12" placeholderTextColor={theme.inputPlaceholder} onChangeText={value => { setHistoryMonths(value); setTrainingError(''); }} style={[styles.historyInput, (isTraining || useAllHistory) && styles.disabled]} />
+              <Pressable accessibilityRole="checkbox" accessibilityLabel="Dùng toàn bộ lịch sử" accessibilityState={{ checked: useAllHistory, disabled: isTraining }} disabled={isTraining} onPress={() => { setUseAllHistory(value => !value); setTrainingError(''); }} style={styles.historyToggle}>
+                <View style={[styles.checkbox, useAllHistory && styles.checkboxChecked]}>{useAllHistory ? <Check size={12} color={theme.textInverse} /> : null}</View>
+                <Text style={styles.optionTitle}>Dùng toàn bộ lịch sử</Text>
+              </Pressable>
+              {!historyMonthsValid ? <Text accessibilityRole="alert" style={styles.errorText}>Nhập số tháng nguyên từ 1 đến 120.</Text> : null}
+              <Text style={styles.helpText}>{useAllHistory ? 'Lấy toàn bộ giao dịch đến ngày chốt.' : 'Chấp nhận từ 1 đến 120 tháng. Hệ thống lấy thêm dữ liệu trước kỳ để tạo đầu vào cho model.'}</Text>
+            </View>
             <View style={styles.field}><View style={styles.summaryRow}><Text style={styles.label}>Phạm vi dữ liệu</Text>{selectedUsers.length > 0 ? <Pressable accessibilityRole="button" accessibilityLabel="Bỏ chọn tất cả người dùng" disabled={isTraining} onPress={() => { setSelectedIds([]); setScope('selected'); setTrainingError(''); }}><Text style={styles.accentText}>Bỏ chọn</Text></Pressable> : null}</View>
                 {(['all', 'selected'] as const).map(value => <Pressable key={value} accessibilityRole="radio" accessibilityState={{ checked: scope === value, disabled: isTraining }} disabled={isTraining} onPress={() => { setScope(value); setTrainingError(''); }} style={[styles.scopeOption, scope === value && styles.scopeSelected]}><View style={[styles.radio, scope === value && styles.radioSelected]}>{scope === value ? <View style={styles.radioDot} /> : null}</View><View style={styles.grow}><Text style={styles.optionTitle}>{value === 'all' ? 'Tất cả người dùng' : 'Chọn người dùng cụ thể'}</Text><Text style={styles.helpText}>{value === 'all' ? `${eligibleUsers.length} người dùng đủ điều kiện` : `${selectedUsers.length} tài khoản đã chọn`}</Text></View></Pressable>)}
             </View>
@@ -215,6 +237,9 @@ export function ForecastTrainingWorkspace({ renderResult, active = true }: {
 
       <View style={styles.resultsHeading}><Text style={styles.panelTitle}>Kết quả huấn luyện</Text><Text style={styles.helpText}>{result ? 'Kết quả của lần chạy gần nhất trong phiên này.' : 'Các chỉ số đánh giá sẽ được hiển thị sau khi chạy.'}</Text></View>
       {result ? renderResult(result) : <View style={styles.resultsEmpty}><View style={styles.resultsIcon}><CircleCheck size={24} strokeWidth={1.4} color={theme.textMuted} /></View><View style={styles.headingCopy}><Text style={styles.panelTitle}>{isTraining ? 'Đang chuẩn bị kết quả' : 'Chưa có kết quả huấn luyện'}</Text><Text style={styles.description}>Thiết lập dữ liệu, bắt đầu huấn luyện và so sánh chất lượng mô hình tại đây.</Text></View></View>}
+      {result?.catalogWarning ? <Text accessibilityRole="alert" style={[styles.helpText, { color: theme.warning }]}>{result.catalogWarning}</Text> : null}
+      {result?.runId ? <Pressable accessibilityRole="button" onPress={() => setWorkspaceTab('versions')} style={styles.secondaryButton}><Text style={styles.accentText}>Xem phiên bản vừa tạo trong kho</Text></Pressable> : null}
+      </>}
     </ScrollView>
     {datePickerVisible && Platform.OS === 'android' ? <DateTimePicker value={dateValue} mode="date" display="default" onChange={handleDateChange} /> : null}
     {Platform.OS === 'ios' ? <BottomPopup transparent visible={datePickerVisible} onRequestClose={() => setDatePickerVisible(false)}><View style={styles.modalOverlay}><Pressable style={styles.backdrop} onPress={() => setDatePickerVisible(false)} /><BottomPopupSheet style={styles.dateSheet}><View style={styles.dateSheetHeader}><Text style={styles.panelTitle}>Ngày chốt dữ liệu</Text><Pressable accessibilityRole="button" onPress={() => setDatePickerVisible(false)}><Text style={styles.accentText}>Xong</Text></Pressable></View><DateTimePicker value={dateValue} mode="date" display="spinner" onChange={handleDateChange} /></BottomPopupSheet></View></BottomPopup> : null}
@@ -224,6 +249,9 @@ export function ForecastTrainingWorkspace({ renderResult, active = true }: {
 function createStyles(theme: AdminTheme, desktop: boolean, narrow: boolean) {
   return adminStyleSheet({
     screen: { flex: 1, backgroundColor: theme.screen },
+    workspaceTabs: { flexDirection: 'row', gap: 8, marginBottom: 24 },
+    workspaceTab: { paddingHorizontal: 17, paddingVertical: 11, borderRadius: 7, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.card },
+    workspaceTabActive: { borderColor: theme.primary, backgroundColor: theme.primaryPressed },
     content: { alignSelf: 'center', width: '100%', maxWidth: 1360, padding: narrow ? 18 : 36, paddingBottom: 48 },
     pageHeading: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 16, justifyContent: 'space-between', marginBottom: 28 },
     headingCopy: { flex: 1, minWidth: narrow ? 220 : 280 },
@@ -275,6 +303,8 @@ function createStyles(theme: AdminTheme, desktop: boolean, narrow: boolean) {
     field: { gap: 9 },
     label: { color: theme.text, fontSize: 12, fontWeight: '500' },
     helpText: { color: theme.textMuted, fontSize: 11, lineHeight: 18 },
+    historyInput: { color: theme.text, fontSize: 13, minHeight: 42, paddingHorizontal: 12, borderWidth: 1, borderColor: theme.border, borderRadius: 7, backgroundColor: theme.inputBackground },
+    historyToggle: { flexDirection: 'row', alignItems: 'center', gap: 9, minHeight: 32 },
     dateButton: { flexDirection: 'row', alignItems: 'center', gap: 9, borderColor: theme.border, borderWidth: 1, borderRadius: 7, paddingHorizontal: 12, minHeight: 42 },
     dateText: { color: theme.text, fontSize: 13 },
     scopeOption: { flexDirection: 'row', gap: 10, alignItems: 'center', borderColor: theme.border, borderWidth: 1, borderRadius: 7, padding: 12 },
