@@ -18,6 +18,7 @@ import { requestSpendingStatsFromTransactions } from "@/stores/spendingStatsNavi
 import type { AppTheme } from "@/theme/appTheme";
 import { emptyTransactionFilters, getTransactionMonthRange, TransactionFilterScreen, type TransactionFilters } from "@/screens/transactions/transaction-filter-screen";
 import { calendarDay, getAnomalyWindow } from "@/screens/transactions/anomaly-window";
+import { getCurrentAnomalyReasonCodes } from "@/utils/anomalyReasons";
 type AnomalyDateFilter = string;
 type AnomalyFilters = { category: string; date: AnomalyDateFilter; reason: string };
 
@@ -35,7 +36,6 @@ const anomalyReasonLabels: Record<string, string> = {
   HIGH_VS_CATEGORY_MEDIAN: "Cao trong danh mục",
   HIGH_USER_ROBUST_Z: "Lệch khỏi lịch sử",
   HIGH_CATEGORY_ROBUST_Z: "Lệch khỏi danh mục",
-  WEEKEND_TRANSACTION: "Cuối tuần",
   UNUSUAL_FEATURE_COMBINATION: "Mẫu chi tiêu lạ",
 };
 
@@ -126,7 +126,10 @@ export default function TransactionsScreen() {
       if (!anomaly.isAnomaly) return false;
       const day = calendarDay(anomaly.date);
       return anomalyWindow === null || (day !== null && day >= anomalyWindow.start && day <= anomalyWindow.end);
-    }),
+    }).map(anomaly => ({ ...anomaly,
+      // Ẩn lý do đã bỏ nếu kết quả phân tích cũ vẫn còn trong cache.
+      reasonCodes: getCurrentAnomalyReasonCodes(anomaly.reasonCodes),
+    })),
     [analysis, anomalyWindow],
   );
   const anomalyCategories = useMemo(() => {

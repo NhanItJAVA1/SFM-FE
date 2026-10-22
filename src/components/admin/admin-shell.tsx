@@ -1,17 +1,18 @@
-import { Activity, BookOpen, ChevronRight, FolderOpen, LayoutDashboard, LogOut, PanelLeft, ShieldCheck, SlidersHorizontal, Users } from 'lucide-react-native';
+import { Activity, BookOpen, ChevronRight, FolderOpen, HeartPulse, LayoutDashboard, LogOut, PanelLeft, ShieldCheck, SlidersHorizontal, Users } from 'lucide-react-native';
 import type { ReactNode } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { adminStyleSheet, useAdminTheme } from './admin-design';
 
-export type AdminView = 'dashboard' | 'users' | 'categories' | 'documents' | 'training' | 'monitoring';
+export type AdminView = 'dashboard' | 'users' | 'categories' | 'documents' | 'training' | 'monitoring' | 'analysis-config';
 const navigation = [
   { key: 'dashboard', label: 'Tổng quan', Icon: LayoutDashboard },
   { key: 'users', label: 'Người dùng', Icon: Users },
   { key: 'categories', label: 'Danh mục', Icon: FolderOpen },
   { key: 'documents', label: 'Tài liệu tri thức', Icon: BookOpen },
   { key: 'training', label: 'Huấn luyện AI', Icon: SlidersHorizontal },
+  { key: 'analysis-config', label: 'Cấu hình phân tích', Icon: HeartPulse },
   { key: 'monitoring', label: 'Giám sát hệ thống', Icon: Activity },
 ] as const;
 

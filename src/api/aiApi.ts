@@ -115,6 +115,9 @@ export type AIRecommendation = {
 export type AIAnalysisMetadata = {
   environment: string;
   periodDays: number;
+  healthModel?: string;
+  healthModelVersion?: string | null;
+  analysisConfigVersion?: string;
   forecastModel: string;
   forecastModelVersion: string | null;
   rankingModel: string;
@@ -237,7 +240,34 @@ export type ForecastModelArtifact = {
 export type ForecastVersionAction = { status: string; activeModelVersion: string | null;
   catalogSynced: boolean; catalogWarning?: string | null };
 
+export type AnalysisSettings = {
+  health: { savingsRisk: number; savingsWarning: number; budgetWarning: number; budgetRisk: number };
+  anomaly: { contamination: number; minExpenseCount: number };
+};
+export type AnalysisConfigVersion = {
+  version: string; createdAt: string | null; actor: string; reason: string;
+  restoredFrom: string | null; settings: AnalysisSettings;
+};
+export type AnalysisPreviewInput = {
+  settings: AnalysisSettings; income: number; expense: number; budgetLimit: number;
+  budgetSpent: number; unusualExpense: number;
+};
+export type AnalysisPreview = {
+  preview: true; currency: 'VND'; sampleExpenseCount: number;
+  health: { label: number; status: string; savingsRate: number; budgetUsage: number;
+    breakdown: { cashflowStatus: string; budgetStatus: string; reasons: string[] } };
+  anomaly: { summary: { status: string; availableExpenseCount: number; minRequiredExpenseCount: number;
+    anomalyCount: number; contamination: number }; transactions: { transactionId: number; date: string;
+      category: string; amount: number; anomalyScore: number; reasonCodes: string[] }[] };
+};
+
 export const aiApi = {
+  analysisConfigHistory: () => axiosClient.get<{ activeVersion: string; items: AnalysisConfigVersion[] }>('/v1/admin/analysis-config/history'),
+  saveAnalysisConfig: (payload: { baseVersion: string; settings: AnalysisSettings; reason: string }) =>
+    axiosClient.post<AnalysisConfigVersion>('/v1/admin/analysis-config', payload),
+  restoreAnalysisConfig: (version: string, payload: { baseVersion: string; reason: string }) =>
+    axiosClient.post<AnalysisConfigVersion>(`/v1/admin/analysis-config/${encodeURIComponent(version)}/restore`, payload),
+  previewAnalysisConfig: (payload: AnalysisPreviewInput) => axiosClient.post<AnalysisPreview>('/v1/admin/analysis-config/preview', payload),
   analysis: () => axiosClient.post<AIAnalysis>('/v1/FinancialAdvisor/analyze'),
   chat: (payload: AIChatPayload) => axiosClient.post<AIChatResponse>('/v1/AI/chat', payload),
   trainForecast: (payload: AIForecastTrainPayload) =>
