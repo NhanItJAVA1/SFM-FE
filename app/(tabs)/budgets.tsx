@@ -1,7 +1,7 @@
 import { useFocusEffect } from "expo-router";
 import { ScreenGradientBackground } from "@/components/screen-gradient-background";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Animated, Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Animated, Pressable, RefreshControl, ScrollView, Text, useWindowDimensions, View } from "react-native";
 
 import { budgetsApi } from "@/api/budgetsApi";
 import type { Category } from "@/api/categoriesApi";
@@ -40,8 +40,11 @@ export default function BudgetsScreen() {
   const [activeTab, setActiveTab] = useState<BudgetsTab>("month");
   const [selectedBudgetId, setSelectedBudgetId] = useState<number | null>(null);
   const [isLoadingSelectedBudgetDetail, setIsLoadingSelectedBudgetDetail] = useState(false);
+  const [detailError, setDetailError] = useState<number | null>(null);
+  const detailRequest = useRef(0);
   const [isCategoryScrollEnabled, setIsCategoryScrollEnabled] = useState(true);
-  const [tabWidth, setTabWidth] = useState(0);
+  const { width: tabWidth } = useWindowDimensions();
+  const previousTabWidth = useRef(tabWidth);
   const [form, setForm] = useState<BudgetFormState>(() => getDefaultBudgetFormState());
   const [tabTranslateX] = useState(() => new Animated.Value(0));
   const [detailReloadKey, setDetailReloadKey] = useState(0);
@@ -111,9 +114,12 @@ export default function BudgetsScreen() {
   );
 
   const loadSelectedBudgetDetail = useCallback(async (budgetId: number) => {
+    const request = ++detailRequest.current;
     try {
       setIsLoadingSelectedBudgetDetail(true);
+      setDetailError(null);
       const response = await budgetsApi.getProgressDetail(budgetId);
+      if (request !== detailRequest.current) return;
 
       setBudgets((currentBudgets) =>
         (currentBudgets ?? []).map((budget) =>
@@ -126,13 +132,10 @@ export default function BudgetsScreen() {
             : budget,
         ),
       );
-    } catch (error) {
-      Alert.alert(
-        "Không tải được chi tiết ngân sách",
-        error instanceof Error ? error.message : "Vui lòng thử lại sau.",
-      );
+    } catch {
+      if (request === detailRequest.current) setDetailError(budgetId);
     } finally {
-      setIsLoadingSelectedBudgetDetail(false);
+      if (request === detailRequest.current) setIsLoadingSelectedBudgetDetail(false);
     }
   }, []);
 
@@ -152,7 +155,10 @@ export default function BudgetsScreen() {
       void loadSelectedBudgetDetail(selectedBudgetId);
     }, 0);
 
-    return () => clearTimeout(timeoutId);
+    return () => {
+      clearTimeout(timeoutId);
+      detailRequest.current += 1;
+    };
   }, [detailReloadKey, loadSelectedBudgetDetail, selectedBudgetId]);
 
   const changeTab = useCallback(
@@ -167,6 +173,13 @@ export default function BudgetsScreen() {
     },
     [tabTranslateX, tabWidth],
   );
+
+  useEffect(() => {
+    if (previousTabWidth.current !== tabWidth) {
+      tabTranslateX.setValue(-TAB_INDEX[activeTab] * tabWidth);
+      previousTabWidth.current = tabWidth;
+    }
+  }, [activeTab, tabWidth, tabTranslateX]);
 
   function openCreateBudget() {
     setForm(getDefaultBudgetFormState());
@@ -278,15 +291,7 @@ export default function BudgetsScreen() {
           </Pressable>
         </View>
       ) : (
-        <View
-          style={styles.tabPager}
-          onLayout={(event) => {
-            const nextTabWidth = event.nativeEvent.layout.width;
-
-            setTabWidth(nextTabWidth);
-            tabTranslateX.setValue(-TAB_INDEX[activeTab] * nextTabWidth);
-          }}
-        >
+        <View style={styles.tabPager}>
           <Animated.View
             style={[
               styles.tabPagerTrack,
@@ -306,11 +311,15 @@ export default function BudgetsScreen() {
                   }
                 >
                   <BudgetSummaryCard
+                    key={`summary-${selectedBudget.id}`}
                     categoryName={
                       selectedBudget.progress?.categoryName ?? selectedBudgetCategory?.name ?? "Tất cả danh mục"
                     }
                     name={selectedBudget.name}
                     summary={selectedBudgetSummary}
+                    startDate={selectedBudget.startDate}
+                    endDate={selectedBudget.endDate}
+                    dailySpendings={selectedBudget.progressDetail?.dailySpendings}
                   />
                   {isLoadingSelectedBudgetDetail ? (
                     <View style={styles.detailLoadingState}>
@@ -318,7 +327,17 @@ export default function BudgetsScreen() {
                       <Text style={styles.emptyTransactionText}>Đang tải chi tiết ngân sách...</Text>
                     </View>
                   ) : null}
-                  <BudgetTransactionList dailySpendings={selectedBudget.progressDetail?.dailySpendings ?? []} />
+                  {detailError === selectedBudget.id ? (
+                    <View style={styles.detailLoadingState}>
+                      <Text style={[styles.emptyTransactionText, { flex: 1 }]}>Không tải được giao dịch ngân sách.</Text>
+                      <Pressable accessibilityRole="button" onPress={() => void loadSelectedBudgetDetail(selectedBudget.id)} hitSlop={10}>
+                        <Text style={{ color: theme.primary, fontWeight: "700" }}>Thử lại</Text>
+                      </Pressable>
+                    </View>
+                  ) : null}
+                  {selectedBudget.progressDetail ? (
+                    <BudgetTransactionList key={`transactions-${selectedBudget.id}`} categories={categories} dailySpendings={selectedBudget.progressDetail.dailySpendings} />
+                  ) : null}
                 </ScrollView>
               ) : null}
             </View>

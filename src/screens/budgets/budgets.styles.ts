@@ -74,8 +74,8 @@ function createBudgetStyles(theme: AppTheme) {
     },
     emptyState: { alignItems: "center", flex: 1, justifyContent: "center", paddingBottom: 84 },
     tabPager: { flex: 1, overflow: "hidden" },
-    tabPagerTrack: { flex: 1, flexDirection: "row" },
-    tabPage: { flex: 1 },
+    tabPagerTrack: { height: "100%", flexDirection: "row", flexShrink: 0 },
+    tabPage: { flexGrow: 0, flexShrink: 0 },
     content: { gap: 10, padding: 12, paddingBottom: 96 },
     summaryCard: {
       alignItems: "center",
