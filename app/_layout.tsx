@@ -1,14 +1,25 @@
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
-import { restoreAuthSession } from '@/stores/persistedAuthSession';
+import { clearAuthSession, restoreAuthSession } from '@/stores/persistedAuthSession';
 import { restoreThemeMode } from '@/stores/themePreference';
 import { useAppTheme } from '@/hooks/use-app-theme';
+import { setApiAuthExpiredHandler } from '@/api/axiosClient';
 
 export default function RootLayout() {
+  const router = useRouter();
   const theme = useAppTheme();
   const [isRestoringSession, setIsRestoringSession] = useState(true);
+
+  useEffect(() => {
+    setApiAuthExpiredHandler(async () => {
+      await clearAuthSession();
+      router.replace('/auth/login');
+    });
+
+    return () => setApiAuthExpiredHandler(null);
+  }, [router]);
 
   useEffect(() => {
     async function hydrateSession() {

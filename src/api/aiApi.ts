@@ -135,7 +135,60 @@ export type AIChatResponse = {
   sources: AIChatSource[];
 };
 
+export type AIForecastTrainPayload = {
+  asOf: string;
+  userId: number[];
+};
+
+export type ForecastTrainingMetrics = {
+  dailyMAE: number;
+  dailyRMSE: number;
+  dailyWAPE: number;
+  sevenDayTotalWAPE: number;
+};
+
+export type ForecastTrainingSplitPart = {
+  rowCount: number;
+  userCount: number;
+  firstOrigin: string;
+  lastOrigin: string;
+};
+
+export type ForecastTrainingResponse = {
+  status: string;
+  saved: boolean;
+  modelVersion: string;
+  dataset: {
+    inputUserCount: number;
+    usableUserCount: number;
+    skippedUserCount: number;
+    skippedIncomeWindowCount: number;
+    forecastWindowCount: number;
+    rowCount: number;
+    originStrideDays: number;
+    asOf: string;
+    currency: string;
+    historicalMode: string;
+    limitation: string;
+  };
+  split: {
+    train: ForecastTrainingSplitPart;
+    validation: ForecastTrainingSplitPart;
+    test: ForecastTrainingSplitPart;
+    method: string;
+    purgeHorizonDays: number;
+    discardedRows: number;
+  };
+  evaluation: {
+    validation: { sampleCount: number; models: Record<string, ForecastTrainingMetrics> };
+    test: { sampleCount: number; models: Record<string, ForecastTrainingMetrics> };
+    saveCheck: { metric: string; baseline: string; passed: boolean; reason: string };
+  };
+};
+
 export const aiApi = {
   analysis: () => axiosClient.post<AIAnalysis>('/v1/FinancialAdvisor/analyze'),
   chat: (payload: AIChatPayload) => axiosClient.post<AIChatResponse>('/v1/AI/chat', payload),
+  trainForecast: (payload: AIForecastTrainPayload) =>
+    axiosClient.post<ForecastTrainingResponse>('/v1/forecast/train', payload),
 };

@@ -17,7 +17,7 @@ export type AdminUser = {
   email: string;
   displayName: string | null;
   avatarUrl: string | null;
-  status: AdminUserStatus;
+  status?: AdminUserStatus;
   role: AdminUserRole;
   createdAt: string;
 };
@@ -66,7 +66,7 @@ function buildQuery(params: AdminUserQuery) {
 
 export const adminApi = {
   listUsers: (params: AdminUserQuery = {}) =>
-    axiosClient.get<AdminUserPagedResponse>(`/v1/admin/users${buildQuery(params)}`),
+    axiosClient.get<AdminUserPagedResponse | AdminUser[]>(`/v1/admin/users${buildQuery(params)}`),
   getUser: (id: number) => axiosClient.get<AdminUser>(`/v1/admin/users/${id}`),
   updateUserStatus: (id: number, payload: UpdateAdminUserStatusPayload) =>
     axiosClient.patch<AdminUser>(`/v1/admin/users/${id}/status`, payload),

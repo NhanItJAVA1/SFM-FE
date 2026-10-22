@@ -4,6 +4,7 @@ import {
   Easing,
   Modal,
   Pressable,
+  Platform,
   useWindowDimensions,
   type ModalProps,
   type PressableProps,
@@ -31,7 +32,7 @@ export function BottomPopup({
       toValue,
       duration: toValue ? 260 : 190,
       easing: toValue ? Easing.out(Easing.cubic) : Easing.in(Easing.cubic),
-      useNativeDriver: true,
+      useNativeDriver: Platform.OS !== "web",
     }).start(({ finished }) => {
       if (finished && !wantsVisible.current) {
         isShown.current = false;

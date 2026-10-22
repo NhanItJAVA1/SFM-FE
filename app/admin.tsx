@@ -25,7 +25,7 @@ import {
   Wallet,
 } from "lucide-react-native";
 import { type ComponentType, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import {
@@ -34,10 +34,10 @@ import {
   type AdminUserRole,
   type AdminUserStatus,
 } from "@/api/adminApi";
+import { aiApi, type ForecastTrainingMetrics, type ForecastTrainingResponse } from "@/api/aiApi";
 import { authApi } from "@/api/authApi";
 import { type Category, type CategoryType } from "@/api/categoriesApi";
 import { RAG_DOCUMENT_UPLOAD_CONTENT_TYPE, ragDocumentsApi, type RagDocument } from "@/api/ragDocumentsApi";
-import { transactionsApi, type Transaction } from "@/api/transactionsApi";
 import { FocusedScreenTransition } from "@/components/screen-transition";
 import { useAppTheme } from "@/hooks/use-app-theme";
 import { getAuthRefreshToken, getAuthUser } from "@/stores/authSession";
@@ -45,7 +45,7 @@ import { clearAuthSession } from "@/stores/persistedAuthSession";
 import type { AppTheme } from "@/theme/appTheme";
 import { isAdminUser } from "@/utils/authRole";
 
-type AdminView = "dashboard" | "users" | "categories" | "documents";
+type AdminView = "dashboard" | "users" | "categories" | "documents" | "training";
 type CategoryFormState = {
   icon: string;
   name: string;
@@ -115,10 +115,34 @@ const categoryIconOptions: CategoryIconOption[] = [
   { Icon: MoreHorizontal, key: "other", label: "Khác" },
 ];
 
+function showAdminMessage(title: string, message: string) {
+  if (Platform.OS === "web") {
+    window.alert(`${title}\n\n${message}`);
+    return;
+  }
+
+  Alert.alert(title, message);
+}
+
+function confirmAdminAction(title: string, message: string, onConfirm: () => void, confirmLabel: string, destructive = false) {
+  if (Platform.OS === "web") {
+    if (window.confirm(`${title}\n\n${message}`)) {
+      onConfirm();
+    }
+    return;
+  }
+
+  Alert.alert(title, message, [
+    { style: "cancel", text: "Hủy" },
+    { onPress: onConfirm, style: destructive ? "destructive" : "default", text: confirmLabel },
+  ]);
+}
+
 function useAdminStyles() {
   const theme = useAppTheme();
+  const { width } = useWindowDimensions();
 
-  return useMemo(() => createStyles(theme), [theme]);
+  return useMemo(() => createStyles(theme, width >= 900), [theme, width]);
 }
 
 function formatDate(value: string | null | undefined) {
@@ -133,11 +157,30 @@ function formatDate(value: string | null | undefined) {
   }).format(new Date(value));
 }
 
+function getRequestErrorMessage(error: unknown) {
+  if (typeof error === "object" && error !== null && "response" in error) {
+    const response = (error as { response?: { status?: number; data?: unknown } }).response;
+    const data = response?.data;
+
+    if (typeof data === "object" && data !== null && "message" in data) {
+      return `HTTP ${response?.status ?? "?"}: ${String(data.message)}`;
+    }
+  }
+
+  return error instanceof Error ? error.message : "Vui lòng thử lại sau.";
+}
+
+function formatTrainingNumber(value: number, currency?: string) {
+  const formatted = new Intl.NumberFormat("vi-VN", { maximumFractionDigits: currency ? 0 : 2 }).format(value);
+
+  return currency ? `${formatted} ${currency}` : formatted;
+}
+
 function getCategoryTypeLabel(type: Category["type"]) {
   return type === "Income" ? "Thu nhập" : "Chi tiêu";
 }
 
-function getUserStatusLabel(status: AdminUserStatus | string) {
+function getUserStatusLabel(status: AdminUserStatus | string | null | undefined) {
   if (status === "Active") {
     return "Đang hoạt động";
   }
@@ -150,7 +193,7 @@ function getUserStatusLabel(status: AdminUserStatus | string) {
     return "Bị đình chỉ";
   }
 
-  return status;
+  return status || "Chưa cập nhật";
 }
 
 function getCategoryIconOption(icon: string | null | undefined) {
@@ -193,13 +236,17 @@ export default function AdminScreen() {
   const currentUser = getAuthUser();
   const [view, setView] = useState<AdminView>("dashboard");
   const [users, setUsers] = useState<AdminUser[]>([]);
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [ragDocuments, setRagDocuments] = useState<RagDocument[]>([]);
   const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
+  const [trainingUserIds, setTrainingUserIds] = useState<number[]>([]);
+  const [trainingAsOf, setTrainingAsOf] = useState("2025-12-31");
+  const [isTrainingForecast, setIsTrainingForecast] = useState(false);
+  const [trainingResult, setTrainingResult] = useState<ForecastTrainingResponse | null>(null);
   const [userSearch, setUserSearch] = useState("");
   const [userRoleFilter, setUserRoleFilter] = useState<AdminUserRole | "All">("All");
   const [userStatusFilter, setUserStatusFilter] = useState<AdminUserStatus | "All">("All");
+  const [isTrainingFilterVisible, setIsTrainingFilterVisible] = useState(false);
   const [userPage, setUserPage] = useState(1);
   const [userPageSize] = useState(20);
   const [userTotalCount, setUserTotalCount] = useState(0);
@@ -222,8 +269,10 @@ export default function AdminScreen() {
   const [isSavingRagMetadata, setIsSavingRagMetadata] = useState(false);
   const [processingDocumentId, setProcessingDocumentId] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingUsers, setIsLoadingUsers] = useState(true);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [adminLoadWarnings, setAdminLoadWarnings] = useState<string[]>([]);
   const ragMetadataOpenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const defaultCategories = categories;
@@ -245,30 +294,77 @@ export default function AdminScreen() {
         setIsLoading(true);
       }
 
-      const [usersResponse, categoriesResponse, transactionsResponse, ragDocumentsResponse] = await Promise.all([
-        adminApi.listUsers({
-          page: userPage,
-          pageSize: userPageSize,
-          role: userRoleFilter === "All" ? undefined : userRoleFilter,
-          search: userSearch.trim() || undefined,
-          status: userStatusFilter === "All" ? undefined : userStatusFilter,
-        }),
+      const usersRequest = adminApi.listUsers({
+        page: userPage,
+        pageSize: userPageSize,
+        role: userRoleFilter === "All" ? undefined : userRoleFilter,
+        search: userSearch.trim() || undefined,
+        status: userStatusFilter === "All" ? undefined : userStatusFilter,
+      });
+      setIsLoadingUsers(true);
+      // The user list has its own loading state. Don't make it wait for the
+      // unrelated categories and RAG requests below.
+      void usersRequest
+        .then(({ data }) => {
+          if (Array.isArray(data)) {
+            const filteredUsers = data.filter((user) => {
+              const matchesRole = userRoleFilter === "All" || user.role === userRoleFilter;
+              const matchesStatus = userStatusFilter === "All" || !user.status || user.status === userStatusFilter;
+              const normalizedSearch = userSearch.trim().toLowerCase();
+              const matchesSearch = !normalizedSearch || [user.username, user.email, user.displayName ?? ""]
+                .some((value) => value.toLowerCase().includes(normalizedSearch));
+
+              return matchesRole && matchesStatus && matchesSearch;
+            });
+            const pageCount = Math.max(1, Math.ceil(filteredUsers.length / userPageSize));
+            const resolvedPage = Math.min(userPage, pageCount);
+            const pageStart = (resolvedPage - 1) * userPageSize;
+
+            setUsers(filteredUsers.slice(pageStart, pageStart + userPageSize));
+            setUserTotalCount(filteredUsers.length);
+            setUserPage(resolvedPage);
+          } else {
+            setUsers(Array.isArray(data.items) ? data.items : []);
+            setUserTotalCount(data.totalCount ?? 0);
+            setUserPage(data.page ?? userPage);
+          }
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          setIsLoadingUsers(false);
+        });
+
+      const results = await Promise.allSettled([
+        usersRequest,
         adminApi.listDefaultCategories(),
-        transactionsApi.list({ filter: "All" }),
         ragDocumentsApi.list(),
       ]);
 
-      setUsers(Array.isArray(usersResponse.data.items) ? usersResponse.data.items : []);
-      setUserTotalCount(usersResponse.data.totalCount ?? 0);
-      setUserPage(usersResponse.data.page ?? userPage);
-      setCategories(Array.isArray(categoriesResponse.data) ? categoriesResponse.data : []);
-      setTransactions(Array.isArray(transactionsResponse.data.items) ? transactionsResponse.data.items : []);
-      setRagDocuments(Array.isArray(ragDocumentsResponse.data) ? ragDocumentsResponse.data : []);
+      const [usersResult, categoriesResult, ragDocumentsResult] = results;
+      const warnings: string[] = [];
+
+      if (usersResult.status === "rejected") {
+        warnings.push(`Không tải được danh sách user: ${getRequestErrorMessage(usersResult.reason)}`);
+      }
+
+      if (categoriesResult.status === "fulfilled") {
+        setCategories(Array.isArray(categoriesResult.value.data) ? categoriesResult.value.data : []);
+      } else {
+        warnings.push(`Không tải được danh mục: ${getRequestErrorMessage(categoriesResult.reason)}`);
+      }
+
+      if (ragDocumentsResult.status === "fulfilled") {
+        setRagDocuments(Array.isArray(ragDocumentsResult.value.data) ? ragDocumentsResult.value.data : []);
+      } else {
+        warnings.push(`Không tải được tài liệu RAG: ${getRequestErrorMessage(ragDocumentsResult.reason)}`);
+      }
+
+      setAdminLoadWarnings(warnings);
     } catch (error) {
       if (silent) {
         console.warn("Không tải được admin dashboard", error);
       } else {
-        Alert.alert("Không tải được dữ liệu admin", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
+        showAdminMessage("Không tải được dữ liệu admin", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
       }
     } finally {
       if (!silent) {
@@ -282,10 +378,10 @@ export default function AdminScreen() {
     useCallback(() => {
       if (isAdminUser(currentUser)) {
         loadAdminData({
-          silent: users.length > 0 || categories.length > 0 || transactions.length > 0 || ragDocuments.length > 0,
+          silent: users.length > 0 || categories.length > 0 || ragDocuments.length > 0,
         });
       }
-    }, [categories.length, currentUser, loadAdminData, ragDocuments.length, transactions.length, users.length]),
+    }, [categories.length, currentUser, loadAdminData, ragDocuments.length, users.length]),
   );
 
   async function openUserDetail(user: AdminUser) {
@@ -297,7 +393,7 @@ export default function AdminScreen() {
       setSelectedUser(response.data);
       setUsers((current) => (current ?? []).map((item) => (item.id === user.id ? response.data : item)));
     } catch (error) {
-      Alert.alert("Không tải được thông tin user", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
+      showAdminMessage("Không tải được thông tin user", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
     } finally {
       setProcessingUserId(null);
     }
@@ -318,18 +414,45 @@ export default function AdminScreen() {
     setUserPage(1);
   }
 
+  function toggleTrainingUser(userId: number) {
+    setTrainingUserIds((current) =>
+      current.includes(userId) ? current.filter((id) => id !== userId) : [...current, userId],
+    );
+  }
+
+  async function trainSelectedUsers() {
+    if (trainingUserIds.length === 0) {
+      showAdminMessage("Chưa chọn user", "Chọn ít nhất một user để train model.");
+      return;
+    }
+
+    const asOfDate = new Date(`${trainingAsOf}T00:00:00`);
+    if (
+      !/^\d{4}-\d{2}-\d{2}$/.test(trainingAsOf) ||
+      Number.isNaN(asOfDate.getTime()) ||
+      asOfDate.toISOString().slice(0, 10) !== trainingAsOf
+    ) {
+      showAdminMessage("Ngày không hợp lệ", "Nhập ngày theo định dạng YYYY-MM-DD.");
+      return;
+    }
+
+    try {
+      setIsTrainingForecast(true);
+      const response = await aiApi.trainForecast({ asOf: trainingAsOf, userId: trainingUserIds });
+      setTrainingResult(response.data);
+    } catch (error) {
+      showAdminMessage("Train model thất bại", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
+    } finally {
+      setIsTrainingForecast(false);
+    }
+  }
+
   function requestUpdateUserStatus(user: AdminUser, status: AdminUserStatus) {
     if (user.status === status) {
       return;
     }
 
-    Alert.alert("Cập nhật trạng thái", `Đổi trạng thái ${user.username} thành "${getUserStatusLabel(status)}"?`, [
-      { style: "cancel", text: "Hủy" },
-      {
-        onPress: () => void updateUserStatus(user, status),
-        text: "Cập nhật",
-      },
-    ]);
+    confirmAdminAction("Cập nhật trạng thái", `Đổi trạng thái ${user.username} thành "${getUserStatusLabel(status)}"?`, () => void updateUserStatus(user, status), "Cập nhật");
   }
 
   async function updateUserStatus(user: AdminUser, status: AdminUserStatus) {
@@ -340,7 +463,7 @@ export default function AdminScreen() {
       setUsers((current) => (current ?? []).map((item) => (item.id === user.id ? response.data : item)));
       setSelectedUser((current) => (current?.id === user.id ? response.data : current));
     } catch (error) {
-      Alert.alert("Không cập nhật được trạng thái", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
+      showAdminMessage("Không cập nhật được trạng thái", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
     } finally {
       setProcessingUserId(null);
     }
@@ -351,13 +474,7 @@ export default function AdminScreen() {
       return;
     }
 
-    Alert.alert("Cập nhật vai trò", `Đổi vai trò ${user.username} thành "${role}"?`, [
-      { style: "cancel", text: "Hủy" },
-      {
-        onPress: () => void updateUserRole(user, role),
-        text: "Cập nhật",
-      },
-    ]);
+    confirmAdminAction("Cập nhật vai trò", `Đổi vai trò ${user.username} thành "${role}"?`, () => void updateUserRole(user, role), "Cập nhật");
   }
 
   async function updateUserRole(user: AdminUser, role: AdminUserRole) {
@@ -368,7 +485,7 @@ export default function AdminScreen() {
       setUsers((current) => (current ?? []).map((item) => (item.id === user.id ? response.data : item)));
       setSelectedUser((current) => (current?.id === user.id ? response.data : current));
     } catch (error) {
-      Alert.alert("Không cập nhật được vai trò", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
+      showAdminMessage("Không cập nhật được vai trò", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
     } finally {
       setProcessingUserId(null);
     }
@@ -408,7 +525,7 @@ export default function AdminScreen() {
     const icon = categoryForm.icon.trim() || "other";
 
     if (!name) {
-      Alert.alert("Thiếu tên danh mục", "Vui lòng nhập tên category mặc định.");
+      showAdminMessage("Thiếu tên danh mục", "Vui lòng nhập tên category mặc định.");
       return;
     }
 
@@ -437,21 +554,14 @@ export default function AdminScreen() {
       setEditingCategory(null);
       setCategoryForm(emptyCategoryForm);
     } catch (error) {
-      Alert.alert("Không lưu được category", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
+      showAdminMessage("Không lưu được category", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
     } finally {
       setIsSavingCategory(false);
     }
   }
 
   function requestDeleteDefaultCategory(category: Category) {
-    Alert.alert("Xóa category mặc định", `Bạn có chắc muốn xóa "${category.name}" không?`, [
-      { style: "cancel", text: "Hủy" },
-      {
-        onPress: () => void deleteDefaultCategory(category),
-        style: "destructive",
-        text: "Xóa",
-      },
-    ]);
+    confirmAdminAction("Xóa category mặc định", `Bạn có chắc muốn xóa "${category.name}" không?`, () => void deleteDefaultCategory(category), "Xóa", true);
   }
 
   async function deleteDefaultCategory(category: Category) {
@@ -459,7 +569,7 @@ export default function AdminScreen() {
       await adminApi.deleteDefaultCategory(category.id);
       setCategories((current) => (current ?? []).filter((item) => item.id !== category.id));
     } catch (error) {
-      Alert.alert("Không xóa được category", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
+      showAdminMessage("Không xóa được category", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
     }
   }
 
@@ -483,7 +593,7 @@ export default function AdminScreen() {
     const fileType = getFileExtension(asset.name);
 
     if (!isSupportedRagFileType(fileType)) {
-      Alert.alert("Định dạng chưa hỗ trợ", "Hiện chỉ hỗ trợ .txt, .docs, .md và .pdf.");
+      showAdminMessage("Định dạng chưa hỗ trợ", "Hiện chỉ hỗ trợ .txt, .docs, .md và .pdf.");
       return;
     }
 
@@ -507,17 +617,17 @@ export default function AdminScreen() {
     let createdDocumentId: number | null = null;
 
     if (!asset) {
-      Alert.alert("Chưa chọn file", "Vui lòng chọn tài liệu cần upload.");
+      showAdminMessage("Chưa chọn file", "Vui lòng chọn tài liệu cần upload.");
       return;
     }
 
     if (!title) {
-      Alert.alert("Thiếu tiêu đề", "Vui lòng nhập tiêu đề tài liệu.");
+      showAdminMessage("Thiếu tiêu đề", "Vui lòng nhập tiêu đề tài liệu.");
       return;
     }
 
     if (!isSupportedRagFileType(fileType)) {
-      Alert.alert("Định dạng chưa hỗ trợ", "Hiện chỉ hỗ trợ .txt, .docs, .md và .pdf.");
+      showAdminMessage("Định dạng chưa hỗ trợ", "Hiện chỉ hỗ trợ .txt, .docs, .md và .pdf.");
       return;
     }
 
@@ -539,13 +649,13 @@ export default function AdminScreen() {
       setIsRagUploadVisible(false);
       setRagUploadForm(emptyRagUploadForm);
       await loadAdminData({ refresh: true });
-      Alert.alert("Upload thành công", "Tài liệu đã được upload và gửi yêu cầu indexing.");
+      showAdminMessage("Upload thành công", "Tài liệu đã được upload và gửi yêu cầu indexing.");
     } catch (error) {
       if (createdDocumentId !== null) {
         await loadAdminData({ refresh: true });
       }
 
-      Alert.alert(
+      showAdminMessage(
         createdDocumentId === null ? "Tạo tài liệu thất bại" : "Upload hoặc confirm thất bại",
         error instanceof Error ? error.message : "Vui lòng thử lại sau.",
       );
@@ -591,7 +701,7 @@ export default function AdminScreen() {
     const ragCategory = ragMetadataForm.ragCategory.trim() || "General";
 
     if (!title) {
-      Alert.alert("Thiếu tiêu đề", "Vui lòng nhập tiêu đề tài liệu.");
+      showAdminMessage("Thiếu tiêu đề", "Vui lòng nhập tiêu đề tài liệu.");
       return;
     }
 
@@ -611,9 +721,9 @@ export default function AdminScreen() {
       setIsRagMetadataVisible(false);
       setEditingRagDocument(null);
       setRagMetadataForm(emptyRagMetadataForm);
-      Alert.alert("Đã lưu metadata", "Thông tin tài liệu đã được cập nhật.");
+      showAdminMessage("Đã lưu metadata", "Thông tin tài liệu đã được cập nhật.");
     } catch (error) {
-      Alert.alert("Không lưu được metadata", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
+      showAdminMessage("Không lưu được metadata", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
     } finally {
       setIsSavingRagMetadata(false);
     }
@@ -621,14 +731,7 @@ export default function AdminScreen() {
 
   function requestDeleteRagDocument(document: RagDocument) {
     setActionMenuRagDocument(null);
-    Alert.alert("Xóa tài liệu RAG", `Bạn muốn xóa "${document.title}"?`, [
-      { style: "cancel", text: "Hủy" },
-      {
-        onPress: () => void deleteRagDocument(document),
-        style: "destructive",
-        text: "Xóa",
-      },
-    ]);
+    confirmAdminAction("Xóa tài liệu RAG", `Bạn muốn xóa "${document.title}"?`, () => void deleteRagDocument(document), "Xóa", true);
   }
 
   async function deleteRagDocument(document: RagDocument) {
@@ -640,9 +743,9 @@ export default function AdminScreen() {
         setSelectedRagDocument(null);
         setIsRagDetailVisible(false);
       }
-      Alert.alert("Đã xóa tài liệu", "Tài liệu RAG đã được xóa.");
+      showAdminMessage("Đã xóa tài liệu", "Tài liệu RAG đã được xóa.");
     } catch (error) {
-      Alert.alert("Không xóa được tài liệu", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
+      showAdminMessage("Không xóa được tài liệu", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
     } finally {
       setProcessingDocumentId(null);
     }
@@ -660,7 +763,7 @@ export default function AdminScreen() {
         (current ?? []).map((item) => (item.id === document.id ? response.data : item)),
       );
     } catch (error) {
-      Alert.alert("Không tải được chi tiết tài liệu", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
+      showAdminMessage("Không tải được chi tiết tài liệu", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
     } finally {
       setIsLoadingRagDetail(false);
     }
@@ -675,19 +778,16 @@ export default function AdminScreen() {
         (current ?? []).map((item) => (item.id === document.id ? response.data : item)),
       );
       setSelectedRagDocument((current) => (current?.id === document.id ? response.data : current));
-      Alert.alert("Đã chạy reindex", "Yêu cầu indexing lại đã hoàn tất.");
+      showAdminMessage("Đã chạy reindex", "Yêu cầu indexing lại đã hoàn tất.");
     } catch (error) {
-      Alert.alert("Không chạy lại indexing", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
+      showAdminMessage("Không chạy lại indexing", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
     } finally {
       setProcessingDocumentId(null);
     }
   }
 
   function confirmLogout() {
-    Alert.alert("Đăng xuất", "Bạn muốn đăng xuất khỏi trang Admin?", [
-      { style: "cancel", text: "Hủy" },
-      { onPress: () => void handleLogout(), style: "destructive", text: "Đăng xuất" },
-    ]);
+    confirmAdminAction("Đăng xuất", "Bạn muốn đăng xuất khỏi trang Admin?", () => void handleLogout(), "Đăng xuất", true);
   }
 
   async function handleLogout() {
@@ -851,7 +951,7 @@ export default function AdminScreen() {
               </ScrollView>
             </View>
 
-            {isLoading ? (
+            {isLoadingUsers ? (
               <View style={styles.loadingCard}>
                 <ActivityIndicator color={theme.primary} />
                 <Text style={styles.loadingText}>Đang tải user...</Text>
@@ -910,6 +1010,186 @@ export default function AdminScreen() {
               </Pressable>
             </View>
           </ScrollView>
+        </SafeAreaView>
+      </FocusedScreenTransition>
+    );
+  }
+
+  if (view === "training") {
+    return (
+      <FocusedScreenTransition style={styles.screen} triggerKey={view} variant="slide-left">
+        <SafeAreaView style={styles.screen} edges={["top"]}>
+          <View style={styles.header}>
+            <Pressable onPress={() => setView("dashboard")} hitSlop={12}>
+              <Text style={styles.backText}>‹ Admin</Text>
+            </Pressable>
+            <Text style={styles.headerTitle}>Train forecast model</Text>
+            <Text style={styles.headerCount}>{trainingUserIds.length} đã chọn</Text>
+          </View>
+
+          <ScrollView
+            contentContainerStyle={styles.listContent}
+            refreshControl={
+              <RefreshControl
+                refreshing={isRefreshing}
+                onRefresh={() => loadAdminData({ refresh: true })}
+                tintColor={theme.primary}
+              />
+            }
+          >
+            <View style={styles.trainingControls}>
+              <View style={styles.formField}>
+                <Text style={styles.formLabel}>As of</Text>
+                <TextInput
+                  autoCapitalize="none"
+                  onChangeText={setTrainingAsOf}
+                  placeholder="YYYY-MM-DD"
+                  placeholderTextColor={theme.inputPlaceholder}
+                  style={styles.formInput}
+                  value={trainingAsOf}
+                />
+              </View>
+              <TextInput
+                autoCapitalize="none"
+                onChangeText={updateUserSearch}
+                placeholder="Tìm username, email, display name"
+                placeholderTextColor={theme.inputPlaceholder}
+                style={styles.formInput}
+                value={userSearch}
+              />
+              <View style={styles.trainingActions}>
+                <View>
+                  <Text style={styles.rowSubtitle}>Chọn một hoặc nhiều user để lấy dữ liệu train.</Text>
+                  <Text style={styles.rowSubtitle}>ID đã chọn: {trainingUserIds.join(", ") || "chưa có"}</Text>
+                </View>
+                <Pressable
+                  disabled={isTrainingForecast || trainingUserIds.length === 0}
+                  onPress={() => void trainSelectedUsers()}
+                  style={[styles.fullSaveButton, (isTrainingForecast || trainingUserIds.length === 0) && styles.disabledText]}
+                >
+                  {isTrainingForecast ? (
+                    <ActivityIndicator color={theme.textInverse} />
+                  ) : (
+                    <Text style={styles.fullSaveButtonText}>Train {trainingUserIds.length} user</Text>
+                  )}
+                </Pressable>
+              </View>
+              <View style={styles.trainingFilterActions}>
+                <Pressable style={styles.trainingFilterButton} onPress={() => setIsTrainingFilterVisible(true)}>
+                  <Text style={styles.trainingFilterButtonText}>Bộ lọc</Text>
+                  {(userRoleFilter !== "All" || userStatusFilter !== "All") ? (
+                    <Text style={styles.trainingFilterSummary}>
+                      {[userRoleFilter !== "All" ? userRoleFilter : null, userStatusFilter !== "All" ? getUserStatusLabel(userStatusFilter) : null]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </Text>
+                  ) : null}
+                </Pressable>
+              </View>
+            </View>
+
+            {trainingResult ? <ForecastTrainingResult result={trainingResult} /> : null}
+
+            {isLoadingUsers ? (
+              <View style={styles.loadingCard}>
+                <ActivityIndicator color={theme.primary} />
+                <Text style={styles.loadingText}>Đang tải user...</Text>
+              </View>
+            ) : users.length === 0 ? (
+              <View style={styles.emptyDocumentCard}>
+                <Text style={styles.emptyDocumentTitle}>Không có user</Text>
+                <Text style={styles.emptyDocumentText}>Thử đổi từ khóa hoặc bộ lọc.</Text>
+              </View>
+            ) : (
+              users.map((user) => {
+                const isSelected = trainingUserIds.includes(user.id);
+
+                return (
+                  <Pressable key={user.id} style={styles.trainingUserRow} onPress={() => toggleTrainingUser(user.id)}>
+                    <View style={[styles.trainingCheckbox, isSelected && styles.trainingCheckboxSelected]}>
+                      {isSelected ? <Text style={styles.trainingCheckboxMark}>✓</Text> : null}
+                    </View>
+                    <View style={styles.rowCopy}>
+                      <Text style={styles.rowTitle}>{user.displayName ?? user.username}</Text>
+                      <Text style={styles.rowSubtitle}>@{user.username} · {user.email}</Text>
+                    </View>
+                    <View style={[styles.roleBadge, user.role === "Admin" && styles.roleBadgeAdmin]}>
+                      <Text style={[styles.roleBadgeText, user.role === "Admin" && styles.roleBadgeTextAdmin]}>{user.role}</Text>
+                    </View>
+                  </Pressable>
+                );
+              })
+            )}
+
+            <View style={styles.paginationRow}>
+              <Pressable
+                disabled={userPage <= 1 || isRefreshing}
+                onPress={() => setUserPage((page) => Math.max(1, page - 1))}
+                style={[styles.paginationButton, (userPage <= 1 || isRefreshing) && styles.disabledText]}
+              >
+                <Text style={styles.paginationButtonText}>Trước</Text>
+              </Pressable>
+              <Text style={styles.paginationText}>Trang {userPage}/{userTotalPages} · {userTotalCount} user</Text>
+              <Pressable
+                disabled={userPage >= userTotalPages || isRefreshing}
+                onPress={() => setUserPage((page) => Math.min(userTotalPages, page + 1))}
+                style={[styles.paginationButton, (userPage >= userTotalPages || isRefreshing) && styles.disabledText]}
+              >
+                <Text style={styles.paginationButtonText}>Sau</Text>
+              </Pressable>
+            </View>
+          </ScrollView>
+          <BottomPopup
+            animationType="fade"
+            transparent
+            visible={isTrainingFilterVisible}
+            onRequestClose={() => setIsTrainingFilterVisible(false)}
+          >
+            <View style={styles.modalOverlay}>
+              <Pressable style={styles.modalBackdrop} onPress={() => setIsTrainingFilterVisible(false)} />
+              <BottomPopupSheet style={styles.categoryFormSheet}>
+                <View style={styles.formHeader}>
+                  <Pressable onPress={() => setIsTrainingFilterVisible(false)} hitSlop={12}>
+                    <Text style={styles.formClose}>Đóng</Text>
+                  </Pressable>
+                  <Text style={styles.formTitle}>Bộ lọc user</Text>
+                  <Pressable
+                    onPress={() => {
+                      updateUserRoleFilter("All");
+                      updateUserStatusFilter("All");
+                    }}
+                    hitSlop={12}
+                  >
+                    <Text style={styles.formSave}>Xóa lọc</Text>
+                  </Pressable>
+                </View>
+                <View style={styles.trainingFilterSection}>
+                  <Text style={styles.formLabel}>Vai trò</Text>
+                  <View style={styles.trainingFilters}>
+                    {(["All", ...userRoleOptions] as (AdminUserRole | "All")[]).map((role) => (
+                      <FilterChip
+                        key={role}
+                        label={role === "All" ? "Tất cả" : role}
+                        selected={userRoleFilter === role}
+                        onPress={() => updateUserRoleFilter(role)}
+                      />
+                    ))}
+                  </View>
+                  <Text style={styles.formLabel}>Trạng thái</Text>
+                  <View style={styles.trainingFilters}>
+                    {(["All", ...userStatusOptions] as (AdminUserStatus | "All")[]).map((status) => (
+                      <FilterChip
+                        key={status}
+                        label={status === "All" ? "Tất cả" : getUserStatusLabel(status)}
+                        selected={userStatusFilter === status}
+                        onPress={() => updateUserStatusFilter(status)}
+                      />
+                    ))}
+                  </View>
+                </View>
+              </BottomPopupSheet>
+            </View>
+          </BottomPopup>
         </SafeAreaView>
       </FocusedScreenTransition>
     );
@@ -1157,6 +1437,14 @@ export default function AdminScreen() {
             </View>
           </View>
 
+          {adminLoadWarnings.length > 0 ? (
+            <View style={styles.loadWarningCard}>
+              {adminLoadWarnings.map((warning) => (
+                <Text key={warning} style={styles.loadWarningText}>{warning}</Text>
+              ))}
+            </View>
+          ) : null}
+
           {isLoading ? (
             <View style={styles.loadingCard}>
               <ActivityIndicator color={theme.primary} />
@@ -1186,12 +1474,23 @@ export default function AdminScreen() {
                   note="Tài liệu tri thức AI"
                   onPress={() => setView("documents")}
                 />
+                <AdminTile
+                  color="#e58a32"
+                  label="Train AI"
+                  metric={trainingUserIds.length}
+                  note="Chọn user để train forecast"
+                  onPress={() => {
+                    setIsLoading(true);
+                    setUserRoleFilter("User");
+                    setUserPage(1);
+                    setView("training");
+                  }}
+                />
               </View>
 
               <Text style={styles.sectionLabel}>Thống kê hệ thống</Text>
               <View style={styles.statsCard}>
                 <StatRow label="Tổng user" value={String(users.length)} />
-                <StatRow label="Tổng giao dịch" value={String(transactions.length)} />
                 <StatRow label="Category mặc định" value={String(defaultCategories.length)} />
                 <StatRow label="Tài liệu RAG" value={String(ragDocuments.length)} />
               </View>
@@ -1224,6 +1523,190 @@ function AdminTile({
       <Text style={styles.tileMetric}>{metric}</Text>
       <Text style={styles.tileNote}>{note}</Text>
     </Pressable>
+  );
+}
+
+function ForecastTrainingResult({ result }: { result: ForecastTrainingResponse }) {
+  const styles = useAdminStyles();
+  const [isDetailsVisible, setIsDetailsVisible] = useState(false);
+  const validationModels = result.evaluation.validation.models;
+  const testModels = result.evaluation.test.models;
+  const modelNames = [...new Set([...Object.keys(validationModels), ...Object.keys(testModels)])];
+  const baselineName = result.evaluation.saveCheck.baseline;
+  const baselineValidation = validationModels[baselineName];
+  const baselineTest = testModels[baselineName];
+  const selectedModelName = Object.entries(validationModels)
+    .filter(([name]) => name !== baselineName)
+    .sort((left, right) => left[1].sevenDayTotalWAPE - right[1].sevenDayTotalWAPE)[0]?.[0]
+    ?? modelNames[0];
+  const selectedValidation = selectedModelName ? validationModels[selectedModelName] : undefined;
+  const selectedTest = selectedModelName ? testModels[selectedModelName] : undefined;
+  const splits = [
+    ["Train", result.split.train],
+    ["Validation", result.split.validation],
+    ["Test", result.split.test],
+  ] as const;
+
+  function getWapeImprovement(candidate?: number, baseline?: number) {
+    if (candidate === undefined || baseline === undefined || baseline === 0) {
+      return "Chưa có số liệu so sánh";
+    }
+
+    const percentage = ((baseline - candidate) / baseline) * 100;
+
+    return percentage >= 0
+      ? `Giảm ${formatTrainingNumber(percentage)}% so với ${baselineName}`
+      : `Cao hơn ${formatTrainingNumber(Math.abs(percentage))}% so với ${baselineName}`;
+  }
+
+  return (
+    <View style={styles.trainingResultPanel}>
+      <View style={styles.trainingResultHeader}>
+        <View style={styles.rowCopy}>
+          <Text style={styles.trainingResultTitle}>Kết quả train</Text>
+          <Text style={styles.rowSubtitle}>{result.modelVersion}</Text>
+        </View>
+        <View style={[styles.trainingStatusBadge, result.saved ? styles.trainingStatusSaved : styles.trainingStatusNotSaved]}>
+          <Text style={[styles.trainingStatusText, !result.saved && styles.trainingStatusTextWarning]}>
+            {result.saved ? "Đã lưu model" : "Chưa lưu model"} · {result.status}
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.trainingExecutiveGrid}>
+        <View style={styles.trainingExecutiveCard}>
+          <Text style={styles.trainingExecutiveLabel}>WAPE dự báo 7 ngày · Validation</Text>
+          <Text style={styles.trainingExecutiveValue}>
+            {selectedValidation ? `${formatTrainingNumber(selectedValidation.sevenDayTotalWAPE)}%` : "—"}
+          </Text>
+          <Text style={styles.trainingResultNote}>{selectedModelName ?? "Chưa có model"} · càng thấp càng tốt</Text>
+        </View>
+        <View style={styles.trainingExecutiveCard}>
+          <Text style={styles.trainingExecutiveLabel}>WAPE dự báo 7 ngày · Test</Text>
+          <Text style={styles.trainingExecutiveValue}>
+            {selectedTest ? `${formatTrainingNumber(selectedTest.sevenDayTotalWAPE)}%` : "—"}
+          </Text>
+          <Text style={styles.trainingResultNote}>{getWapeImprovement(selectedTest?.sevenDayTotalWAPE, baselineTest?.sevenDayTotalWAPE)}</Text>
+        </View>
+        <View style={styles.trainingExecutiveCard}>
+          <Text style={styles.trainingExecutiveLabel}>User sử dụng được</Text>
+          <Text style={styles.trainingExecutiveValue}>
+            {formatTrainingNumber(result.dataset.usableUserCount)} / {formatTrainingNumber(result.dataset.inputUserCount)}
+          </Text>
+          <Text style={styles.trainingResultNote}>
+            {formatTrainingNumber(result.dataset.skippedIncomeWindowCount)} income windows bị bỏ qua
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.trainingContextCard}>
+        <Text style={styles.trainingSplitTitle}>Dữ liệu đến {result.dataset.asOf} · {result.dataset.currency}</Text>
+        <Text style={styles.trainingResultNote}>
+          Sai số đo tỷ lệ giữa dự báo và thực tế. So sánh model với baseline {baselineName}; test là dữ liệu theo thời gian chưa dùng để chọn model.
+        </Text>
+        <Text style={styles.trainingLimitationText}>Giới hạn dữ liệu: {result.dataset.limitation}</Text>
+      </View>
+
+      <View style={[styles.trainingSaveCheck, result.evaluation.saveCheck.passed ? styles.trainingStatusSaved : styles.trainingStatusNotSaved]}>
+        <Text style={[styles.trainingSaveCheckTitle, !result.evaluation.saveCheck.passed && styles.trainingSaveCheckTitleWarning]}>
+          {result.evaluation.saveCheck.passed ? "Model vượt điều kiện lưu" : "Model chưa vượt điều kiện lưu"}
+        </Text>
+        <Text style={styles.trainingResultNote}>
+          Đánh giá bằng {result.evaluation.saveCheck.metric} so với baseline {baselineName}.
+        </Text>
+      </View>
+
+      <Pressable onPress={() => setIsDetailsVisible((visible) => !visible)} style={styles.trainingDetailsToggle}>
+        <Text style={styles.trainingDetailsToggleText}>{isDetailsVisible ? "Ẩn chi tiết đánh giá" : "Xem chi tiết đánh giá"}</Text>
+        <Text style={styles.trainingDetailsToggleIcon}>{isDetailsVisible ? "−" : "+"}</Text>
+      </Pressable>
+
+      {isDetailsVisible ? (
+        <View style={styles.trainingDetailsBody}>
+          <Text style={styles.sectionLabel}>Dataset</Text>
+          <View style={styles.trainingResultGrid}>
+            <TrainingResultStat label="User đầu vào" value={formatTrainingNumber(result.dataset.inputUserCount)} />
+            <TrainingResultStat label="User sử dụng được" value={formatTrainingNumber(result.dataset.usableUserCount)} />
+            <TrainingResultStat label="User bị bỏ qua" value={formatTrainingNumber(result.dataset.skippedUserCount)} />
+            <TrainingResultStat label="Income windows bị bỏ qua" value={formatTrainingNumber(result.dataset.skippedIncomeWindowCount)} />
+            <TrainingResultStat label="Forecast windows" value={formatTrainingNumber(result.dataset.forecastWindowCount)} />
+            <TrainingResultStat label="Tổng rows" value={formatTrainingNumber(result.dataset.rowCount)} />
+            <TrainingResultStat label="Stride" value={`${result.dataset.originStrideDays} ngày`} />
+            <TrainingResultStat label="Chế độ dữ liệu" value={result.dataset.historicalMode} />
+          </View>
+
+          <Text style={styles.sectionLabel}>Chia tập dữ liệu</Text>
+          <View style={styles.trainingSplitGrid}>
+            {splits.map(([label, split]) => (
+              <View key={label} style={styles.trainingSplitCard}>
+                <Text style={styles.trainingSplitTitle}>{label}</Text>
+                <Text style={styles.trainingSplitValue}>{formatTrainingNumber(split.rowCount)} rows · {split.userCount} users</Text>
+                <Text style={styles.trainingResultNote}>{split.firstOrigin} → {split.lastOrigin}</Text>
+              </View>
+            ))}
+          </View>
+          <Text style={styles.trainingResultNote}>
+            {result.split.method} · purge {result.split.purgeHorizonDays} ngày · bỏ {result.split.discardedRows} rows
+          </Text>
+
+          <Text style={styles.sectionLabel}>Chỉ số từng model</Text>
+          <Text style={styles.trainingResultNote}>
+            Validation: {formatTrainingNumber(result.evaluation.validation.sampleCount)} samples · Test: {formatTrainingNumber(result.evaluation.test.sampleCount)} samples
+          </Text>
+          {modelNames.map((modelName) => (
+            <ForecastModelMetrics
+              key={modelName}
+              modelName={modelName}
+              validation={validationModels[modelName]}
+              test={testModels[modelName]}
+              currency={result.dataset.currency}
+            />
+          ))}
+          <Text style={styles.trainingResultNote}>Kết quả kiểm tra lưu: {result.evaluation.saveCheck.reason}</Text>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+function TrainingResultStat({ label, value }: { label: string; value: string }) {
+  const styles = useAdminStyles();
+
+  return (
+    <View style={styles.trainingResultStat}>
+      <Text style={styles.trainingResultNote}>{label}</Text>
+      <Text style={styles.trainingResultStatValue}>{value}</Text>
+    </View>
+  );
+}
+
+function ForecastModelMetrics({
+  modelName,
+  validation,
+  test,
+  currency,
+}: {
+  modelName: string;
+  validation?: ForecastTrainingMetrics;
+  test?: ForecastTrainingMetrics;
+  currency: string;
+}) {
+  const styles = useAdminStyles();
+
+  function formatMetrics(label: string, metrics?: ForecastTrainingMetrics) {
+    if (!metrics) {
+      return `${label}: không có dữ liệu`;
+    }
+
+    return `${label} — MAE ${formatTrainingNumber(metrics.dailyMAE, currency)} · RMSE ${formatTrainingNumber(metrics.dailyRMSE, currency)} · WAPE ${formatTrainingNumber(metrics.dailyWAPE)}% · 7 ngày ${formatTrainingNumber(metrics.sevenDayTotalWAPE)}%`;
+  }
+
+  return (
+    <View style={styles.trainingModelCard}>
+      <Text style={styles.trainingModelName}>{modelName}</Text>
+      <Text style={styles.trainingMetricText}>{formatMetrics("Validation", validation)}</Text>
+      <Text style={styles.trainingMetricText}>{formatMetrics("Test", test)}</Text>
+    </View>
   );
 }
 
@@ -1894,10 +2377,10 @@ function CategoryFormModal({
   );
 }
 
-function createStyles(theme: AppTheme) {
+function createStyles(theme: AppTheme, isDesktop: boolean) {
   return StyleSheet.create({
     screen: { backgroundColor: theme.screen, flex: 1 },
-    content: { padding: 18, paddingBottom: 96 },
+    content: { alignSelf: "center", width: "100%", maxWidth: isDesktop ? 1320 : undefined, padding: isDesktop ? 32 : 18, paddingBottom: isDesktop ? 48 : 96 },
     welcomeRow: {
       alignItems: "center",
       flexDirection: "row",
@@ -1906,7 +2389,7 @@ function createStyles(theme: AppTheme) {
       marginTop: 8,
     },
     eyebrow: { color: theme.textMuted, fontSize: 11, fontWeight: "900" },
-    title: { color: theme.text, fontSize: 24, fontWeight: "900", marginTop: 4, maxWidth: 260 },
+    title: { color: theme.text, fontSize: isDesktop ? 32 : 24, fontWeight: "900", marginTop: 4, maxWidth: isDesktop ? 680 : 260 },
     adminAvatar: {
       alignItems: "center",
       backgroundColor: theme.card,
@@ -1932,17 +2415,17 @@ function createStyles(theme: AppTheme) {
     tileGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
     tile: {
       borderRadius: 8,
-      flexBasis: "30%",
+      flexBasis: isDesktop ? "22%" : "30%",
       flexGrow: 1,
-      minHeight: 128,
-      minWidth: 120,
-      padding: 14,
+      minHeight: isDesktop ? 164 : 128,
+      minWidth: isDesktop ? 220 : 120,
+      padding: isDesktop ? 22 : 14,
       shadowColor: "#000",
       shadowOpacity: 0.14,
       shadowRadius: 12,
     },
     tileLabel: { color: theme.textInverse, fontSize: 14, fontWeight: "900" },
-    tileMetric: { color: theme.textInverse, fontSize: 34, fontWeight: "900", marginTop: 20 },
+    tileMetric: { color: theme.textInverse, fontSize: isDesktop ? 42 : 34, fontWeight: "900", marginTop: isDesktop ? 32 : 20 },
     tileNote: { color: theme.textInverse, fontSize: 11, fontWeight: "700", opacity: 0.88 },
     sectionLabel: { color: theme.textMuted, fontSize: 12, fontWeight: "900", marginBottom: 10, marginTop: 22 },
     statsCard: {
@@ -1952,6 +2435,16 @@ function createStyles(theme: AppTheme) {
       borderWidth: 1,
       overflow: "hidden",
     },
+    loadWarningCard: {
+      backgroundColor: theme.warningBackground,
+      borderColor: theme.border,
+      borderRadius: 8,
+      borderWidth: 1,
+      gap: 6,
+      marginBottom: 18,
+      padding: 14,
+    },
+    loadWarningText: { color: theme.dangerText, fontSize: 13, fontWeight: "700", lineHeight: 19 },
     statRow: {
       alignItems: "center",
       borderBottomColor: theme.border,
@@ -1967,15 +2460,18 @@ function createStyles(theme: AppTheme) {
       alignItems: "center",
       flexDirection: "row",
       justifyContent: "space-between",
+      alignSelf: "center",
+      width: "100%",
+      maxWidth: isDesktop ? 1320 : undefined,
       paddingBottom: 14,
-      paddingHorizontal: 18,
-      paddingTop: 12,
+      paddingHorizontal: isDesktop ? 32 : 18,
+      paddingTop: isDesktop ? 28 : 12,
     },
     backText: { color: theme.primary, fontSize: 17, fontWeight: "800" },
     headerTitle: { color: theme.text, fontSize: 20, fontWeight: "900" },
     headerSpacer: { width: 74 },
     headerCount: { color: theme.textMuted, fontSize: 14, fontWeight: "900", minWidth: 74, textAlign: "right" },
-    listContent: { gap: 10, padding: 18, paddingBottom: 96 },
+    listContent: { alignSelf: "center", width: "100%", maxWidth: isDesktop ? 1320 : undefined, gap: isDesktop ? 12 : 10, padding: isDesktop ? 32 : 18, paddingBottom: isDesktop ? 48 : 96 },
     userFilterCard: {
       backgroundColor: theme.card,
       borderColor: theme.border,
@@ -1984,6 +2480,127 @@ function createStyles(theme: AppTheme) {
       gap: 10,
       padding: 12,
     },
+    trainingControls: {
+      backgroundColor: theme.card,
+      borderColor: theme.border,
+      borderRadius: 8,
+      borderWidth: 1,
+      gap: 14,
+      padding: 16,
+    },
+    trainingActions: { alignItems: "flex-start", gap: 10 },
+    trainingFilters: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+    trainingFilterActions: { alignItems: "flex-start" },
+    trainingFilterButton: {
+      alignItems: "center",
+      backgroundColor: theme.cardAlt,
+      borderColor: theme.border,
+      borderRadius: 8,
+      borderWidth: 1,
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 8,
+      minHeight: 42,
+      paddingHorizontal: 14,
+      paddingVertical: 9,
+    },
+    trainingFilterButtonText: { color: theme.text, fontSize: 14, fontWeight: "800" },
+    trainingFilterSummary: { color: theme.textMuted, fontSize: 13, fontWeight: "700" },
+    trainingFilterSection: { gap: 12, padding: 18 },
+    trainingUserRow: {
+      alignItems: "center",
+      backgroundColor: theme.card,
+      borderColor: theme.border,
+      borderRadius: 8,
+      borderWidth: 1,
+      flexDirection: "row",
+      gap: 12,
+      minHeight: 72,
+      padding: 14,
+    },
+    trainingCheckbox: {
+      alignItems: "center",
+      borderColor: theme.border,
+      borderRadius: 5,
+      borderWidth: 1,
+      height: 22,
+      justifyContent: "center",
+      width: 22,
+    },
+    trainingCheckboxSelected: { backgroundColor: theme.primary, borderColor: theme.primary },
+    trainingCheckboxMark: { color: theme.textInverse, fontSize: 15, fontWeight: "900" },
+    trainingResultPanel: {
+      backgroundColor: theme.card,
+      borderColor: theme.border,
+      borderRadius: 10,
+      borderWidth: 1,
+      gap: 10,
+      padding: isDesktop ? 22 : 16,
+    },
+    trainingResultHeader: { alignItems: "center", flexDirection: "row", flexWrap: "wrap", gap: 12, justifyContent: "space-between" },
+    trainingResultTitle: { color: theme.text, fontSize: 20, fontWeight: "900" },
+    trainingStatusBadge: { alignSelf: "flex-start", borderRadius: 14, paddingHorizontal: 10, paddingVertical: 7 },
+    trainingStatusSaved: { backgroundColor: theme.goodBackground },
+    trainingStatusNotSaved: { backgroundColor: theme.warningBackground },
+    trainingStatusText: { color: theme.goodText, fontSize: 12, fontWeight: "900" },
+    trainingStatusTextWarning: { color: theme.warning, fontSize: 12, fontWeight: "900" },
+    trainingExecutiveGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+    trainingExecutiveCard: {
+      backgroundColor: theme.cardAlt,
+      borderRadius: 9,
+      flexBasis: isDesktop ? "30%" : "100%",
+      flexGrow: 1,
+      gap: 6,
+      minWidth: 180,
+      padding: 14,
+    },
+    trainingExecutiveLabel: { color: theme.textMuted, fontSize: 12, fontWeight: "800" },
+    trainingExecutiveValue: { color: theme.text, fontSize: 25, fontWeight: "900" },
+    trainingContextCard: { backgroundColor: theme.cardAlt, borderRadius: 8, gap: 6, padding: 13 },
+    trainingLimitationText: { color: theme.warning, fontSize: 12, fontWeight: "700", lineHeight: 18 },
+    trainingDetailsToggle: {
+      alignItems: "center",
+      borderColor: theme.border,
+      borderRadius: 8,
+      borderWidth: 1,
+      flexDirection: "row",
+      justifyContent: "space-between",
+      minHeight: 44,
+      paddingHorizontal: 12,
+    },
+    trainingDetailsToggleText: { color: theme.primary, fontSize: 13, fontWeight: "900" },
+    trainingDetailsToggleIcon: { color: theme.primary, fontSize: 22, fontWeight: "800" },
+    trainingDetailsBody: { gap: 8 },
+    trainingResultGrid: { flexDirection: "row", flexWrap: "wrap", gap: 9 },
+    trainingResultStat: {
+      backgroundColor: theme.cardAlt,
+      borderRadius: 8,
+      flexBasis: isDesktop ? "22%" : "46%",
+      flexGrow: 1,
+      gap: 4,
+      minWidth: 125,
+      padding: 11,
+    },
+    trainingResultStatValue: { color: theme.text, fontSize: 15, fontWeight: "900" },
+    trainingResultNote: { color: theme.textMuted, fontSize: 12, fontWeight: "700", lineHeight: 18 },
+    trainingSplitGrid: { flexDirection: "row", flexWrap: "wrap", gap: 9 },
+    trainingSplitCard: {
+      backgroundColor: theme.cardAlt,
+      borderRadius: 8,
+      flexBasis: isDesktop ? "30%" : "100%",
+      flexGrow: 1,
+      gap: 5,
+      minWidth: 180,
+      padding: 12,
+    },
+    trainingSplitTitle: { color: theme.text, fontSize: 14, fontWeight: "900" },
+    trainingSplitValue: { color: theme.text, fontSize: 13, fontWeight: "800" },
+    trainingModelCard: { backgroundColor: theme.cardAlt, borderRadius: 8, gap: 7, padding: 12 },
+    trainingModelName: { color: theme.text, fontSize: 14, fontWeight: "900" },
+    trainingMetricText: { color: theme.textMuted, fontSize: 12, fontWeight: "700", lineHeight: 19 },
+    trainingSaveCheck: { borderRadius: 8, gap: 5, padding: 12 },
+    trainingSaveCheckTitle: { color: theme.goodText, fontSize: 14, fontWeight: "900" },
+    trainingSaveCheckTitleWarning: { color: theme.warning, fontSize: 14, fontWeight: "900" },
     filterRow: { gap: 8 },
     filterChip: {
       backgroundColor: theme.cardAlt,
@@ -2028,8 +2645,8 @@ function createStyles(theme: AppTheme) {
     roleBadgeAdmin: { backgroundColor: theme.primaryPressed },
     roleBadgeText: { color: theme.textMuted, fontSize: 11, fontWeight: "900" },
     roleBadgeTextAdmin: { color: theme.primary },
-    categoryContent: { gap: 10, padding: 18, paddingBottom: 96 },
-    documentContent: { gap: 10, padding: 18, paddingBottom: 96 },
+    categoryContent: { alignSelf: "center", width: "100%", maxWidth: isDesktop ? 1320 : undefined, gap: 10, padding: isDesktop ? 32 : 18, paddingBottom: isDesktop ? 48 : 96 },
+    documentContent: { alignSelf: "center", width: "100%", maxWidth: isDesktop ? 1320 : undefined, gap: 10, padding: isDesktop ? 32 : 18, paddingBottom: isDesktop ? 48 : 96 },
     categoryRow: {
       alignItems: "center",
       backgroundColor: theme.card,
