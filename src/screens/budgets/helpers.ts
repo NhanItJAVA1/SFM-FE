@@ -11,7 +11,7 @@ export function formatMoney(value: number) {
 }
 
 export function formatDateInput(date: Date) {
-  return date.toISOString().slice(0, 10);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
 export function getDefaultBudgetFormState(): BudgetFormState {
@@ -98,6 +98,28 @@ export function buildBudgetPayload(form: BudgetFormState): BudgetPayload {
     isRecurring: form.isRecurring,
     name: form.name.trim(),
     startDate: toIsoDate(form.startDate),
+  };
+}
+
+export function getBudgetEditForm(budget: BudgetWithProgress): BudgetFormState {
+  const source = budget.progressDetail ?? budget.progress ?? budget;
+  return {
+    name: source.name,
+    categoryId: source.categoryId,
+    amount: String(source.amount),
+    startDate: source.startDate.slice(0, 10),
+    endDate: source.endDate.slice(0, 10),
+    alertThreshold: String(source.alertThreshold),
+    isRecurring: source.isRecurring,
+  };
+}
+
+export function buildBudgetUpdatePayload(form: BudgetFormState, budget: BudgetWithProgress): BudgetPayload {
+  const source = budget.progressDetail ?? budget.progress ?? budget;
+  return {
+    ...buildBudgetPayload(form),
+    startDate: form.startDate === source.startDate.slice(0, 10) ? source.startDate : `${form.startDate}T00:00:00Z`,
+    endDate: form.endDate === source.endDate.slice(0, 10) ? source.endDate : `${form.endDate}T23:59:59Z`,
   };
 }
 

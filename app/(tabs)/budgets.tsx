@@ -16,6 +16,8 @@ import { useBudgetStyles } from "@/screens/budgets/budgets.styles";
 import { CreateBudgetModal } from "@/screens/budgets/create-budget-modal";
 import {
   buildBudgetPayload,
+  buildBudgetUpdatePayload,
+  getBudgetEditForm,
   getBudgetSummary,
   getDefaultBudgetFormState,
   sortBudgetsForCategoryTab,
@@ -37,6 +39,9 @@ export default function BudgetsScreen() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isCreateVisible, setIsCreateVisible] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [editingBudget, setEditingBudget] = useState<BudgetWithProgress | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const submitInFlight = useRef(false);
   const [activeTab, setActiveTab] = useState<BudgetsTab>("month");
   const [selectedBudgetId, setSelectedBudgetId] = useState<number | null>(null);
   const [isLoadingSelectedBudgetDetail, setIsLoadingSelectedBudgetDetail] = useState(false);
@@ -182,12 +187,24 @@ export default function BudgetsScreen() {
   }, [activeTab, tabWidth, tabTranslateX]);
 
   function openCreateBudget() {
+    setEditingBudget(null);
+    setSaveError(null);
     setForm(getDefaultBudgetFormState());
     setIsCreateVisible(true);
   }
 
-  async function handleCreateBudget() {
-    const payload = buildBudgetPayload(form);
+  function openEditBudget() {
+    if (!selectedBudget) return;
+    setEditingBudget(selectedBudget);
+    setSaveError(null);
+    setForm(getBudgetEditForm(selectedBudget));
+    setIsCreateVisible(true);
+  }
+
+  async function handleSaveBudget() {
+    if (submitInFlight.current) return;
+    setSaveError(null);
+    const payload = editingBudget ? buildBudgetUpdatePayload(form, editingBudget) : buildBudgetPayload(form);
 
     if (!payload.name) {
       Alert.alert("Thiếu tên ngân sách", "Vui lòng nhập tên ngân sách.");
@@ -204,14 +221,25 @@ export default function BudgetsScreen() {
       return;
     }
 
+    if (!Number.isFinite(Date.parse(payload.startDate)) || !Number.isFinite(Date.parse(payload.endDate)) || Date.parse(payload.startDate) > Date.parse(payload.endDate)) {
+      setSaveError("Ngày kết thúc phải bằng hoặc sau ngày bắt đầu.");
+      return;
+    }
+
     try {
+      submitInFlight.current = true;
       setIsSubmitting(true);
-      await budgetsApi.create(payload);
+      if (editingBudget) {
+        await budgetsApi.update(editingBudget.id, payload);
+      } else {
+        await budgetsApi.create(payload);
+      }
       setIsCreateVisible(false);
       await loadBudgets();
     } catch (error) {
-      Alert.alert("Tạo ngân sách thất bại", error instanceof Error ? error.message : "Vui lòng thử lại.");
+      setSaveError(`${editingBudget ? "Cập nhật" : "Tạo"} ngân sách thất bại. ${error instanceof Error ? error.message : "Vui lòng thử lại."}`);
     } finally {
+      submitInFlight.current = false;
       setIsSubmitting(false);
     }
   }
@@ -312,6 +340,8 @@ export default function BudgetsScreen() {
                 >
                   <BudgetSummaryCard
                     key={`summary-${selectedBudget.id}`}
+                    categoryId={selectedBudget.categoryId}
+                    reloadKey={detailReloadKey}
                     categoryName={
                       selectedBudget.progress?.categoryName ?? selectedBudgetCategory?.name ?? "Tất cả danh mục"
                     }
@@ -319,7 +349,7 @@ export default function BudgetsScreen() {
                     summary={selectedBudgetSummary}
                     startDate={selectedBudget.startDate}
                     endDate={selectedBudget.endDate}
-                    dailySpendings={selectedBudget.progressDetail?.dailySpendings}
+                    onIncreaseBudget={openEditBudget}
                   />
                   {isLoadingSelectedBudgetDetail ? (
                     <View style={styles.detailLoadingState}>
@@ -373,13 +403,16 @@ export default function BudgetsScreen() {
       )}
 
       <CreateBudgetModal
+        key={`${editingBudget?.id ?? "create"}-${isCreateVisible}`}
         categories={expenseCategories}
         form={form}
         isSubmitting={isSubmitting}
         onChangeForm={setForm}
-        onClose={() => setIsCreateVisible(false)}
-        onSubmit={handleCreateBudget}
+        onClose={() => { if (!submitInFlight.current) setIsCreateVisible(false); }}
+        onSubmit={handleSaveBudget}
         visible={isCreateVisible}
+        mode={editingBudget ? "edit" : "create"}
+        error={saveError}
       />
     </FocusedScreenTransition>
   );
