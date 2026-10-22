@@ -3,7 +3,6 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 
 import { transactionsApi } from '@/api/transactionsApi';
 import { useAppTheme } from '@/hooks/use-app-theme';
-import { useThemeMode } from '@/hooks/use-theme-mode';
 import { calendarDate } from './budget-chart-data';
 import { formatMoney } from './helpers';
 
@@ -13,7 +12,6 @@ export function BudgetMonthlyChart({ categoryId, endDate, limit, hidden, reloadK
   categoryId: number | null; endDate: string; limit: number; hidden: boolean; reloadKey: number;
 }) {
   const theme = useAppTheme();
-  const mode = useThemeMode();
   const now = new Date();
   const periodEnd = calendarDate(endDate);
   const anchor = periodEnd < now ? periodEnd : now;
@@ -63,14 +61,14 @@ export function BudgetMonthlyChart({ categoryId, endDate, limit, hidden, reloadK
     <View style={s.chart}>
       <Text style={[s.value, { color: theme.textMuted }]}>Tháng {selected.month}/{selected.year}: {money(selected.amount)}</Text>
       <View style={s.plot}>
-        {limit > 0 ? <View pointerEvents="none" testID="budget-monthly-limit" style={[s.limitLine, { bottom: 24 + limit / maximum * 100 }]} /> : null}
+        {limit > 0 ? <View pointerEvents="none" testID="budget-monthly-limit" style={[s.limitLine, { bottom: 24 + limit / maximum * 100, borderColor: theme.budget.limitLine }]} /> : null}
         {result.months.map(item => {
           const key = `${item.year}-${item.month}`;
           const active = item === selected;
           return (
             <Pressable key={key} accessibilityRole="button" accessibilityLabel={`Tháng ${item.month}/${item.year}, ${money(item.amount)}`} accessibilityState={{ selected: active }} onPress={() => setSelectedMonth(key)} style={s.column}>
-              <View style={s.track}><View testID={`budget-month-${key}`} style={[s.bar, { height: item.amount > 0 ? Math.max(3, item.amount / maximum * 100) : 0, backgroundColor: active ? '#258BFA' : mode === 'dark' ? '#46627F' : '#CBE4FF' }]} /></View>
-              <Text style={[s.month, { color: active ? theme.link : theme.textMuted }]}>{crossesYear ? `${item.month}/${String(item.year).slice(-2)}` : item.month}</Text>
+              <View style={s.track}><View testID={`budget-month-${key}`} style={[s.bar, { height: item.amount > 0 ? Math.max(3, item.amount / maximum * 100) : 0, backgroundColor: active ? theme.budget.barActive : theme.budget.bar }]} /></View>
+              <Text style={[s.month, { color: active ? theme.budget.barLabel : theme.textMuted }]}>{crossesYear ? `${item.month}/${String(item.year).slice(-2)}` : item.month}</Text>
             </Pressable>
           );
         })}
@@ -85,6 +83,6 @@ const s = StyleSheet.create({
   plot: { height: 124, flexDirection: 'row', gap: 8 }, column: { flex: 1, height: 124 },
   track: { height: 100, justifyContent: 'flex-end' }, bar: { width: '100%', borderTopLeftRadius: 3, borderTopRightRadius: 3 },
   month: { height: 24, textAlign: 'center', paddingTop: 6, fontSize: 11 },
-  limitLine: { position: 'absolute', left: 0, right: 0, borderTopWidth: 1, borderStyle: 'dashed', borderColor: '#0AA4AA' },
+  limitLine: { position: 'absolute', left: 0, right: 0, borderTopWidth: 1, borderStyle: 'dashed' },
   legend: { textAlign: 'center', fontSize: 11 }, state: { minHeight: 160, alignItems: 'center', justifyContent: 'center', gap: 8 }, retry: { padding: 10 },
 });

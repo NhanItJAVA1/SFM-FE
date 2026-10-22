@@ -21,7 +21,7 @@ export function BudgetSummaryCard({ categoryName, categoryId, name, summary, sta
   const data = useMemo(() => budgetPeriodData(startDate, endDate), [startDate, endDate]);
   const exceeded = summary.remainingAmount < 0;
   const status = exceeded ? 'Vượt ngân sách' : data.hasEnded ? 'Đã kết thúc' : !data.hasStarted ? 'Chưa bắt đầu' : summary.isAlert ? 'Gần hạn mức' : 'Ổn định';
-  const statusColor = exceeded ? theme.dangerText : summary.isAlert ? theme.warning : theme.primary;
+  const statusColor = exceeded ? theme.budget.critical : summary.isAlert ? theme.budget.warning : theme.budget.positive;
   const periodStart = calendarDate(startDate);
   const periodEnd = calendarDate(endDate);
   const sameMonth = periodStart.getFullYear() === periodEnd.getFullYear() && periodStart.getMonth() === periodEnd.getMonth();
@@ -38,7 +38,7 @@ export function BudgetSummaryCard({ categoryName, categoryId, name, summary, sta
           {hidden ? <EyeOff color={theme.textMuted} size={19} /> : <Eye color={theme.textMuted} size={19} />}
         </Pressable>
       </View>
-      <View style={s.limitBadge}><Text style={s.limitText}>Ngân sách: {money(summary.totalAmount)}</Text></View>
+      <View style={[s.limitBadge, { backgroundColor: theme.budget.badgeBackground }]}><Text style={[s.limitText, { color: theme.budget.badgeText }]}>Ngân sách: {money(summary.totalAmount)}</Text></View>
 
       <BudgetMonthlyChart categoryId={categoryId} endDate={endDate} limit={summary.totalAmount} hidden={hidden} reloadKey={reloadKey} />
 
@@ -59,8 +59,8 @@ export function BudgetSummaryCard({ categoryName, categoryId, name, summary, sta
           <Text style={[s.note, { color: theme.textMuted }]}>{exceeded ? 'Chi tiêu đã vượt hạn mức của kỳ này.' : data.hasEnded ? 'Kỳ ngân sách đã kết thúc.' : !data.hasStarted ? 'Ngân sách chưa đến ngày áp dụng.' : `Có thể chi ${money(summary.remainingAmount / Math.max(1, data.remainingDays))}/ngày trong ${data.remainingDays} ngày còn lại.`}</Text>
         </View>
         {exceeded ? (
-          <Pressable accessibilityRole="button" accessibilityLabel="Nâng ngân sách" accessibilityHint="Mở chỉnh sửa ngân sách" onHoverIn={() => setShowIncreaseHint(true)} onHoverOut={() => setShowIncreaseHint(false)} onPress={onIncreaseBudget} style={[s.increaseButton, { backgroundColor: theme.primaryPressed }]}>
-            <TrendingUp size={22} color={theme.primary} />
+          <Pressable accessibilityRole="button" accessibilityLabel="Nâng ngân sách" accessibilityHint="Mở chỉnh sửa ngân sách" onHoverIn={() => setShowIncreaseHint(true)} onHoverOut={() => setShowIncreaseHint(false)} onPress={onIncreaseBudget} style={[s.increaseButton, { backgroundColor: theme.budget.actionBackground }]}>
+            <TrendingUp size={22} color={theme.budget.actionText} />
             {showIncreaseHint ? <View pointerEvents="none" style={[s.increaseHint, { backgroundColor: theme.sheet, borderColor: theme.border }]}><Text style={{ color: theme.text, fontSize: 12 }}>Nâng ngân sách</Text></View> : null}
           </Pressable>
         ) : null}
@@ -75,7 +75,7 @@ const s = StyleSheet.create({
   increaseHint: { position: 'absolute', right: 0, bottom: 50, width: 116, padding: 8, borderWidth: 1, borderRadius: 4 },
   name: { fontSize: 18, fontWeight: '700' }, muted: { fontSize: 12, lineHeight: 18 },
   amountRow: { flexDirection: 'row', alignItems: 'center', gap: 10 }, total: { fontSize: 28, fontWeight: '800', flexShrink: 1 },
-  limitBadge: { alignSelf: 'flex-start', backgroundColor: '#0AA4AA', paddingHorizontal: 6, paddingVertical: 3, borderRadius: 3 }, limitText: { color: '#FFFFFF', fontSize: 11, fontWeight: '600' },
+  limitBadge: { alignSelf: 'flex-start', paddingHorizontal: 6, paddingVertical: 3, borderRadius: 3 }, limitText: { fontSize: 11, fontWeight: '600' },
   statusRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginTop: 14 }, label: { fontSize: 15, fontWeight: '600' }, status: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 4 }, statusText: { fontSize: 11, fontWeight: '600' },
   remaining: { borderWidth: 1, borderRadius: 8, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 12 }, ring: { height: 48, width: 48, justifyContent: 'center', alignItems: 'center' }, remainingCopy: { flex: 1, gap: 4 }, remainingAmount: { fontSize: 15, fontWeight: '700' }, note: { fontSize: 12, lineHeight: 18 },
 });
