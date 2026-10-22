@@ -1,6 +1,6 @@
 import { BottomPopup, BottomPopupSheet } from "@/components/bottom-popup";
 import * as DocumentPicker from "expo-document-picker";
-import { router, useFocusEffect } from "expo-router";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import {
   ArrowUpRight,
   BookOpen,
@@ -47,6 +47,7 @@ import { adminStyleSheet, useAdminFonts, useAdminTheme, type AdminTheme } from "
 import { AdminShell, type AdminView } from "@/components/admin/admin-shell";
 import { ForecastTrainingWorkspace } from "@/components/admin/forecast-training-workspace";
 import { ForecastTrainingResult } from "@/components/admin/forecast-training-result";
+import { SystemMonitoringWorkspace } from "@/components/admin/system-monitoring-workspace";
 import { getAuthRefreshToken, getAuthUser } from "@/stores/authSession";
 import { clearAuthSession } from "@/stores/persistedAuthSession";
 import { isAdminUser } from "@/utils/authRole";
@@ -234,8 +235,9 @@ export default function AdminScreen() {
   const styles = useAdminStyles();
   const [fontsLoaded, fontError] = useAdminFonts();
   const currentUser = getAuthUser();
-  const [view, setView] = useState<AdminView>("dashboard");
-  const [hasOpenedTraining, setHasOpenedTraining] = useState(false);
+  const { view: routeView } = useLocalSearchParams<{ view?: string }>();
+  const view: AdminView = routeView === "users" || routeView === "categories" || routeView === "documents" || routeView === "training" || routeView === "monitoring" ? routeView : "dashboard";
+  const [hasOpenedTraining, setHasOpenedTraining] = useState(view === "training");
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [ragDocuments, setRagDocuments] = useState<RagDocument[]>([]);
@@ -779,7 +781,7 @@ export default function AdminScreen() {
       setUserStatusFilter("All");
       setUserPage(1);
     }
-    setView(nextView);
+    router.setParams({ view: nextView });
   }
 
   if (!fontsLoaded && !fontError) {
@@ -800,6 +802,7 @@ export default function AdminScreen() {
   }
 
   function renderContent() {
+    if (view === "monitoring") return <SystemMonitoringWorkspace />;
     if (selectedUser) {
       return (
         <FocusedScreenTransition style={styles.screen} triggerKey="admin-user-detail" variant="fade">

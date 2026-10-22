@@ -2,6 +2,27 @@ import { axiosClient } from './axiosClient';
 import type { Category, CategoryType } from './categoriesApi';
 
 export type AdminUserStatus = 'Active' | 'Inactive' | 'Suspended';
+
+export type MonitoringRange = '15m' | '1h' | '6h' | '24h';
+export type MonitoringPoint = { timestampUtc: string; value: number | null };
+export type MonitoringSeriesKey = 'requestsPerSecond' | 'p95LatencyMilliseconds' | 'http5xxErrorRatePercent';
+export type AdminMonitoringTimeseries = {
+  range: MonitoringRange;
+  stepSeconds: number;
+  series: Record<MonitoringSeriesKey, MonitoringPoint[]>;
+};
+
+export type AdminMonitoringOverview = {
+  observedAtUtc?: string | null;
+  observationWindow?: string | null;
+  requestsPerSecond?: number | null;
+  p95LatencyMilliseconds?: number | null;
+  http5xxErrorRatePercent?: number | null;
+  apiAvailabilityPercent?: number | null;
+  apiHealth?: string | null;
+  sqlServerHealth?: string | null;
+  redisHealth?: string | null;
+};
 export type AdminUserRole = 'User' | 'Admin';
 
 export type AdminCategoryPayload = {
@@ -67,6 +88,10 @@ function buildQuery(params: AdminUserQuery) {
 }
 
 export const adminApi = {
+  monitoringTimeseries: (range: MonitoringRange, signal?: AbortSignal) =>
+    axiosClient.get<AdminMonitoringTimeseries>(`/v1/admin/monitoring/timeseries?${new URLSearchParams({ range, step: '15s' })}`, { signal, timeout: 20000 }),
+  monitoringOverview: (signal?: AbortSignal) =>
+    axiosClient.get<AdminMonitoringOverview | null>('/v1/admin/monitoring/overview', { signal, timeout: 20000 }),
   listUsers: (params: AdminUserQuery = {}) =>
     axiosClient.get<AdminUserPagedResponse | AdminUser[]>(`/v1/admin/users${buildQuery(params)}`),
   getUser: (id: number) => axiosClient.get<AdminUser>(`/v1/admin/users/${id}`),

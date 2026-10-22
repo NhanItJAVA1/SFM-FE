@@ -5,6 +5,8 @@ import type { AuthUser } from "@/api/authApi";
 import { getAuthRefreshToken, setAuthAccessToken, setAuthRefreshToken, setAuthUser } from "@/stores/authSession";
 
 type RequestOptions = {
+  signal?: AbortSignal;
+  timeout?: number;
   method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   body?: unknown;
   headers?: Record<string, string>;
@@ -401,6 +403,8 @@ async function request<T = unknown>(path: string, options: RequestOptions = {}):
   const method = options.method ?? "GET";
 
   const response = await httpClient.request<T>({
+    signal: options.signal,
+    timeout: options.timeout,
     url: path,
     method,
     data: options.body,
@@ -474,7 +478,7 @@ async function uploadFormData<T = unknown>(path: string, formData: FormData): Pr
  */
 
 export const axiosClient = {
-  get: <T = unknown>(path: string) => request<T>(path),
+  get: <T = unknown>(path: string, options?: Pick<RequestOptions, "signal" | "timeout">) => request<T>(path, options),
 
   getBinary: (path: string) => requestBinary(path),
 
