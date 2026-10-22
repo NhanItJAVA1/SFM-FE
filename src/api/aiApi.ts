@@ -115,6 +115,9 @@ export type AIRecommendation = {
 export type AIAnalysisMetadata = {
   environment: string;
   periodDays: number;
+  healthModel?: string;
+  healthModelVersion?: string | null;
+  analysisConfigVersion?: string;
   forecastModel: string;
   forecastModelVersion: string | null;
   rankingModel: string;
@@ -137,6 +140,7 @@ export type AIChatResponse = {
 
 export type AIForecastTrainPayload = {
   asOf: string;
+  historyMonths?: number | null;
   userIds?: number[];
 };
 
@@ -155,9 +159,18 @@ export type ForecastTrainingSplitPart = {
 };
 
 export type ForecastTrainingResponse = {
+  runId?: string;
+  candidateModelVersion?: string;
+  activeModelVersion?: string | null;
+  archived?: boolean;
+  activated?: boolean;
+  catalogSynced?: boolean;
+  catalogWarning?: string | null;
+  selection?: { activate: boolean; reason: string; previousModelVersion?: string | null;
+    candidate?: ForecastTrainingMetrics; previous?: ForecastTrainingMetrics | null };
   status: string;
   saved: boolean;
-  modelVersion: string;
+  modelVersion: string | null;
   dataset: {
     inputUserCount: number;
     usableUserCount: number;
@@ -186,9 +199,87 @@ export type ForecastTrainingResponse = {
   };
 };
 
+export type ForecastVersion = {
+  runId: string;
+  modelVersion: string;
+  status: 'running' | 'succeeded' | 'failed' | 'imported';
+  source?: string;
+  isActive: boolean;
+  hasModel: boolean;
+  startedAt: string;
+  finishedAt?: string;
+  syncedAt?: string;
+  parameters?: Record<string, number>;
+  calibration?: number;
+  dataset?: ForecastTrainingResponse['dataset'] | null;
+  split?: ForecastTrainingResponse['split'] | null;
+  evaluation?: ForecastTrainingResponse['evaluation'] | null;
+  selection?: ForecastTrainingResponse['selection'];
+  trainLogMSE?: { initial: number; final: number; byIteration?: number[] };
+  error?: { type: string; message: string };
+};
+
+export type ForecastVersionPage = {
+  activeModelVersion: string | null;
+  total: number;
+  limit: number;
+  offset: number;
+  items: ForecastVersion[];
+};
+
+export type ForecastModelArtifact = {
+  formatVersion: number;
+  model: string;
+  nFeatures: number;
+  baseValue: number;
+  params: Record<string, number>;
+  trees: unknown[];
+  metadata: { modelVersion: string; featureNames: string[]; calibration?: number };
+};
+
+export type ForecastVersionAction = { status: string; activeModelVersion: string | null;
+  catalogSynced: boolean; catalogWarning?: string | null };
+
+export type AnalysisSettings = {
+  health: { savingsRisk: number; savingsWarning: number; budgetWarning: number; budgetRisk: number };
+  anomaly: { contamination: number; minExpenseCount: number };
+};
+export type AnalysisConfigVersion = {
+  version: string; createdAt: string | null; actor: string; reason: string;
+  restoredFrom: string | null; settings: AnalysisSettings;
+};
+export type AnalysisPreviewInput = {
+  settings: AnalysisSettings; income: number; expense: number; budgetLimit: number;
+  budgetSpent: number; unusualExpense: number;
+};
+export type AnalysisPreview = {
+  preview: true; currency: 'VND'; sampleExpenseCount: number;
+  health: { label: number; status: string; savingsRate: number; budgetUsage: number;
+    breakdown: { cashflowStatus: string; budgetStatus: string; reasons: string[] } };
+  anomaly: { summary: { status: string; availableExpenseCount: number; minRequiredExpenseCount: number;
+    anomalyCount: number; contamination: number }; transactions: { transactionId: number; date: string;
+      category: string; amount: number; anomalyScore: number; reasonCodes: string[] }[] };
+};
+
 export const aiApi = {
+  analysisConfigHistory: () => axiosClient.get<{ activeVersion: string; items: AnalysisConfigVersion[] }>('/v1/admin/analysis-config/history'),
+  saveAnalysisConfig: (payload: { baseVersion: string; settings: AnalysisSettings; reason: string }) =>
+    axiosClient.post<AnalysisConfigVersion>('/v1/admin/analysis-config', payload),
+  restoreAnalysisConfig: (version: string, payload: { baseVersion: string; reason: string }) =>
+    axiosClient.post<AnalysisConfigVersion>(`/v1/admin/analysis-config/${encodeURIComponent(version)}/restore`, payload),
+  previewAnalysisConfig: (payload: AnalysisPreviewInput) => axiosClient.post<AnalysisPreview>('/v1/admin/analysis-config/preview', payload),
   analysis: () => axiosClient.post<AIAnalysis>('/v1/FinancialAdvisor/analyze'),
   chat: (payload: AIChatPayload) => axiosClient.post<AIChatResponse>('/v1/AI/chat', payload),
   trainForecast: (payload: AIForecastTrainPayload) =>
     axiosClient.post<ForecastTrainingResponse>('/v1/admin/forecast/train', payload),
+  forecastVersions: (limit = 10, offset = 0) =>
+    axiosClient.get<ForecastVersionPage>(`/v1/admin/forecast/versions?limit=${limit}&offset=${offset}`),
+  forecastVersion: (runId: string) =>
+    axiosClient.get<ForecastVersion>(`/v1/admin/forecast/versions/${encodeURIComponent(runId)}`),
+  forecastModel: (runId: string) =>
+    axiosClient.get<ForecastModelArtifact>(`/v1/admin/forecast/versions/${encodeURIComponent(runId)}/model`),
+  activateForecastVersion: (runId: string) =>
+    axiosClient.post<ForecastVersionAction>(`/v1/admin/forecast/versions/${encodeURIComponent(runId)}/activate`),
+  deleteForecastVersion: (runId: string) =>
+    axiosClient.delete<ForecastVersionAction>(`/v1/admin/forecast/versions/${encodeURIComponent(runId)}`),
 };

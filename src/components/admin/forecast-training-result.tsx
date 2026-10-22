@@ -31,7 +31,7 @@ export function ForecastTrainingResult({ result }: { result: ForecastTrainingRes
     <View style={styles.outcome}>
       <View style={[styles.outcomeIcon, !result.saved && styles.warningSurface]}>{result.saved ? <CircleCheck size={22} strokeWidth={1.6} color={theme.primary} /> : <Info size={22} color={theme.warning} />}</View>
       <View style={[styles.grow, styles.outcomeCopy]}><Text style={styles.outcomeTitle}>{result.status === 'succeeded' ? 'Huấn luyện hoàn tất' : 'Kết quả huấn luyện'}</Text><Text style={styles.description}>Dữ liệu đến {formatResultDate(result.dataset.asOf)} · {result.dataset.currency} · {number(result.dataset.usableUserCount, 0)} người dùng</Text></View>
-      <View style={[styles.savedBadge, !result.saved && styles.warningSurface]}>{result.saved ? <Check size={12} color={theme.primary} /> : null}<Text style={[styles.savedText, !result.saved && styles.warningText]}>{result.saved ? 'Đã lưu mô hình' : 'Chưa lưu mô hình'}</Text></View>
+      <View style={[styles.savedBadge, !result.saved && styles.warningSurface]}>{result.saved ? <Check size={12} color={theme.primary} /> : null}<Text style={[styles.savedText, !result.saved && styles.warningText]}>{result.saved ? 'Được chọn sử dụng' : result.archived ? 'Đã lưu · Chưa chọn sử dụng' : 'Chưa chọn sử dụng'}</Text></View>
     </View>
 
     <View style={styles.summaryGrid}>
@@ -78,7 +78,8 @@ export function ForecastTrainingResult({ result }: { result: ForecastTrainingRes
     <View style={styles.detailsPanel}>
       <Pressable accessibilityRole="button" accessibilityState={{ expanded: showDetails }} onPress={() => setShowDetails(value => !value)} style={styles.detailsToggle}><View style={styles.grow}><Text style={styles.panelTitle}>{showDetails ? 'Ẩn chi tiết đánh giá' : 'Xem chi tiết đánh giá'}</Text><Text style={styles.description}>Phiên bản, thông số dữ liệu và đầy đủ chỉ số của từng mô hình</Text></View>{showDetails ? <ChevronUp size={18} color={theme.textMuted} /> : <ChevronDown size={18} color={theme.textMuted} />}</Pressable>
       {showDetails ? <View style={styles.detailsBody}>
-        <Text selectable style={styles.version}>Phiên bản: {result.modelVersion}</Text>
+        <Text selectable style={styles.version}>Phiên bản ứng viên: {result.candidateModelVersion ?? result.runId ?? result.modelVersion ?? '—'}</Text>
+        {result.activeModelVersion !== undefined ? <Text selectable style={styles.caption}>Đang sử dụng: {result.activeModelVersion ?? 'Chưa có model được chọn'}</Text> : null}
         <Text style={styles.caption}>Trạng thái: {result.status} · Chế độ dữ liệu: {result.dataset.historicalMode} · Chia tập: {result.split.method}</Text>
         <Text style={styles.caption}>Bản ghi bị loại khi chia tập: {number(result.split.discardedRows, 0)} · Kết quả kiểm tra lưu: {result.evaluation.saveCheck.reason === 'passed' ? 'Đạt' : result.evaluation.saveCheck.reason}</Text>
         <Text style={styles.detailHeading}>Chỉ số từng mô hình</Text>
