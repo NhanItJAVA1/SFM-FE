@@ -61,7 +61,6 @@ export function BudgetMonthlyChart({ categoryId, endDate, limit, hidden, reloadK
     <View style={s.chart}>
       <Text style={[s.value, { color: theme.textMuted }]}>Tháng {selected.month}/{selected.year}: {money(selected.amount)}</Text>
       <View style={s.plot}>
-        {limit > 0 ? <View pointerEvents="none" testID="budget-monthly-limit" style={[s.limitLine, { bottom: 24 + limit / maximum * 100, borderColor: theme.budget.limitLine }]} /> : null}
         {result.months.map(item => {
           const key = `${item.year}-${item.month}`;
           const active = item === selected;
@@ -72,6 +71,7 @@ export function BudgetMonthlyChart({ categoryId, endDate, limit, hidden, reloadK
             </Pressable>
           );
         })}
+        {limit > 0 ? <View pointerEvents="none" testID="budget-monthly-limit" style={[s.limitLine, { bottom: 24 + limit / maximum * 100, borderColor: theme.budget.limitLine }]} /> : null}
       </View>
       <Text style={[s.legend, { color: theme.textMuted }]}>- - Hạn mức ngân sách: {money(limit)}</Text>
     </View>
@@ -83,6 +83,6 @@ const s = StyleSheet.create({
   plot: { height: 124, flexDirection: 'row', gap: 8 }, column: { flex: 1, height: 124 },
   track: { height: 100, justifyContent: 'flex-end' }, bar: { width: '100%', borderTopLeftRadius: 3, borderTopRightRadius: 3 },
   month: { height: 24, textAlign: 'center', paddingTop: 6, fontSize: 11 },
-  limitLine: { position: 'absolute', left: 0, right: 0, borderTopWidth: 1, borderStyle: 'dashed' },
+  limitLine: { position: 'absolute', left: 0, right: 0, zIndex: 1, borderTopWidth: 1, borderStyle: 'dashed' },
   legend: { textAlign: 'center', fontSize: 11 }, state: { minHeight: 160, alignItems: 'center', justifyContent: 'center', gap: 8 }, retry: { padding: 10 },
 });

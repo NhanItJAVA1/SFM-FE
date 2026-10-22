@@ -16,7 +16,6 @@ export type BudgetFormState = {
 };
 
 export type BudgetSummary = {
-  daysLeft: number;
   alertThreshold: number;
   isAlert: boolean;
   remainingAmount: number;

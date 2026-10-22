@@ -30,22 +30,6 @@ export function getDefaultBudgetFormState(): BudgetFormState {
   };
 }
 
-export function getDaysUntilEnd(budgets: BudgetWithProgress[]) {
-  if (budgets.length === 0) {
-    return 0;
-  }
-
-  const latestEnd = budgets.reduce((latest, budget) => {
-    const currentEnd = new Date(budget.progress?.endDate ?? budget.endDate).getTime();
-
-    return Math.max(latest, currentEnd);
-  }, 0);
-  const today = new Date();
-  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
-
-  return Math.max(0, Math.ceil((latestEnd - todayStart) / 86400000));
-}
-
 export function getBudgetSummary(budget: BudgetWithProgress): BudgetSummary {
   const progress = budget.progressDetail ?? budget.progress;
   const totalAmount = progress?.amount ?? budget.amount;
@@ -56,7 +40,6 @@ export function getBudgetSummary(budget: BudgetWithProgress): BudgetSummary {
 
   return {
     alertThreshold,
-    daysLeft: getDaysUntilEnd([budget]),
     isAlert: progress?.isAlert ?? usedPercentage >= alertThreshold,
     remainingAmount,
     spentAmount,
