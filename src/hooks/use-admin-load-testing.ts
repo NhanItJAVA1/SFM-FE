@@ -7,8 +7,7 @@ import {
   type LoadTestMetrics,
   type LoadTestMetricsHistory,
   type LoadTestRunnerStatus,
-  type LoadTestScenario,
-  type LoadTestTarget,
+  type LoadTestStartPayload,
 } from '@/api/adminApi';
 import { getAuthAccessToken, getAuthUser } from '@/stores/authSession';
 import { isAdminUser } from '@/utils/authRole';
@@ -204,18 +203,18 @@ export function useAdminLoadTesting(active: boolean, settings: Settings) {
     refreshRef.current?.();
   }, [settings.rangeMinutes, settings.rateWindowSeconds, settings.refreshIntervalSeconds]);
 
-  const start = useCallback(async (scenario: LoadTestScenario, target: LoadTestTarget, configuration: { vus: number; durationSeconds: number }) => {
+  const start = useCallback(async (payload: LoadTestStartPayload) => {
     if (actionLockRef.current) return false;
     actionLockRef.current = true;
     actionVersionRef.current += 1;
     setState(current => ({ ...current, action: 'start', error: null }));
     try {
-      const { data } = await adminApi.startLoadTest(scenario, target, configuration);
+      const { data } = await adminApi.startLoadTest(payload);
       const testId = data.testId ?? data.id ?? null;
       const started = data.started ?? Boolean(testId);
       const status: LoadTestRunnerStatus = {
-        status: started ? 'running' : null, running: started, testId, scenario: data.scenario ?? null,
-        target: data.target ?? null, vus: null, durationSeconds: null, startedAt: null, finishedAt: null, exitCode: null,
+        status: started ? 'running' : null, running: started, testId, scenario: data.scenario ?? ('scenario' in payload ? payload.scenario : null),
+        target: data.target ?? payload.target, vus: null, durationSeconds: null, startedAt: null, finishedAt: null, exitCode: null,
       };
       setState(current => ({ ...current, status, testId, metrics: null, history: null, loading: false, error: null }));
       refreshRef.current?.();

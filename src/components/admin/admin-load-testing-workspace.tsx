@@ -3,7 +3,7 @@ import { Fragment, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import Svg, { Circle, Line, Path, Text as SvgText } from 'react-native-svg';
 
-import type { LoadTestMetricPoint, LoadTestP95Point, LoadTestScenario, LoadTestTarget } from '@/api/adminApi';
+import type { LoadTestMetricPoint, LoadTestMode, LoadTestP95Point, LoadTestScenario, LoadTestTarget } from '@/api/adminApi';
 import { useAdminLoadTesting } from '@/hooks/use-admin-load-testing';
 import { formatLoadTestErrorDetails } from '@/utils/load-test-error';
 import { adminStyleSheet, useAdminTheme, type AdminTheme } from './admin-design';
@@ -86,8 +86,12 @@ export function AdminLoadTestingWorkspace({ active = true }: { active?: boolean 
   const width = useWindowDimensions().width;
   const desktop = width >= 1100;
   const columns = width >= 1250 ? 5 : width >= 720 ? 3 : 2;
+  const [mode, setMode] = useState<LoadTestMode>('concurrent_users');
   const [scenario, setScenario] = useState<LoadTestScenario>('smoke');
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [advancedScenarioSelected, setAdvancedScenarioSelected] = useState(false);
   const [vusDraft, setVusDraft] = useState('1');
+  const [requestsPerSecondDraft, setRequestsPerSecondDraft] = useState('10');
   const [durationDraft, setDurationDraft] = useState('30');
   const [configError, setConfigError] = useState('');
   const [target, setTarget] = useState<LoadTestTarget>('ping');
@@ -142,16 +146,21 @@ export function AdminLoadTestingWorkspace({ active = true }: { active?: boolean 
     const preset = scenarios.find(option => option.id === nextScenario);
     if (!preset) return;
     setScenario(nextScenario);
+    setAdvancedScenarioSelected(true);
+    setMode('concurrent_users');
     setVusDraft(String(preset.vus));
     setDurationDraft(String(preset.durationSeconds));
     setConfigError('');
   }
 
   function startLoadTest() {
-    const vus = Number(vusDraft);
+    const requestedLoadDraft = mode === 'concurrent_users' ? vusDraft : requestsPerSecondDraft;
+    const requestedLoad = Number(requestedLoadDraft);
     const durationSeconds = Number(durationDraft);
-    if (!/^\d+$/.test(vusDraft.trim()) || !Number.isInteger(vus) || vus < 1 || vus > 1000) {
-      setConfigError('VUs phải là số nguyên từ 1 đến 1000.');
+    if (!/^\d+$/.test(requestedLoadDraft.trim()) || !Number.isInteger(requestedLoad) || requestedLoad < 1 || requestedLoad > 1000) {
+      setConfigError(mode === 'concurrent_users'
+        ? 'Số người dùng ảo (VUs) phải là số nguyên từ 1 đến 1000.'
+        : 'Lượt truy cập mục tiêu mỗi giây (RPS) phải là số nguyên từ 1 đến 1000.');
       return;
     }
     if (!/^\d+$/.test(durationDraft.trim()) || !Number.isInteger(durationSeconds) || durationSeconds < 10 || durationSeconds > 3600) {
@@ -159,7 +168,13 @@ export function AdminLoadTestingWorkspace({ active = true }: { active?: boolean 
       return;
     }
     setConfigError('');
-    void loadTest.start(scenario, target, { vus, durationSeconds });
+    if (advancedScenarioSelected) {
+      void loadTest.start({ scenario, target, vus: Number(vusDraft), durationSeconds });
+      return;
+    }
+    void loadTest.start(mode === 'concurrent_users'
+      ? { mode, target, vus: requestedLoad, durationSeconds }
+      : { mode, target, requestsPerSecond: requestedLoad, durationSeconds });
   }
 
   function applyRateWindow() {
@@ -240,10 +255,18 @@ export function AdminLoadTestingWorkspace({ active = true }: { active?: boolean 
       <View style={styles.controlGrid}>
         <View style={styles.panel}>
           <View style={styles.panelHeading}><Play size={16} color={theme.primary} /><Text style={styles.panelTitle}>Cấu hình bài kiểm thử</Text></View>
-          <HelpLabel label="Kịch bản / Scenario" text="Loại kiểm thử quyết định cấu hình mặc định và mục tiêu kiểm tra. Có thể tùy chỉnh VUs và Duration." styles={styles} theme={theme} />
-          <View style={styles.optionGrid}>
-            {scenarios.map(option => <ScenarioOption key={option.id} option={option} selected={scenario === option.id} disabled={configurationDisabled}
-              onSelect={() => selectScenario(option.id)} styles={styles} theme={theme} />)}
+          <HelpLabel label="Chế độ kiểm thử" text="Chọn tải theo số người dùng ảo đồng thời hoặc theo mục tiêu request mỗi giây. RPS mục tiêu là cấu hình gửi tải, không đảm bảo đạt được; hãy đối chiếu với RPS đo thực tế." styles={styles} theme={theme} />
+          <View style={styles.modeGrid}>
+            <Pressable accessibilityRole="radio" accessibilityState={{ checked: mode === 'concurrent_users', disabled: configurationDisabled }} disabled={configurationDisabled}
+              onPress={() => { setMode('concurrent_users'); setAdvancedScenarioSelected(false); setConfigError(''); }} style={[styles.modeOption, mode === 'concurrent_users' && styles.modeOptionSelected, configurationDisabled && styles.disabled]}>
+              <Text style={[styles.modeTitle, mode === 'concurrent_users' && styles.selectedText]}>Người dùng đồng thời</Text>
+              <Text style={styles.optionDetail}>concurrent_users</Text>
+            </Pressable>
+            <Pressable accessibilityRole="radio" accessibilityState={{ checked: mode === 'request_rate', disabled: configurationDisabled }} disabled={configurationDisabled}
+              onPress={() => { setMode('request_rate'); setAdvancedScenarioSelected(false); setConfigError(''); }} style={[styles.modeOption, mode === 'request_rate' && styles.modeOptionSelected, configurationDisabled && styles.disabled]}>
+              <Text style={[styles.modeTitle, mode === 'request_rate' && styles.selectedText]}>Lượt truy cập mỗi giây</Text>
+              <Text style={styles.optionDetail}>request_rate</Text>
+            </Pressable>
           </View>
           <HelpLabel label="Mục tiêu / Target" text="Thành phần Backend được chọn để kiểm thử: Ping, Database hoặc Redis." styles={styles} theme={theme} />
           <View style={styles.targetRow}>
@@ -253,16 +276,39 @@ export function AdminLoadTestingWorkspace({ active = true }: { active?: boolean 
             </Pressable>)}
           </View>
           <View style={styles.configFields}>
+            {mode === 'concurrent_users' ? <View style={styles.configField}>
+              <HelpLabel label="Số người dùng ảo (VUs)" text="Số VU chạy đồng thời. VUs không đồng nghĩa với số request: mỗi VU có thể gửi nhiều request theo thời gian tùy kịch bản và độ trễ." styles={styles} theme={theme} />
+              <TextInput accessibilityLabel="Số người dùng ảo (VUs)" accessibilityHint="Nhập số nguyên từ 1 đến 1000" editable={!configurationDisabled} inputMode="numeric" keyboardType="number-pad" value={vusDraft} onChangeText={value => { setVusDraft(value); setConfigError(''); }} style={[styles.input, configurationDisabled && styles.disabled]} />
+            </View> : <View style={styles.configField}>
+              <HelpLabel label="Số lượt truy cập mục tiêu mỗi giây (RPS)" text="Mục tiêu request gửi mỗi giây. Đây là tốc độ yêu cầu; hệ thống có thể không đạt mục tiêu. Đánh giá kết quả bằng RPS thực đo trong phần Chỉ số trực tiếp." styles={styles} theme={theme} />
+              <TextInput accessibilityLabel="Số lượt truy cập mục tiêu mỗi giây (RPS)" accessibilityHint="Nhập số nguyên từ 1 đến 1000; đây là mục tiêu, không phải RPS thực tế được đảm bảo" editable={!configurationDisabled} inputMode="numeric" keyboardType="number-pad" value={requestsPerSecondDraft} onChangeText={value => { setRequestsPerSecondDraft(value); setConfigError(''); }} style={[styles.input, configurationDisabled && styles.disabled]} />
+            </View>}
             <View style={styles.configField}>
-              <HelpLabel label="Virtual Users (VUs)" text="Số người dùng ảo chạy đồng thời. Ví dụ: 20 VUs nghĩa là có 20 người dùng ảo thực thi kịch bản." styles={styles} theme={theme} />
-              <TextInput accessibilityLabel="Virtual Users (VUs)" accessibilityHint="Nhập số nguyên từ 1 đến 1000" editable={!configurationDisabled} inputMode="numeric" keyboardType="number-pad" value={vusDraft} onChangeText={value => { setVusDraft(value); setConfigError(''); }} style={[styles.input, configurationDisabled && styles.disabled]} />
-            </View>
-            <View style={styles.configField}>
-              <HelpLabel label="Duration · giây" text="Thời gian duy trì bài kiểm thử trước khi tự kết thúc." styles={styles} theme={theme} />
-              <TextInput accessibilityLabel="Duration in seconds" accessibilityHint="Số nguyên từ 10 đến 3600 giây" editable={!configurationDisabled} inputMode="numeric" keyboardType="number-pad" value={durationDraft} onChangeText={value => { setDurationDraft(value); setConfigError(''); }} style={[styles.input, configurationDisabled && styles.disabled]} />
+              <HelpLabel label="Thời gian duy trì (giây)" text="Thời gian duy trì bài kiểm thử trước khi tự kết thúc. Cho phép từ 10 đến 3600 giây." styles={styles} theme={theme} />
+              <TextInput accessibilityLabel="Thời gian duy trì (giây)" accessibilityHint="Số nguyên từ 10 đến 3600 giây" editable={!configurationDisabled} inputMode="numeric" keyboardType="number-pad" value={durationDraft} onChangeText={value => { setDurationDraft(value); setConfigError(''); }} style={[styles.input, configurationDisabled && styles.disabled]} />
             </View>
           </View>
-          <Text style={styles.hint}>VUs từ 1 đến 1000. Thay đổi VUs hoặc Duration chỉ áp dụng cho bài test tiếp theo, không làm thay đổi bài đang chạy.</Text>
+          <View style={styles.summaryPanel}>
+            <Text style={styles.summaryText}>{mode === 'concurrent_users'
+              ? `Mô phỏng ${vusDraft.trim() || '—'} người dùng ảo hoạt động đồng thời trong ${durationDraft.trim() || '—'} giây.`
+              : `Mục tiêu ${requestsPerSecondDraft.trim() || '—'} request/giây trong ${durationDraft.trim() || '—'} giây.`}</Text>
+            <Text style={styles.hint}>{mode === 'concurrent_users'
+              ? 'VUs là số người dùng ảo đồng thời, không tương đương với số request.'
+              : 'RPS là mục tiêu gửi tải, không đảm bảo đạt được; hãy xem RPS thực đo trong chỉ số trực tiếp.'}</Text>
+          </View>
+          <Pressable accessibilityRole="button" accessibilityState={{ expanded: advancedOpen }} onPress={() => setAdvancedOpen(value => !value)} style={styles.advancedToggle}>
+            <Text style={styles.advancedTitle}>Tùy chọn nâng cao · Scenario tương thích cũ</Text>
+            {advancedOpen ? <ChevronUp size={16} color={theme.textMuted} /> : <ChevronDown size={16} color={theme.textMuted} />}
+          </Pressable>
+          {advancedOpen ? <View style={styles.advancedPanel}>
+            <Text style={styles.hint}>Chọn preset sẽ dùng payload scenario kiểu cũ để tương thích, chuyển cấu hình sang Người dùng đồng thời và điền VUs cùng thời lượng mặc định.</Text>
+            {advancedScenarioSelected ? <Text style={styles.advancedSelection}>Đang dùng scenario preset: {scenario}. Chọn một trong hai chế độ phía trên để quay lại cấu hình mode.</Text> : null}
+            <View style={styles.optionGrid}>
+              {scenarios.map(option => <ScenarioOption key={option.id} option={option} selected={advancedScenarioSelected && scenario === option.id} disabled={configurationDisabled}
+                onSelect={() => selectScenario(option.id)} styles={styles} theme={theme} />)}
+            </View>
+          </View> : null}
+          <Text style={styles.hint}>{mode === 'concurrent_users' ? 'VUs từ 1 đến 1000.' : 'RPS mục tiêu từ 1 đến 1000.'} Thời lượng từ 10 đến 3600 giây. Cấu hình chỉ áp dụng cho bài test tiếp theo.</Text>
           {configError ? <Text accessibilityRole="alert" style={styles.validationText}>{configError}</Text> : null}
           <View style={styles.actionRow}>
             <Pressable accessibilityRole="button" disabled={loadTest.loading || isRunning || loadTest.action !== null}
@@ -544,8 +590,8 @@ function createStyles(theme: AdminTheme, desktop: boolean, columns: number) {
     header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 14 }, headerCopy: { flex: 1, gap: 5 }, title: { color: theme.text, fontSize: desktop ? 23 : 21, fontWeight: '600' }, muted: { color: theme.textMuted, fontSize: 12, lineHeight: 18 },
     iconButton: { width: 38, height: 38, borderWidth: 1, borderColor: theme.border, borderRadius: 7, alignItems: 'center', justifyContent: 'center', backgroundColor: theme.card }, hover: { backgroundColor: theme.cardAlt }, disabled: { opacity: 0.55 },
     controlGrid: { flexDirection: desktop ? 'row' : 'column', gap: 14, alignItems: 'stretch' }, panel: { flex: 1, minWidth: 0, backgroundColor: theme.card, borderColor: theme.border, borderWidth: 1, borderRadius: 9, padding: desktop ? 20 : 16, gap: 14 }, activeTestPanel: { borderColor: theme.primary }, panelHeading: { flexDirection: 'row', alignItems: 'center', gap: 9, minHeight: 22 }, panelTitle: { color: theme.text, fontSize: 14, fontWeight: '600' },
-    label: { color: theme.text, fontSize: 12, fontWeight: '500' }, helpLabel: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 3 }, helpRoot: { position: 'relative' }, helpFront: { zIndex: 10000, elevation: 10000 }, helpButton: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' }, tooltip: { position: 'absolute', top: 28, right: 0, width: 240, padding: 10, borderRadius: 6, backgroundColor: theme.sheet, borderColor: theme.border, borderWidth: 1, zIndex: 10000, elevation: 10000 }, tooltipNoPointerEvents: { pointerEvents: 'none' }, tooltipText: { color: theme.text, fontSize: 11, lineHeight: 17 }, optionGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }, scenarioOption: { flexGrow: 1, minWidth: 100, position: 'relative' }, scenarioHelp: { position: 'absolute', top: 0, right: 0 }, option: { flexGrow: 1, minWidth: 100, padding: 11, paddingRight: 34, gap: 4, borderWidth: 1, borderColor: theme.border, borderRadius: 7, backgroundColor: theme.screen }, optionSelected: { borderColor: theme.primary, backgroundColor: theme.primaryPressed }, optionTitle: { color: theme.text, fontSize: 12, fontWeight: '600' }, optionDetail: { color: theme.textMuted, fontSize: 10 }, selectedText: { color: theme.primary },
-    targetRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }, target: { flexGrow: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, minHeight: 40, paddingHorizontal: 10, borderWidth: 1, borderColor: theme.border, borderRadius: 7 }, targetText: { color: theme.text, fontSize: 11, fontWeight: '500' }, configFields: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 }, configField: { flex: 1, minWidth: 120, gap: 5 }, infoRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16, minHeight: 32 }, infoLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 2 }, infoLabel: { color: theme.textMuted, fontSize: 12 }, infoValue: { color: theme.text, fontSize: 12, fontWeight: '500', flexShrink: 1, textAlign: 'right' }, activeStatusRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, progressSection: { gap: 5, paddingTop: 6 }, progressTrack: { width: '100%', height: 8, overflow: 'hidden', borderRadius: 5, backgroundColor: theme.cardAlt }, progressFill: { height: '100%', borderRadius: 5, backgroundColor: theme.primary }, stopActionBlock: { gap: 6, paddingTop: 8 }, prominentStopButton: { alignSelf: 'flex-start', minHeight: 44, paddingHorizontal: 18, backgroundColor: theme.warningBackground }, emptyTestState: { minHeight: 110, alignItems: 'center', justifyContent: 'center', gap: 10, padding: 18, borderRadius: 7, backgroundColor: theme.cardAlt }, emptyTestText: { color: theme.textMuted, fontSize: 12, lineHeight: 18, textAlign: 'center' }, actionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 9, paddingTop: 2 },
+    label: { color: theme.text, fontSize: 12, fontWeight: '500' }, helpLabel: { flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 3 }, helpRoot: { position: 'relative' }, helpFront: { zIndex: 10000, elevation: 10000 }, helpButton: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' }, tooltip: { position: 'absolute', top: 28, right: 0, width: 240, padding: 10, borderRadius: 6, backgroundColor: theme.sheet, borderColor: theme.border, borderWidth: 1, zIndex: 10000, elevation: 10000 }, tooltipNoPointerEvents: { pointerEvents: 'none' }, tooltipText: { color: theme.text, fontSize: 11, lineHeight: 17 }, optionGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }, modeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }, modeOption: { flex: 1, minWidth: 180, minHeight: 72, justifyContent: 'center', gap: 5, padding: 12, borderWidth: 1, borderColor: theme.border, borderRadius: 7, backgroundColor: theme.screen }, modeOptionSelected: { borderColor: theme.primary, backgroundColor: theme.primaryPressed }, modeTitle: { color: theme.text, fontSize: 12, fontWeight: '600' }, scenarioOption: { flexGrow: 1, minWidth: 100, position: 'relative' }, scenarioHelp: { position: 'absolute', top: 0, right: 0 }, option: { flexGrow: 1, minWidth: 100, padding: 11, paddingRight: 34, gap: 4, borderWidth: 1, borderColor: theme.border, borderRadius: 7, backgroundColor: theme.screen }, optionSelected: { borderColor: theme.primary, backgroundColor: theme.primaryPressed }, optionTitle: { color: theme.text, fontSize: 12, fontWeight: '600' }, optionDetail: { color: theme.textMuted, fontSize: 10 }, selectedText: { color: theme.primary },
+    targetRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }, target: { flexGrow: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, minHeight: 40, paddingHorizontal: 10, borderWidth: 1, borderColor: theme.border, borderRadius: 7 }, targetText: { color: theme.text, fontSize: 11, fontWeight: '500' }, configFields: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 }, configField: { flex: 1, minWidth: 120, gap: 5 }, summaryPanel: { gap: 5, padding: 11, borderRadius: 7, backgroundColor: theme.cardAlt }, summaryText: { color: theme.text, fontSize: 12, lineHeight: 18, fontWeight: '500' }, advancedToggle: { minHeight: 38, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingHorizontal: 10, borderWidth: 1, borderColor: theme.border, borderRadius: 6 }, advancedTitle: { color: theme.text, fontSize: 11, fontWeight: '500' }, advancedPanel: { gap: 10, paddingTop: 2 }, advancedSelection: { color: theme.primary, fontSize: 11, fontWeight: '500' }, infoRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 16, minHeight: 32 }, infoLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 2 }, infoLabel: { color: theme.textMuted, fontSize: 12 }, infoValue: { color: theme.text, fontSize: 12, fontWeight: '500', flexShrink: 1, textAlign: 'right' }, activeStatusRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, progressSection: { gap: 5, paddingTop: 6 }, progressTrack: { width: '100%', height: 8, overflow: 'hidden', borderRadius: 5, backgroundColor: theme.cardAlt }, progressFill: { height: '100%', borderRadius: 5, backgroundColor: theme.primary }, stopActionBlock: { gap: 6, paddingTop: 8 }, prominentStopButton: { alignSelf: 'flex-start', minHeight: 44, paddingHorizontal: 18, backgroundColor: theme.warningBackground }, emptyTestState: { minHeight: 110, alignItems: 'center', justifyContent: 'center', gap: 10, padding: 18, borderRadius: 7, backgroundColor: theme.cardAlt }, emptyTestText: { color: theme.textMuted, fontSize: 12, lineHeight: 18, textAlign: 'center' }, actionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 9, paddingTop: 2 },
     primaryButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: 42, paddingHorizontal: 16, borderRadius: 7, backgroundColor: theme.primary, minWidth: 130 }, primaryPressed: { opacity: 0.82 }, primaryButtonText: { color: theme.textInverse, fontSize: 12, fontWeight: '600' }, stopButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: 42, paddingHorizontal: 16, borderWidth: 1, borderColor: theme.dangerText, borderRadius: 7 }, stopPressed: { backgroundColor: theme.cardAlt }, stopButtonText: { color: theme.dangerText, fontSize: 12, fontWeight: '600' },
     statusLine: { flexDirection: 'row', alignItems: 'center', gap: 9, paddingVertical: 2 }, statusDot: { width: 9, height: 9, borderRadius: 5 }, statusText: { fontSize: 14, fontWeight: '600' }, errorPanel: { gap: 10, padding: 15, borderColor: theme.dangerText, borderWidth: 1, borderRadius: 8, backgroundColor: theme.card }, errorPanelHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 }, errorPanelCopy: { flex: 1, gap: 4 }, errorTitle: { color: theme.dangerText, fontSize: 14, fontWeight: '600' }, errorText: { color: theme.text, fontSize: 12, lineHeight: 18, flexShrink: 1 }, errorSuggestion: { padding: 10, gap: 4, borderRadius: 6, backgroundColor: theme.cardAlt }, errorSuggestionLabel: { color: theme.textMuted, fontSize: 10, fontWeight: '600' }, errorActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }, errorActionButton: { minHeight: 34, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, borderWidth: 1, borderColor: theme.border, borderRadius: 6 }, errorActionText: { color: theme.primary, fontSize: 11, fontWeight: '500' }, errorCopyMessage: { color: theme.textMuted, fontSize: 11, lineHeight: 16 }, errorTechnical: { paddingTop: 6, borderTopWidth: 1, borderTopColor: theme.border, gap: 6 }, errorDetailRow: { flexDirection: 'row', alignItems: 'flex-start', flexWrap: 'wrap', gap: 6 }, errorDetailLabel: { width: 135, color: theme.textMuted, fontSize: 11, fontWeight: '500' }, errorDetailValue: { flex: 1, minWidth: 150, fontSize: 11, lineHeight: 17 },
     settingsPanel: { backgroundColor: theme.card, borderColor: theme.border, borderWidth: 1, borderRadius: 9, padding: desktop ? 20 : 16, gap: 14 }, settingsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 20 }, settingBlock: { flexGrow: 1, flexBasis: desktop ? 250 : 190, gap: 9 }, presetRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 }, preset: { minWidth: 45, minHeight: 32, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 9, borderWidth: 1, borderColor: theme.border, borderRadius: 6 }, presetActive: { borderColor: theme.primary, backgroundColor: theme.primaryPressed }, presetText: { color: theme.textMuted, fontSize: 11, fontWeight: '500' }, customInputRow: { flexDirection: 'row', gap: 7 }, input: { flex: 1, minWidth: 75, height: 38, paddingHorizontal: 10, borderWidth: 1, borderColor: theme.border, borderRadius: 6, color: theme.text, backgroundColor: theme.screen, fontSize: 12 }, smallButton: { justifyContent: 'center', paddingHorizontal: 11, borderRadius: 6, backgroundColor: theme.primaryPressed }, smallButtonText: { color: theme.primary, fontSize: 11, fontWeight: '600' }, hint: { color: theme.textMuted, fontSize: 10, lineHeight: 16 }, validationText: { color: theme.dangerText, fontSize: 10 },

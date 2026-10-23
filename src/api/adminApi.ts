@@ -25,6 +25,7 @@ export type AdminMonitoringOverview = {
 };
 
 export type LoadTestScenario = 'smoke' | 'load' | 'stress' | 'spike';
+export type LoadTestMode = 'concurrent_users' | 'request_rate';
 export type LoadTestTarget = 'ping' | 'database' | 'redis';
 export type LoadTestRunnerStatus = {
   status: 'idle' | 'running' | 'completed' | 'stopped' | 'failed' | string | null;
@@ -47,10 +48,10 @@ export type LoadTestStartResult = {
   scenario?: LoadTestScenario;
   target?: LoadTestTarget;
 };
-export type LoadTestStartConfiguration = {
-  vus: number;
-  durationSeconds: number;
-};
+export type LoadTestStartPayload =
+  | { mode: 'concurrent_users'; target: LoadTestTarget; vus: number; durationSeconds: number }
+  | { mode: 'request_rate'; target: LoadTestTarget; requestsPerSecond: number; durationSeconds: number }
+  | { scenario: LoadTestScenario; target: LoadTestTarget; vus: number; durationSeconds: number };
 export type LoadTestMetricPoint = { timestampUtc: string; value: number | null };
 export type LoadTestP95Point = {
   timestampUtc: string;
@@ -144,8 +145,8 @@ function buildQuery(params: AdminUserQuery) {
 }
 
 export const adminApi = {
-  startLoadTest: (scenario: LoadTestScenario, target: LoadTestTarget, configuration: LoadTestStartConfiguration) =>
-    axiosClient.post<LoadTestStartResult>('/v1/admin/load-tests/start', { scenario, target, ...configuration }, { timeout: 20000 }),
+  startLoadTest: (payload: LoadTestStartPayload) =>
+    axiosClient.post<LoadTestStartResult>('/v1/admin/load-tests/start', payload, { timeout: 20000 }),
   stopLoadTest: () => axiosClient.post<{ stopped: boolean; id?: string; status?: string }>('/v1/admin/load-tests/stop', undefined, { timeout: 20000 }),
   loadTestStatus: (signal?: AbortSignal) =>
     axiosClient.get<LoadTestRunnerStatus>('/v1/admin/load-tests/status', { signal, timeout: 10000 }),
