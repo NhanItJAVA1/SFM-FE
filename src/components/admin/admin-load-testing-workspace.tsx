@@ -150,8 +150,8 @@ export function AdminLoadTestingWorkspace({ active = true }: { active?: boolean 
   function startLoadTest() {
     const vus = Number(vusDraft);
     const durationSeconds = Number(durationDraft);
-    if (!/^\d+$/.test(vusDraft.trim()) || !Number.isInteger(vus) || vus < 1 || vus > 100) {
-      setConfigError('VUs phải là số nguyên từ 1 đến 100.');
+    if (!/^\d+$/.test(vusDraft.trim()) || !Number.isInteger(vus) || vus < 1 || vus > 1000) {
+      setConfigError('VUs phải là số nguyên từ 1 đến 1000.');
       return;
     }
     if (!/^\d+$/.test(durationDraft.trim()) || !Number.isInteger(durationSeconds) || durationSeconds < 10 || durationSeconds > 3600) {
@@ -255,14 +255,14 @@ export function AdminLoadTestingWorkspace({ active = true }: { active?: boolean 
           <View style={styles.configFields}>
             <View style={styles.configField}>
               <HelpLabel label="Virtual Users (VUs)" text="Số người dùng ảo chạy đồng thời. Ví dụ: 20 VUs nghĩa là có 20 người dùng ảo thực thi kịch bản." styles={styles} theme={theme} />
-              <TextInput accessibilityLabel="Virtual Users (VUs)" accessibilityHint="Số nguyên từ 1 đến 100" editable={!configurationDisabled} inputMode="numeric" keyboardType="number-pad" value={vusDraft} onChangeText={value => { setVusDraft(value); setConfigError(''); }} style={[styles.input, configurationDisabled && styles.disabled]} />
+              <TextInput accessibilityLabel="Virtual Users (VUs)" accessibilityHint="Nhập số nguyên từ 1 đến 1000" editable={!configurationDisabled} inputMode="numeric" keyboardType="number-pad" value={vusDraft} onChangeText={value => { setVusDraft(value); setConfigError(''); }} style={[styles.input, configurationDisabled && styles.disabled]} />
             </View>
             <View style={styles.configField}>
               <HelpLabel label="Duration · giây" text="Thời gian duy trì bài kiểm thử trước khi tự kết thúc." styles={styles} theme={theme} />
               <TextInput accessibilityLabel="Duration in seconds" accessibilityHint="Số nguyên từ 10 đến 3600 giây" editable={!configurationDisabled} inputMode="numeric" keyboardType="number-pad" value={durationDraft} onChangeText={value => { setDurationDraft(value); setConfigError(''); }} style={[styles.input, configurationDisabled && styles.disabled]} />
             </View>
           </View>
-          <Text style={styles.hint}>Thay đổi VUs hoặc Duration chỉ áp dụng cho bài test tiếp theo, không làm thay đổi bài đang chạy.</Text>
+          <Text style={styles.hint}>VUs từ 1 đến 1000. Thay đổi VUs hoặc Duration chỉ áp dụng cho bài test tiếp theo, không làm thay đổi bài đang chạy.</Text>
           {configError ? <Text accessibilityRole="alert" style={styles.validationText}>{configError}</Text> : null}
           <View style={styles.actionRow}>
             <Pressable accessibilityRole="button" disabled={loadTest.loading || isRunning || loadTest.action !== null}
