@@ -58,7 +58,7 @@ export function AdminShell({ children, view, onNavigate, name, onLogout, isLoggi
     logout: { padding: 8, borderRadius: 6 },
     body: { flex: 1, minHeight: 0 },
   });
-  const navItems = navigation.map(({ key, label, Icon }) => (
+  const navItems = navigation.filter(({ key }) => key !== 'load-testing' || __DEV__).map(({ key, label, Icon }) => (
     <Pressable key={key} accessibilityRole="button" accessibilityState={{ selected: view === key }} onPress={() => onNavigate(key)}
       style={({ hovered, pressed }) => [styles.navItem, (hovered || pressed) && styles.hover, view === key && styles.active]}>
       <Icon size={17} strokeWidth={1.7} color={view === key ? theme.primary : theme.textMuted} />

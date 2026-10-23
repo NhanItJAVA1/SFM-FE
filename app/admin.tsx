@@ -238,7 +238,7 @@ export default function AdminScreen() {
   const [fontsLoaded, fontError] = useAdminFonts();
   const currentUser = getAuthUser();
   const { view: routeView } = useLocalSearchParams<{ view?: string }>();
-  const view: AdminView = routeView === "users" || routeView === "categories" || routeView === "documents" || routeView === "training" || routeView === "monitoring" || routeView === "analysis-config" || routeView === "load-testing" ? routeView : "dashboard";
+  const view: AdminView = routeView === "users" || routeView === "categories" || routeView === "documents" || routeView === "training" || routeView === "monitoring" || routeView === "analysis-config" || (routeView === "load-testing" && __DEV__) ? routeView as AdminView : "dashboard";
   const [hasOpenedTraining, setHasOpenedTraining] = useState(view === "training");
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -806,7 +806,7 @@ export default function AdminScreen() {
   function renderContent() {
     if (view === "analysis-config") return <AnalysisConfigWorkspace />;
     if (view === "monitoring") return <SystemMonitoringWorkspace />;
-    if (view === "load-testing") return <AdminLoadTestingWorkspace active />;
+    if (__DEV__ && view === "load-testing") return <AdminLoadTestingWorkspace active />;
     if (selectedUser) {
       return (
         <FocusedScreenTransition style={styles.screen} triggerKey="admin-user-detail" variant="fade">
