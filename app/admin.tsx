@@ -1,7 +1,12 @@
 import { BottomPopup, BottomPopupSheet } from "@/components/bottom-popup";
 import * as DocumentPicker from "expo-document-picker";
-import { router, useFocusEffect } from "expo-router";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import {
+  ArrowUpRight,
+  BookOpen,
+  FolderOpen,
+  SlidersHorizontal,
+  Users,
   Banknote,
   Briefcase,
   Car,
@@ -24,8 +29,8 @@ import {
   Utensils,
   Wallet,
 } from "lucide-react-native";
-import { type ComponentType, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { type ComponentType, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import {
@@ -37,15 +42,18 @@ import {
 import { authApi } from "@/api/authApi";
 import { type Category, type CategoryType } from "@/api/categoriesApi";
 import { RAG_DOCUMENT_UPLOAD_CONTENT_TYPE, ragDocumentsApi, type RagDocument } from "@/api/ragDocumentsApi";
-import { transactionsApi, type Transaction } from "@/api/transactionsApi";
 import { FocusedScreenTransition } from "@/components/screen-transition";
-import { useAppTheme } from "@/hooks/use-app-theme";
+import { adminStyleSheet, useAdminFonts, useAdminTheme, type AdminTheme } from "@/components/admin/admin-design";
+import { AdminShell, type AdminView } from "@/components/admin/admin-shell";
+import { ForecastTrainingWorkspace } from "@/components/admin/forecast-training-workspace";
+import { ForecastTrainingResult } from "@/components/admin/forecast-training-result";
+import { SystemMonitoringWorkspace } from "@/components/admin/system-monitoring-workspace";
+import { AnalysisConfigWorkspace } from "@/components/admin/analysis-config-workspace";
+import { AdminLoadTestingWorkspace } from "@/components/admin/admin-load-testing-workspace";
 import { getAuthRefreshToken, getAuthUser } from "@/stores/authSession";
 import { clearAuthSession } from "@/stores/persistedAuthSession";
-import type { AppTheme } from "@/theme/appTheme";
 import { isAdminUser } from "@/utils/authRole";
 
-type AdminView = "dashboard" | "users" | "categories" | "documents";
 type CategoryFormState = {
   icon: string;
   name: string;
@@ -115,10 +123,34 @@ const categoryIconOptions: CategoryIconOption[] = [
   { Icon: MoreHorizontal, key: "other", label: "Khác" },
 ];
 
-function useAdminStyles() {
-  const theme = useAppTheme();
+function showAdminMessage(title: string, message: string) {
+  if (Platform.OS === "web") {
+    window.alert(`${title}\n\n${message}`);
+    return;
+  }
 
-  return useMemo(() => createStyles(theme), [theme]);
+  Alert.alert(title, message);
+}
+
+function confirmAdminAction(title: string, message: string, onConfirm: () => void, confirmLabel: string, destructive = false) {
+  if (Platform.OS === "web") {
+    if (window.confirm(`${title}\n\n${message}`)) {
+      onConfirm();
+    }
+    return;
+  }
+
+  Alert.alert(title, message, [
+    { style: "cancel", text: "Hủy" },
+    { onPress: onConfirm, style: destructive ? "destructive" : "default", text: confirmLabel },
+  ]);
+}
+
+function useAdminStyles() {
+  const theme = useAdminTheme();
+  const { width } = useWindowDimensions();
+
+  return createStyles(theme, width >= 1100);
 }
 
 function formatDate(value: string | null | undefined) {
@@ -133,11 +165,24 @@ function formatDate(value: string | null | undefined) {
   }).format(new Date(value));
 }
 
+function getRequestErrorMessage(error: unknown) {
+  if (typeof error === "object" && error !== null && "response" in error) {
+    const response = (error as { response?: { status?: number; data?: unknown } }).response;
+    const data = response?.data;
+
+    if (typeof data === "object" && data !== null && "message" in data) {
+      return `HTTP ${response?.status ?? "?"}: ${String(data.message)}`;
+    }
+  }
+
+  return error instanceof Error ? error.message : "Vui lòng thử lại sau.";
+}
+
 function getCategoryTypeLabel(type: Category["type"]) {
   return type === "Income" ? "Thu nhập" : "Chi tiêu";
 }
 
-function getUserStatusLabel(status: AdminUserStatus | string) {
+function getUserStatusLabel(status: AdminUserStatus | string | null | undefined) {
   if (status === "Active") {
     return "Đang hoạt động";
   }
@@ -150,7 +195,7 @@ function getUserStatusLabel(status: AdminUserStatus | string) {
     return "Bị đình chỉ";
   }
 
-  return status;
+  return status || "Chưa cập nhật";
 }
 
 function getCategoryIconOption(icon: string | null | undefined) {
@@ -188,12 +233,14 @@ function formatFileSize(size?: number) {
 }
 
 export default function AdminScreen() {
-  const theme = useAppTheme();
+  const theme = useAdminTheme();
   const styles = useAdminStyles();
+  const [fontsLoaded, fontError] = useAdminFonts();
   const currentUser = getAuthUser();
-  const [view, setView] = useState<AdminView>("dashboard");
+  const { view: routeView } = useLocalSearchParams<{ view?: string }>();
+  const view: AdminView = routeView === "users" || routeView === "categories" || routeView === "documents" || routeView === "training" || routeView === "monitoring" || routeView === "analysis-config" || (routeView === "load-testing" && __DEV__) ? routeView as AdminView : "dashboard";
+  const [hasOpenedTraining, setHasOpenedTraining] = useState(view === "training");
   const [users, setUsers] = useState<AdminUser[]>([]);
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [ragDocuments, setRagDocuments] = useState<RagDocument[]>([]);
   const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
@@ -222,8 +269,11 @@ export default function AdminScreen() {
   const [isSavingRagMetadata, setIsSavingRagMetadata] = useState(false);
   const [processingDocumentId, setProcessingDocumentId] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingUsers, setIsLoadingUsers] = useState(true);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [adminLoadWarnings, setAdminLoadWarnings] = useState<string[]>([]);
+  const hasRequestedAdminDataRef = useRef(false);
   const ragMetadataOpenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const defaultCategories = categories;
@@ -245,30 +295,77 @@ export default function AdminScreen() {
         setIsLoading(true);
       }
 
-      const [usersResponse, categoriesResponse, transactionsResponse, ragDocumentsResponse] = await Promise.all([
-        adminApi.listUsers({
-          page: userPage,
-          pageSize: userPageSize,
-          role: userRoleFilter === "All" ? undefined : userRoleFilter,
-          search: userSearch.trim() || undefined,
-          status: userStatusFilter === "All" ? undefined : userStatusFilter,
-        }),
+      const usersRequest = adminApi.listUsers({
+        page: userPage,
+        pageSize: userPageSize,
+        role: userRoleFilter === "All" ? undefined : userRoleFilter,
+        search: userSearch.trim() || undefined,
+        status: userStatusFilter === "All" ? undefined : userStatusFilter,
+      });
+      setIsLoadingUsers(true);
+      // The user list has its own loading state. Don't make it wait for the
+      // unrelated categories and RAG requests below.
+      void usersRequest
+        .then(({ data }) => {
+          if (Array.isArray(data)) {
+            const filteredUsers = data.filter((user) => {
+              const matchesRole = userRoleFilter === "All" || user.role === userRoleFilter;
+              const matchesStatus = userStatusFilter === "All" || !user.status || user.status === userStatusFilter;
+              const normalizedSearch = userSearch.trim().toLowerCase();
+              const matchesSearch = !normalizedSearch || [user.username, user.email, user.displayName ?? ""]
+                .some((value) => value.toLowerCase().includes(normalizedSearch));
+
+              return matchesRole && matchesStatus && matchesSearch;
+            });
+            const pageCount = Math.max(1, Math.ceil(filteredUsers.length / userPageSize));
+            const resolvedPage = Math.min(userPage, pageCount);
+            const pageStart = (resolvedPage - 1) * userPageSize;
+
+            setUsers(filteredUsers.slice(pageStart, pageStart + userPageSize));
+            setUserTotalCount(filteredUsers.length);
+            setUserPage(resolvedPage);
+          } else {
+            setUsers(Array.isArray(data.items) ? data.items : []);
+            setUserTotalCount(data.totalCount ?? 0);
+            setUserPage(data.page ?? userPage);
+          }
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          setIsLoadingUsers(false);
+        });
+
+      const results = await Promise.allSettled([
+        usersRequest,
         adminApi.listDefaultCategories(),
-        transactionsApi.list({ filter: "All" }),
         ragDocumentsApi.list(),
       ]);
 
-      setUsers(Array.isArray(usersResponse.data.items) ? usersResponse.data.items : []);
-      setUserTotalCount(usersResponse.data.totalCount ?? 0);
-      setUserPage(usersResponse.data.page ?? userPage);
-      setCategories(Array.isArray(categoriesResponse.data) ? categoriesResponse.data : []);
-      setTransactions(Array.isArray(transactionsResponse.data.items) ? transactionsResponse.data.items : []);
-      setRagDocuments(Array.isArray(ragDocumentsResponse.data) ? ragDocumentsResponse.data : []);
+      const [usersResult, categoriesResult, ragDocumentsResult] = results;
+      const warnings: string[] = [];
+
+      if (usersResult.status === "rejected") {
+        warnings.push(`Không tải được danh sách user: ${getRequestErrorMessage(usersResult.reason)}`);
+      }
+
+      if (categoriesResult.status === "fulfilled") {
+        setCategories(Array.isArray(categoriesResult.value.data) ? categoriesResult.value.data : []);
+      } else {
+        warnings.push(`Không tải được danh mục: ${getRequestErrorMessage(categoriesResult.reason)}`);
+      }
+
+      if (ragDocumentsResult.status === "fulfilled") {
+        setRagDocuments(Array.isArray(ragDocumentsResult.value.data) ? ragDocumentsResult.value.data : []);
+      } else {
+        warnings.push(`Không tải được tài liệu RAG: ${getRequestErrorMessage(ragDocumentsResult.reason)}`);
+      }
+
+      setAdminLoadWarnings(warnings);
     } catch (error) {
       if (silent) {
         console.warn("Không tải được admin dashboard", error);
       } else {
-        Alert.alert("Không tải được dữ liệu admin", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
+        showAdminMessage("Không tải được dữ liệu admin", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
       }
     } finally {
       if (!silent) {
@@ -282,10 +379,11 @@ export default function AdminScreen() {
     useCallback(() => {
       if (isAdminUser(currentUser)) {
         loadAdminData({
-          silent: users.length > 0 || categories.length > 0 || transactions.length > 0 || ragDocuments.length > 0,
+          silent: hasRequestedAdminDataRef.current,
         });
+        hasRequestedAdminDataRef.current = true;
       }
-    }, [categories.length, currentUser, loadAdminData, ragDocuments.length, transactions.length, users.length]),
+    }, [currentUser, loadAdminData]),
   );
 
   async function openUserDetail(user: AdminUser) {
@@ -297,7 +395,7 @@ export default function AdminScreen() {
       setSelectedUser(response.data);
       setUsers((current) => (current ?? []).map((item) => (item.id === user.id ? response.data : item)));
     } catch (error) {
-      Alert.alert("Không tải được thông tin user", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
+      showAdminMessage("Không tải được thông tin user", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
     } finally {
       setProcessingUserId(null);
     }
@@ -323,13 +421,7 @@ export default function AdminScreen() {
       return;
     }
 
-    Alert.alert("Cập nhật trạng thái", `Đổi trạng thái ${user.username} thành "${getUserStatusLabel(status)}"?`, [
-      { style: "cancel", text: "Hủy" },
-      {
-        onPress: () => void updateUserStatus(user, status),
-        text: "Cập nhật",
-      },
-    ]);
+    confirmAdminAction("Cập nhật trạng thái", `Đổi trạng thái ${user.username} thành "${getUserStatusLabel(status)}"?`, () => void updateUserStatus(user, status), "Cập nhật");
   }
 
   async function updateUserStatus(user: AdminUser, status: AdminUserStatus) {
@@ -340,7 +432,7 @@ export default function AdminScreen() {
       setUsers((current) => (current ?? []).map((item) => (item.id === user.id ? response.data : item)));
       setSelectedUser((current) => (current?.id === user.id ? response.data : current));
     } catch (error) {
-      Alert.alert("Không cập nhật được trạng thái", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
+      showAdminMessage("Không cập nhật được trạng thái", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
     } finally {
       setProcessingUserId(null);
     }
@@ -351,13 +443,7 @@ export default function AdminScreen() {
       return;
     }
 
-    Alert.alert("Cập nhật vai trò", `Đổi vai trò ${user.username} thành "${role}"?`, [
-      { style: "cancel", text: "Hủy" },
-      {
-        onPress: () => void updateUserRole(user, role),
-        text: "Cập nhật",
-      },
-    ]);
+    confirmAdminAction("Cập nhật vai trò", `Đổi vai trò ${user.username} thành "${role}"?`, () => void updateUserRole(user, role), "Cập nhật");
   }
 
   async function updateUserRole(user: AdminUser, role: AdminUserRole) {
@@ -368,7 +454,7 @@ export default function AdminScreen() {
       setUsers((current) => (current ?? []).map((item) => (item.id === user.id ? response.data : item)));
       setSelectedUser((current) => (current?.id === user.id ? response.data : current));
     } catch (error) {
-      Alert.alert("Không cập nhật được vai trò", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
+      showAdminMessage("Không cập nhật được vai trò", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
     } finally {
       setProcessingUserId(null);
     }
@@ -408,7 +494,7 @@ export default function AdminScreen() {
     const icon = categoryForm.icon.trim() || "other";
 
     if (!name) {
-      Alert.alert("Thiếu tên danh mục", "Vui lòng nhập tên category mặc định.");
+      showAdminMessage("Thiếu tên danh mục", "Vui lòng nhập tên category mặc định.");
       return;
     }
 
@@ -437,21 +523,14 @@ export default function AdminScreen() {
       setEditingCategory(null);
       setCategoryForm(emptyCategoryForm);
     } catch (error) {
-      Alert.alert("Không lưu được category", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
+      showAdminMessage("Không lưu được category", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
     } finally {
       setIsSavingCategory(false);
     }
   }
 
   function requestDeleteDefaultCategory(category: Category) {
-    Alert.alert("Xóa category mặc định", `Bạn có chắc muốn xóa "${category.name}" không?`, [
-      { style: "cancel", text: "Hủy" },
-      {
-        onPress: () => void deleteDefaultCategory(category),
-        style: "destructive",
-        text: "Xóa",
-      },
-    ]);
+    confirmAdminAction("Xóa category mặc định", `Bạn có chắc muốn xóa "${category.name}" không?`, () => void deleteDefaultCategory(category), "Xóa", true);
   }
 
   async function deleteDefaultCategory(category: Category) {
@@ -459,7 +538,7 @@ export default function AdminScreen() {
       await adminApi.deleteDefaultCategory(category.id);
       setCategories((current) => (current ?? []).filter((item) => item.id !== category.id));
     } catch (error) {
-      Alert.alert("Không xóa được category", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
+      showAdminMessage("Không xóa được category", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
     }
   }
 
@@ -483,7 +562,7 @@ export default function AdminScreen() {
     const fileType = getFileExtension(asset.name);
 
     if (!isSupportedRagFileType(fileType)) {
-      Alert.alert("Định dạng chưa hỗ trợ", "Hiện chỉ hỗ trợ .txt, .docs, .md và .pdf.");
+      showAdminMessage("Định dạng chưa hỗ trợ", "Hiện chỉ hỗ trợ .txt, .docs, .md và .pdf.");
       return;
     }
 
@@ -507,17 +586,17 @@ export default function AdminScreen() {
     let createdDocumentId: number | null = null;
 
     if (!asset) {
-      Alert.alert("Chưa chọn file", "Vui lòng chọn tài liệu cần upload.");
+      showAdminMessage("Chưa chọn file", "Vui lòng chọn tài liệu cần upload.");
       return;
     }
 
     if (!title) {
-      Alert.alert("Thiếu tiêu đề", "Vui lòng nhập tiêu đề tài liệu.");
+      showAdminMessage("Thiếu tiêu đề", "Vui lòng nhập tiêu đề tài liệu.");
       return;
     }
 
     if (!isSupportedRagFileType(fileType)) {
-      Alert.alert("Định dạng chưa hỗ trợ", "Hiện chỉ hỗ trợ .txt, .docs, .md và .pdf.");
+      showAdminMessage("Định dạng chưa hỗ trợ", "Hiện chỉ hỗ trợ .txt, .docs, .md và .pdf.");
       return;
     }
 
@@ -539,13 +618,13 @@ export default function AdminScreen() {
       setIsRagUploadVisible(false);
       setRagUploadForm(emptyRagUploadForm);
       await loadAdminData({ refresh: true });
-      Alert.alert("Upload thành công", "Tài liệu đã được upload và gửi yêu cầu indexing.");
+      showAdminMessage("Upload thành công", "Tài liệu đã được upload và gửi yêu cầu indexing.");
     } catch (error) {
       if (createdDocumentId !== null) {
         await loadAdminData({ refresh: true });
       }
 
-      Alert.alert(
+      showAdminMessage(
         createdDocumentId === null ? "Tạo tài liệu thất bại" : "Upload hoặc confirm thất bại",
         error instanceof Error ? error.message : "Vui lòng thử lại sau.",
       );
@@ -591,7 +670,7 @@ export default function AdminScreen() {
     const ragCategory = ragMetadataForm.ragCategory.trim() || "General";
 
     if (!title) {
-      Alert.alert("Thiếu tiêu đề", "Vui lòng nhập tiêu đề tài liệu.");
+      showAdminMessage("Thiếu tiêu đề", "Vui lòng nhập tiêu đề tài liệu.");
       return;
     }
 
@@ -611,9 +690,9 @@ export default function AdminScreen() {
       setIsRagMetadataVisible(false);
       setEditingRagDocument(null);
       setRagMetadataForm(emptyRagMetadataForm);
-      Alert.alert("Đã lưu metadata", "Thông tin tài liệu đã được cập nhật.");
+      showAdminMessage("Đã lưu metadata", "Thông tin tài liệu đã được cập nhật.");
     } catch (error) {
-      Alert.alert("Không lưu được metadata", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
+      showAdminMessage("Không lưu được metadata", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
     } finally {
       setIsSavingRagMetadata(false);
     }
@@ -621,14 +700,7 @@ export default function AdminScreen() {
 
   function requestDeleteRagDocument(document: RagDocument) {
     setActionMenuRagDocument(null);
-    Alert.alert("Xóa tài liệu RAG", `Bạn muốn xóa "${document.title}"?`, [
-      { style: "cancel", text: "Hủy" },
-      {
-        onPress: () => void deleteRagDocument(document),
-        style: "destructive",
-        text: "Xóa",
-      },
-    ]);
+    confirmAdminAction("Xóa tài liệu RAG", `Bạn muốn xóa "${document.title}"?`, () => void deleteRagDocument(document), "Xóa", true);
   }
 
   async function deleteRagDocument(document: RagDocument) {
@@ -640,9 +712,9 @@ export default function AdminScreen() {
         setSelectedRagDocument(null);
         setIsRagDetailVisible(false);
       }
-      Alert.alert("Đã xóa tài liệu", "Tài liệu RAG đã được xóa.");
+      showAdminMessage("Đã xóa tài liệu", "Tài liệu RAG đã được xóa.");
     } catch (error) {
-      Alert.alert("Không xóa được tài liệu", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
+      showAdminMessage("Không xóa được tài liệu", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
     } finally {
       setProcessingDocumentId(null);
     }
@@ -660,7 +732,7 @@ export default function AdminScreen() {
         (current ?? []).map((item) => (item.id === document.id ? response.data : item)),
       );
     } catch (error) {
-      Alert.alert("Không tải được chi tiết tài liệu", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
+      showAdminMessage("Không tải được chi tiết tài liệu", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
     } finally {
       setIsLoadingRagDetail(false);
     }
@@ -675,19 +747,16 @@ export default function AdminScreen() {
         (current ?? []).map((item) => (item.id === document.id ? response.data : item)),
       );
       setSelectedRagDocument((current) => (current?.id === document.id ? response.data : current));
-      Alert.alert("Đã chạy reindex", "Yêu cầu indexing lại đã hoàn tất.");
+      showAdminMessage("Đã chạy reindex", "Yêu cầu indexing lại đã hoàn tất.");
     } catch (error) {
-      Alert.alert("Không chạy lại indexing", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
+      showAdminMessage("Không chạy lại indexing", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
     } finally {
       setProcessingDocumentId(null);
     }
   }
 
   function confirmLogout() {
-    Alert.alert("Đăng xuất", "Bạn muốn đăng xuất khỏi trang Admin?", [
-      { style: "cancel", text: "Hủy" },
-      { onPress: () => void handleLogout(), style: "destructive", text: "Đăng xuất" },
-    ]);
+    confirmAdminAction("Đăng xuất", "Bạn muốn đăng xuất khỏi trang Admin?", () => void handleLogout(), "Đăng xuất", true);
   }
 
   async function handleLogout() {
@@ -705,6 +774,22 @@ export default function AdminScreen() {
     }
   }
 
+  function navigateAdmin(nextView: AdminView) {
+    setSelectedUser(null);
+    if (nextView === "training") setHasOpenedTraining(true);
+    if (nextView !== view) {
+      setUserSearch("");
+      setUserRoleFilter("All");
+      setUserStatusFilter("All");
+      setUserPage(1);
+    }
+    router.setParams({ view: nextView });
+  }
+
+  if (!fontsLoaded && !fontError) {
+    return <View style={[styles.screen, styles.detailLoadingState]}><ActivityIndicator color={theme.primary} /></View>;
+  }
+
   if (!isAdminUser(currentUser)) {
     return (
       <FocusedScreenTransition style={styles.screen}>
@@ -718,100 +803,402 @@ export default function AdminScreen() {
     );
   }
 
-  if (selectedUser) {
-    return (
-      <FocusedScreenTransition style={styles.screen} triggerKey="admin-user-detail" variant="slide-left">
-        <SafeAreaView style={styles.screen} edges={["top"]}>
-          <View style={styles.header}>
-            <Pressable onPress={() => setSelectedUser(null)} hitSlop={12}>
-              <Text style={styles.backText}>‹ Users</Text>
-            </Pressable>
-            <Text style={styles.headerTitle}>Thông tin user</Text>
-            <View style={styles.headerSpacer} />
-          </View>
+  function renderContent() {
+    if (view === "analysis-config") return <AnalysisConfigWorkspace />;
+    if (view === "monitoring") return <SystemMonitoringWorkspace />;
+    if (__DEV__ && view === "load-testing") return <AdminLoadTestingWorkspace active />;
+    if (selectedUser) {
+      return (
+        <FocusedScreenTransition style={styles.screen} triggerKey="admin-user-detail" variant="fade">
+          <View style={styles.screen}>
+            <View style={styles.header}>
+              <Pressable onPress={() => setSelectedUser(null)} hitSlop={12}>
+                <Text style={styles.backText}>‹ Danh sách</Text>
+              </Pressable>
+              <Text style={styles.headerTitle}>Thông tin người dùng</Text>
+              <View style={styles.headerSpacer} />
+            </View>
 
-          <ScrollView contentContainerStyle={styles.detailContent}>
-            <View style={styles.userDetailCard}>
-              <View style={styles.userAvatar}>
-                <Text style={styles.userAvatarText}>
-                  {(selectedUser.displayName ?? selectedUser.username ?? "U").charAt(0).toUpperCase()}
+            <ScrollView contentContainerStyle={styles.detailContent}>
+              <View style={styles.userDetailCard}>
+                <View style={styles.userAvatar}>
+                  <Text style={styles.userAvatarText}>
+                    {(selectedUser.displayName ?? selectedUser.username ?? "U").charAt(0).toUpperCase()}
+                  </Text>
+                </View>
+                <Text style={styles.userDetailName}>{selectedUser.displayName ?? selectedUser.username}</Text>
+                <Text style={styles.userDetailEmail}>{selectedUser.email}</Text>
+              </View>
+
+              <View style={styles.infoCard}>
+                <InfoRow label="ID" value={String(selectedUser.id)} />
+                <InfoRow label="Username" value={selectedUser.username} />
+                <InfoRow label="Email" value={selectedUser.email} />
+                <InfoRow label="Display name" value={selectedUser.displayName ?? "Chưa có"} />
+                <InfoRow label="Role" value={selectedUser.role} />
+                <InfoRow label="Status" value={getUserStatusLabel(selectedUser.status)} />
+                <InfoRow label="Ngày tạo" value={formatDate(selectedUser.createdAt)} />
+                <InfoRow label="Avatar" value={selectedUser.avatarUrl ? "Có" : "Không"} />
+              </View>
+
+              <View style={styles.userControlCard}>
+                <Text style={styles.sectionLabel}>Trạng thái</Text>
+                <View style={styles.typeToggleRow}>
+                  {userStatusOptions.map((status) => (
+                    <Pressable
+                      key={status}
+                      disabled={processingUserId === selectedUser.id}
+                      onPress={() => requestUpdateUserStatus(selectedUser, status)}
+                      style={[styles.typeToggle, selectedUser.status === status && styles.typeToggleSelected]}
+                    >
+                      <Text
+                        style={[
+                          styles.typeToggleText,
+                          selectedUser.status === status && styles.typeToggleTextSelected,
+                        ]}
+                      >
+                        {getUserStatusLabel(status)}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+
+                <Text style={styles.sectionLabel}>Vai trò</Text>
+                <View style={styles.typeToggleRow}>
+                  {userRoleOptions.map((role) => (
+                    <Pressable
+                      key={role}
+                      disabled={processingUserId === selectedUser.id}
+                      onPress={() => requestUpdateUserRole(selectedUser, role)}
+                      style={[styles.typeToggle, selectedUser.role === role && styles.typeToggleSelected]}
+                    >
+                      <Text
+                        style={[styles.typeToggleText, selectedUser.role === role && styles.typeToggleTextSelected]}
+                      >
+                        {role}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+            </ScrollView>
+          </View>
+        </FocusedScreenTransition>
+      );
+    }
+
+    if (view === "users") {
+      return (
+        <FocusedScreenTransition style={styles.screen} triggerKey={view} variant="fade">
+          <View style={styles.screen}>
+            <View style={styles.header}>
+              <Pressable onPress={() => navigateAdmin("dashboard")} hitSlop={12}>
+                <Text style={styles.backText}>‹ Admin</Text>
+              </Pressable>
+              <Text style={styles.headerTitle}>Người dùng</Text>
+              <Text style={styles.headerCount}>{userTotalCount}</Text>
+            </View>
+
+            <ScrollView
+              contentContainerStyle={styles.listContent}
+              refreshControl={
+                <RefreshControl
+                  refreshing={isRefreshing}
+                  onRefresh={() => loadAdminData({ refresh: true })}
+                  tintColor={theme.primary}
+                />
+              }
+            >
+              <View style={styles.userFilterCard}>
+                <TextInput
+                  autoCapitalize="none"
+                  onChangeText={updateUserSearch}
+                  placeholder="Tìm theo tên hoặc email…"
+                  placeholderTextColor={theme.inputPlaceholder}
+                  style={styles.formInput}
+                  value={userSearch}
+                />
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
+                  {(["All", ...userRoleOptions] as (AdminUserRole | "All")[]).map((role) => (
+                    <FilterChip
+                      key={role}
+                      label={role === "All" ? "Tất cả vai trò" : role === "Admin" ? "Quản trị viên" : "Người dùng"}
+                      selected={userRoleFilter === role}
+                      onPress={() => updateUserRoleFilter(role)}
+                    />
+                  ))}
+                </ScrollView>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
+                  {(["All", ...userStatusOptions] as (AdminUserStatus | "All")[]).map((status) => (
+                    <FilterChip
+                      key={status}
+                      label={status === "All" ? "Tất cả trạng thái" : getUserStatusLabel(status)}
+                      selected={userStatusFilter === status}
+                      onPress={() => updateUserStatusFilter(status)}
+                    />
+                  ))}
+                </ScrollView>
+              </View>
+
+              {isLoadingUsers ? (
+                <View style={styles.loadingCard}>
+                  <ActivityIndicator color={theme.primary} />
+                  <Text style={styles.loadingText}>Đang tải user...</Text>
+                </View>
+              ) : users.length === 0 ? (
+                <View style={styles.emptyDocumentCard}>
+                  <Text style={styles.emptyDocumentTitle}>Không có user</Text>
+                  <Text style={styles.emptyDocumentText}>Thử đổi từ khóa tìm kiếm hoặc bộ lọc.</Text>
+                </View>
+              ) : (
+              <View style={styles.userTable}>
+                <View style={styles.tableHeading}><Text style={styles.tableHeadingText}>NGƯỜI DÙNG</Text><Text style={styles.tableHeadingText}>{userTotalCount} tài khoản</Text></View>
+                {(users ?? []).map(user => <AdminUserRow key={user.id} user={user} onPress={() => openUserDetail(user)} />)}
+              </View>
+              )}
+
+              <View style={styles.paginationRow}>
+                <Pressable
+                  disabled={userPage <= 1 || isRefreshing}
+                  onPress={() => setUserPage((page) => Math.max(1, page - 1))}
+                  style={[styles.paginationButton, (userPage <= 1 || isRefreshing) && styles.disabledText]}
+                >
+                  <Text style={styles.paginationButtonText}>Trước</Text>
+                </Pressable>
+                <Text style={styles.paginationText}>
+                  Trang {userPage}/{userTotalPages}
                 </Text>
+                <Pressable
+                  disabled={userPage >= userTotalPages || isRefreshing}
+                  onPress={() => setUserPage((page) => Math.min(userTotalPages, page + 1))}
+                  style={[
+                    styles.paginationButton,
+                    (userPage >= userTotalPages || isRefreshing) && styles.disabledText,
+                  ]}
+                >
+                  <Text style={styles.paginationButtonText}>Sau</Text>
+                </Pressable>
               </View>
-              <Text style={styles.userDetailName}>{selectedUser.displayName ?? selectedUser.username}</Text>
-              <Text style={styles.userDetailEmail}>{selectedUser.email}</Text>
-            </View>
-
-            <View style={styles.infoCard}>
-              <InfoRow label="ID" value={String(selectedUser.id)} />
-              <InfoRow label="Username" value={selectedUser.username} />
-              <InfoRow label="Email" value={selectedUser.email} />
-              <InfoRow label="Display name" value={selectedUser.displayName ?? "Chưa có"} />
-              <InfoRow label="Role" value={selectedUser.role} />
-              <InfoRow label="Status" value={getUserStatusLabel(selectedUser.status)} />
-              <InfoRow label="Ngày tạo" value={formatDate(selectedUser.createdAt)} />
-              <InfoRow label="Avatar" value={selectedUser.avatarUrl ? "Có" : "Không"} />
-            </View>
-
-            <View style={styles.userControlCard}>
-              <Text style={styles.sectionLabel}>Trạng thái</Text>
-              <View style={styles.typeToggleRow}>
-                {userStatusOptions.map((status) => (
-                  <Pressable
-                    key={status}
-                    disabled={processingUserId === selectedUser.id}
-                    onPress={() => requestUpdateUserStatus(selectedUser, status)}
-                    style={[styles.typeToggle, selectedUser.status === status && styles.typeToggleSelected]}
-                  >
-                    <Text
-                      style={[
-                        styles.typeToggleText,
-                        selectedUser.status === status && styles.typeToggleTextSelected,
-                      ]}
-                    >
-                      {getUserStatusLabel(status)}
-                    </Text>
-                  </Pressable>
-                ))}
-              </View>
-
-              <Text style={styles.sectionLabel}>Vai trò</Text>
-              <View style={styles.typeToggleRow}>
-                {userRoleOptions.map((role) => (
-                  <Pressable
-                    key={role}
-                    disabled={processingUserId === selectedUser.id}
-                    onPress={() => requestUpdateUserRole(selectedUser, role)}
-                    style={[styles.typeToggle, selectedUser.role === role && styles.typeToggleSelected]}
-                  >
-                    <Text
-                      style={[styles.typeToggleText, selectedUser.role === role && styles.typeToggleTextSelected]}
-                    >
-                      {role}
-                    </Text>
-                  </Pressable>
-                ))}
-              </View>
-            </View>
-          </ScrollView>
-        </SafeAreaView>
-      </FocusedScreenTransition>
-    );
-  }
-
-  if (view === "users") {
-    return (
-      <FocusedScreenTransition style={styles.screen} triggerKey={view} variant="slide-left">
-        <SafeAreaView style={styles.screen} edges={["top"]}>
-          <View style={styles.header}>
-            <Pressable onPress={() => setView("dashboard")} hitSlop={12}>
-              <Text style={styles.backText}>‹ Admin</Text>
-            </Pressable>
-            <Text style={styles.headerTitle}>Users</Text>
-            <Text style={styles.headerCount}>{userTotalCount}</Text>
+            </ScrollView>
           </View>
+        </FocusedScreenTransition>
+      );
+    }
 
+    if (view === "training") {
+      return null;
+    }
+
+    if (view === "categories") {
+      return (
+        <FocusedScreenTransition style={styles.screen} triggerKey={view} variant="fade">
+          <View style={styles.screen}>
+            <View style={styles.header}>
+              <Pressable onPress={() => navigateAdmin("dashboard")} hitSlop={12}>
+                <Text style={styles.backText}>‹ Admin</Text>
+              </Pressable>
+              <Text style={styles.headerTitle}>Danh mục mặc định</Text>
+              <Pressable style={styles.addButton} onPress={openAddDefaultCategory}>
+                <Text style={styles.addButtonText}>+</Text>
+              </Pressable>
+            </View>
+
+            <ScrollView
+              contentContainerStyle={styles.categoryContent}
+              refreshControl={
+                <RefreshControl
+                  refreshing={isRefreshing}
+                  onRefresh={() => loadAdminData({ refresh: true })}
+                  tintColor={theme.primary}
+                />
+              }
+            >
+              {(defaultCategories ?? []).map((category) => (
+                <Pressable key={category.id} style={styles.categoryRow} onPress={() => openEditDefaultCategory(category)}>
+                  <View style={styles.categoryIcon}>
+                    <CategoryIconMark icon={category.icon} />
+                  </View>
+                  <View style={styles.rowCopy}>
+                    <Text style={styles.rowTitle}>{category.name}</Text>
+                    <Text style={styles.rowSubtitle}>
+                      {getCategoryTypeLabel(category.type)} · {category.icon ?? "no icon"}
+                    </Text>
+                  </View>
+                  <Pressable
+                    style={styles.deleteCategoryButton}
+                    onPress={(event) => {
+                      event.stopPropagation();
+                      requestDeleteDefaultCategory(category);
+                    }}
+                    hitSlop={8}
+                  >
+                    <Text style={styles.deleteCategoryText}>Xóa</Text>
+                  </Pressable>
+                </Pressable>
+              ))}
+            </ScrollView>
+
+            <CategoryFormModal
+              form={categoryForm}
+              iconPickerVisible={isCategoryIconPickerVisible}
+              isSaving={isSavingCategory}
+              onChange={setCategoryForm}
+              onClose={closeCategoryForm}
+              onCloseIconPicker={() => setIsCategoryIconPickerVisible(false)}
+              onOpenIconPicker={() => setIsCategoryIconPickerVisible(true)}
+              onSelectIcon={(icon) => {
+                setCategoryForm((current) => ({ ...current, icon }));
+                setIsCategoryIconPickerVisible(false);
+              }}
+              onSubmit={saveDefaultCategory}
+              theme={theme}
+              title={editingCategory ? "Sửa category mặc định" : "Thêm category mặc định"}
+              visible={isCategoryFormVisible}
+            />
+          </View>
+        </FocusedScreenTransition>
+      );
+    }
+
+    if (view === "documents") {
+      return (
+        <FocusedScreenTransition style={styles.screen} triggerKey={view} variant="fade">
+          <View style={styles.screen}>
+            <View style={styles.header}>
+              <Pressable onPress={() => navigateAdmin("dashboard")} hitSlop={12}>
+                <Text style={styles.backText}>‹ Admin</Text>
+              </Pressable>
+              <Text style={styles.headerTitle}>Tài liệu RAG</Text>
+              <Pressable style={styles.addButton} onPress={openRagUpload}>
+                <Text style={styles.addButtonText}>+</Text>
+              </Pressable>
+            </View>
+
+            <ScrollView
+              contentContainerStyle={styles.documentContent}
+              refreshControl={
+                <RefreshControl
+                  refreshing={isRefreshing}
+                  onRefresh={() => loadAdminData({ refresh: true })}
+                  tintColor={theme.primary}
+                />
+              }
+            >
+              {ragDocuments.length === 0 ? (
+                <View style={styles.emptyDocumentCard}>
+                  <Text style={styles.emptyDocumentTitle}>Chưa có tài liệu</Text>
+                  <Text style={styles.emptyDocumentText}>Upload tài liệu đầu tiên để tạo nguồn dữ liệu RAG.</Text>
+                  <Pressable style={styles.fullSaveButton} onPress={openRagUpload}>
+                    <Text style={styles.fullSaveButtonText}>Upload tài liệu</Text>
+                  </Pressable>
+                </View>
+              ) : (
+                ragDocuments.map((document) => (
+                  <RagDocumentRow
+                    key={document.id}
+                    document={document}
+                    isProcessing={processingDocumentId === document.id}
+                    onDelete={() => requestDeleteRagDocument(document)}
+                    onMore={() => setActionMenuRagDocument(document)}
+                  />
+                ))
+              )}
+            </ScrollView>
+
+            <RagUploadModal
+              form={ragUploadForm}
+              isUploading={isUploadingRagDocument}
+              onChange={setRagUploadForm}
+              onClose={() => {
+                if (!isUploadingRagDocument) {
+                  setIsRagUploadVisible(false);
+                }
+              }}
+              onPickFile={pickRagDocumentFile}
+              onSubmit={uploadRagDocument}
+              theme={theme}
+              visible={isRagUploadVisible}
+            />
+            <RagActionMenuModal
+              document={actionMenuRagDocument}
+              isProcessing={actionMenuRagDocument ? processingDocumentId === actionMenuRagDocument.id : false}
+              onClose={() => setActionMenuRagDocument(null)}
+              onDelete={() => {
+                if (actionMenuRagDocument) {
+                  requestDeleteRagDocument(actionMenuRagDocument);
+                }
+              }}
+              onDetail={() => {
+                if (actionMenuRagDocument) {
+                  const document = actionMenuRagDocument;
+
+                  setActionMenuRagDocument(null);
+                  void openRagDocumentDetail(document);
+                }
+              }}
+              onEdit={() => {
+                if (actionMenuRagDocument) {
+                  queueOpenEditRagMetadata(actionMenuRagDocument);
+                }
+              }}
+              onReindex={() => {
+                if (actionMenuRagDocument) {
+                  const document = actionMenuRagDocument;
+
+                  setActionMenuRagDocument(null);
+                  void reindexRagDocument(document);
+                }
+              }}
+            />
+            <RagDetailModal
+              document={selectedRagDocument}
+              isLoading={isLoadingRagDetail}
+              isProcessing={selectedRagDocument ? processingDocumentId === selectedRagDocument.id : false}
+              onClose={() => {
+                setIsRagDetailVisible(false);
+                setSelectedRagDocument(null);
+              }}
+              onDelete={() => {
+                if (selectedRagDocument) {
+                  requestDeleteRagDocument(selectedRagDocument);
+                }
+              }}
+              onEdit={() => {
+                if (selectedRagDocument) {
+                  queueOpenEditRagMetadata(selectedRagDocument, { closeDetail: true });
+                }
+              }}
+              onReindex={() => {
+                if (selectedRagDocument) {
+                  void reindexRagDocument(selectedRagDocument);
+                }
+              }}
+              visible={isRagDetailVisible}
+            />
+            <RagMetadataModal
+              form={ragMetadataForm}
+              isSaving={isSavingRagMetadata}
+              onChange={setRagMetadataForm}
+              onClose={() => {
+                if (!isSavingRagMetadata) {
+                  setIsRagMetadataVisible(false);
+                  setEditingRagDocument(null);
+                }
+              }}
+              onSubmit={saveRagMetadata}
+              theme={theme}
+              visible={isRagMetadataVisible}
+            />
+          </View>
+        </FocusedScreenTransition>
+      );
+    }
+
+    return (
+      <FocusedScreenTransition style={styles.screen} triggerKey={view} variant="fade">
+        <View style={styles.screen}>
           <ScrollView
-            contentContainerStyle={styles.listContent}
+            contentContainerStyle={styles.content}
             refreshControl={
               <RefreshControl
                 refreshing={isRefreshing}
@@ -819,412 +1206,101 @@ export default function AdminScreen() {
                 tintColor={theme.primary}
               />
             }
+            showsVerticalScrollIndicator={false}
           >
-            <View style={styles.userFilterCard}>
-              <TextInput
-                autoCapitalize="none"
-                onChangeText={updateUserSearch}
-                placeholder="Tìm username, email, display name"
-                placeholderTextColor={theme.inputPlaceholder}
-                style={styles.formInput}
-                value={userSearch}
-              />
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
-                {(["All", ...userRoleOptions] as (AdminUserRole | "All")[]).map((role) => (
-                  <FilterChip
-                    key={role}
-                    label={role === "All" ? "Tất cả role" : role}
-                    selected={userRoleFilter === role}
-                    onPress={() => updateUserRoleFilter(role)}
-                  />
-                ))}
-              </ScrollView>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
-                {(["All", ...userStatusOptions] as (AdminUserStatus | "All")[]).map((status) => (
-                  <FilterChip
-                    key={status}
-                    label={status === "All" ? "Tất cả trạng thái" : getUserStatusLabel(status)}
-                    selected={userStatusFilter === status}
-                    onPress={() => updateUserStatusFilter(status)}
-                  />
-                ))}
-              </ScrollView>
+            <View style={styles.welcomeRow}>
+              <View style={styles.welcomeCopy}>
+                <Text style={styles.eyebrow}>KHÔNG GIAN QUẢN TRỊ</Text>
+                <Text style={styles.title}>Tổng quan hệ thống</Text>
+                <Text style={styles.pageDescription}>Quản lý người dùng, dữ liệu và tri thức trong một không gian.</Text>
+              </View>
+              <Pressable accessibilityRole="button" onPress={() => loadAdminData({ refresh: true })} disabled={isRefreshing} style={({ hovered }) => [styles.refreshButton, hovered && styles.hoverSurface]}>
+                {isRefreshing ? <ActivityIndicator size="small" color={theme.textMuted} /> : <RotateCw size={14} color={theme.textMuted} />}<Text style={styles.refreshText}>Làm mới</Text>
+              </Pressable>
             </View>
+
+            {adminLoadWarnings.length > 0 ? (
+              <View style={styles.loadWarningCard}>
+                {adminLoadWarnings.map((warning) => (
+                  <Text key={warning} style={styles.loadWarningText}>{warning}</Text>
+                ))}
+              </View>
+            ) : null}
 
             {isLoading ? (
               <View style={styles.loadingCard}>
                 <ActivityIndicator color={theme.primary} />
-                <Text style={styles.loadingText}>Đang tải user...</Text>
-              </View>
-            ) : users.length === 0 ? (
-              <View style={styles.emptyDocumentCard}>
-                <Text style={styles.emptyDocumentTitle}>Không có user</Text>
-                <Text style={styles.emptyDocumentText}>Thử đổi từ khóa tìm kiếm hoặc bộ lọc.</Text>
+                <Text style={styles.loadingText}>Đang tải dữ liệu admin...</Text>
               </View>
             ) : (
-            (users ?? []).map((user) => (
-              <Pressable key={user.id} style={styles.userRow} onPress={() => openUserDetail(user)}>
-                <View style={styles.userMiniAvatar}>
-                  <Text style={styles.userMiniAvatarText}>
-                    {(user.displayName ?? user.username ?? "U").charAt(0).toUpperCase()}
-                  </Text>
+              <>
+                <View style={styles.tileGrid}>
+                  <AdminTile Icon={Users} label="Người dùng" metric={userTotalCount} note="Tài khoản trong hệ thống" onPress={() => navigateAdmin("users")} />
+                  <AdminTile Icon={FolderOpen} label="Danh mục" metric={defaultCategories.length} note="Danh mục mặc định" onPress={() => navigateAdmin("categories")} />
+                  <AdminTile Icon={BookOpen} label="Tài liệu tri thức" metric={ragDocuments.length} note="Nguồn dữ liệu cho trợ lý AI" onPress={() => navigateAdmin("documents")} />
                 </View>
-                <View style={styles.rowCopy}>
-                  <Text style={styles.rowTitle}>{user.displayName ?? user.username}</Text>
-                  <Text style={styles.rowSubtitle}>
-                    @{user.username} · {user.email}
-                  </Text>
-                  <Text style={styles.rowSubtitle}>
-                    {getUserStatusLabel(user.status)} · {formatDate(user.createdAt)}
-                  </Text>
-                </View>
-                <View style={[styles.roleBadge, user.role === "Admin" && styles.roleBadgeAdmin]}>
-                  <Text style={[styles.roleBadgeText, user.role === "Admin" && styles.roleBadgeTextAdmin]}>
-                    {user.role}
-                  </Text>
-                </View>
-              </Pressable>
-            ))
-            )}
 
-            <View style={styles.paginationRow}>
-              <Pressable
-                disabled={userPage <= 1 || isRefreshing}
-                onPress={() => setUserPage((page) => Math.max(1, page - 1))}
-                style={[styles.paginationButton, (userPage <= 1 || isRefreshing) && styles.disabledText]}
-              >
-                <Text style={styles.paginationButtonText}>Trước</Text>
-              </Pressable>
-              <Text style={styles.paginationText}>
-                Trang {userPage}/{userTotalPages}
-              </Text>
-              <Pressable
-                disabled={userPage >= userTotalPages || isRefreshing}
-                onPress={() => setUserPage((page) => Math.min(userTotalPages, page + 1))}
-                style={[
-                  styles.paginationButton,
-                  (userPage >= userTotalPages || isRefreshing) && styles.disabledText,
-                ]}
-              >
-                <Text style={styles.paginationButtonText}>Sau</Text>
-              </Pressable>
-            </View>
-          </ScrollView>
-        </SafeAreaView>
-      </FocusedScreenTransition>
-    );
-  }
-
-  if (view === "categories") {
-    return (
-      <FocusedScreenTransition style={styles.screen} triggerKey={view} variant="slide-left">
-        <SafeAreaView style={styles.screen} edges={["top"]}>
-          <View style={styles.header}>
-            <Pressable onPress={() => setView("dashboard")} hitSlop={12}>
-              <Text style={styles.backText}>‹ Admin</Text>
-            </Pressable>
-            <Text style={styles.headerTitle}>Category mặc định</Text>
-            <Pressable style={styles.addButton} onPress={openAddDefaultCategory}>
-              <Text style={styles.addButtonText}>+</Text>
-            </Pressable>
-          </View>
-
-          <ScrollView
-            contentContainerStyle={styles.categoryContent}
-            refreshControl={
-              <RefreshControl
-                refreshing={isRefreshing}
-                onRefresh={() => loadAdminData({ refresh: true })}
-                tintColor={theme.primary}
-              />
-            }
-          >
-            {(defaultCategories ?? []).map((category) => (
-              <Pressable key={category.id} style={styles.categoryRow} onPress={() => openEditDefaultCategory(category)}>
-                <View style={styles.categoryIcon}>
-                  <CategoryIconMark icon={category.icon} />
+                <View style={styles.overviewGrid}>
+                  <View style={styles.overviewMain}>
+                    <View style={styles.panelHeading}><View><Text style={styles.panelTitle}>Người dùng</Text><Text style={styles.panelSubtitle}>Tài khoản trong danh sách hiện tại</Text></View><Pressable accessibilityRole="button" onPress={() => navigateAdmin("users")} style={styles.inlineLink}><Text style={styles.inlineLinkText}>Xem tất cả</Text><ArrowUpRight size={14} color={theme.primary} /></Pressable></View>
+                    {users.length === 0 ? <Text style={styles.panelEmpty}>Chưa có người dùng để hiển thị.</Text> : users.slice(0, 5).map(user => <AdminUserRow key={user.id} user={user} onPress={() => openUserDetail(user)} compact />)}
+                  </View>
+                  <View style={styles.overviewAside}>
+                    <View style={styles.panelHeading}><View><Text style={styles.panelTitle}>Kho tri thức</Text><Text style={styles.panelSubtitle}>Trạng thái xử lý tài liệu</Text></View><BookOpen size={18} color={theme.textMuted} /></View>
+                    <View style={styles.knowledgeStats}>
+                      <StatRow label="Đã lập chỉ mục" value={String(ragDocuments.filter(doc => doc.status === "Indexed").length)} />
+                      <StatRow label="Đang xử lý" value={String(ragDocuments.filter(doc => doc.status === "Processing").length)} />
+                      <StatRow label="Bản nháp" value={String(ragDocuments.filter(doc => doc.status === "Draft").length)} />
+                      <StatRow label="Cần kiểm tra" value={String(ragDocuments.filter(doc => doc.status === "Failed").length)} />
+                    </View>
+                    <Pressable accessibilityRole="button" style={styles.panelFooter} onPress={() => navigateAdmin("documents")}><Text style={styles.inlineLinkText}>Quản lý tài liệu</Text><ArrowUpRight size={14} color={theme.primary} /></Pressable>
+                  </View>
                 </View>
-                <View style={styles.rowCopy}>
-                  <Text style={styles.rowTitle}>{category.name}</Text>
-                  <Text style={styles.rowSubtitle}>
-                    {getCategoryTypeLabel(category.type)} · {category.icon ?? "no icon"}
-                  </Text>
-                </View>
-                <Pressable
-                  style={styles.deleteCategoryButton}
-                  onPress={(event) => {
-                    event.stopPropagation();
-                    requestDeleteDefaultCategory(category);
-                  }}
-                  hitSlop={8}
-                >
-                  <Text style={styles.deleteCategoryText}>Xóa</Text>
+                <Pressable accessibilityRole="button" onPress={() => navigateAdmin("training")} style={({ hovered }) => [styles.trainingEntry, hovered && styles.hoverSurface]}>
+                  <View style={styles.trainingEntryIcon}><SlidersHorizontal size={20} color={theme.primary} /></View><View style={styles.rowCopy}><Text style={styles.panelTitle}>Mô hình dự báo</Text><Text style={styles.panelSubtitle}>Chọn dữ liệu người dùng và quản lý quá trình huấn luyện.</Text></View><ArrowUpRight size={18} color={theme.textMuted} />
                 </Pressable>
-              </Pressable>
-            ))}
-          </ScrollView>
-
-          <CategoryFormModal
-            form={categoryForm}
-            iconPickerVisible={isCategoryIconPickerVisible}
-            isSaving={isSavingCategory}
-            onChange={setCategoryForm}
-            onClose={closeCategoryForm}
-            onCloseIconPicker={() => setIsCategoryIconPickerVisible(false)}
-            onOpenIconPicker={() => setIsCategoryIconPickerVisible(true)}
-            onSelectIcon={(icon) => {
-              setCategoryForm((current) => ({ ...current, icon }));
-              setIsCategoryIconPickerVisible(false);
-            }}
-            onSubmit={saveDefaultCategory}
-            theme={theme}
-            title={editingCategory ? "Sửa category mặc định" : "Thêm category mặc định"}
-            visible={isCategoryFormVisible}
-          />
-        </SafeAreaView>
-      </FocusedScreenTransition>
-    );
-  }
-
-  if (view === "documents") {
-    return (
-      <FocusedScreenTransition style={styles.screen} triggerKey={view} variant="slide-left">
-        <SafeAreaView style={styles.screen} edges={["top"]}>
-          <View style={styles.header}>
-            <Pressable onPress={() => setView("dashboard")} hitSlop={12}>
-              <Text style={styles.backText}>‹ Admin</Text>
-            </Pressable>
-            <Text style={styles.headerTitle}>Tài liệu RAG</Text>
-            <Pressable style={styles.addButton} onPress={openRagUpload}>
-              <Text style={styles.addButtonText}>+</Text>
-            </Pressable>
-          </View>
-
-          <ScrollView
-            contentContainerStyle={styles.documentContent}
-            refreshControl={
-              <RefreshControl
-                refreshing={isRefreshing}
-                onRefresh={() => loadAdminData({ refresh: true })}
-                tintColor={theme.primary}
-              />
-            }
-          >
-            {ragDocuments.length === 0 ? (
-              <View style={styles.emptyDocumentCard}>
-                <Text style={styles.emptyDocumentTitle}>Chưa có tài liệu</Text>
-                <Text style={styles.emptyDocumentText}>Upload tài liệu đầu tiên để tạo nguồn dữ liệu RAG.</Text>
-                <Pressable style={styles.fullSaveButton} onPress={openRagUpload}>
-                  <Text style={styles.fullSaveButtonText}>Upload tài liệu</Text>
-                </Pressable>
-              </View>
-            ) : (
-              ragDocuments.map((document) => (
-                <RagDocumentRow
-                  key={document.id}
-                  document={document}
-                  isProcessing={processingDocumentId === document.id}
-                  onDelete={() => requestDeleteRagDocument(document)}
-                  onMore={() => setActionMenuRagDocument(document)}
-                />
-              ))
+              </>
             )}
           </ScrollView>
-
-          <RagUploadModal
-            form={ragUploadForm}
-            isUploading={isUploadingRagDocument}
-            onChange={setRagUploadForm}
-            onClose={() => {
-              if (!isUploadingRagDocument) {
-                setIsRagUploadVisible(false);
-              }
-            }}
-            onPickFile={pickRagDocumentFile}
-            onSubmit={uploadRagDocument}
-            theme={theme}
-            visible={isRagUploadVisible}
-          />
-          <RagActionMenuModal
-            document={actionMenuRagDocument}
-            isProcessing={actionMenuRagDocument ? processingDocumentId === actionMenuRagDocument.id : false}
-            onClose={() => setActionMenuRagDocument(null)}
-            onDelete={() => {
-              if (actionMenuRagDocument) {
-                requestDeleteRagDocument(actionMenuRagDocument);
-              }
-            }}
-            onDetail={() => {
-              if (actionMenuRagDocument) {
-                const document = actionMenuRagDocument;
-
-                setActionMenuRagDocument(null);
-                void openRagDocumentDetail(document);
-              }
-            }}
-            onEdit={() => {
-              if (actionMenuRagDocument) {
-                queueOpenEditRagMetadata(actionMenuRagDocument);
-              }
-            }}
-            onReindex={() => {
-              if (actionMenuRagDocument) {
-                const document = actionMenuRagDocument;
-
-                setActionMenuRagDocument(null);
-                void reindexRagDocument(document);
-              }
-            }}
-          />
-          <RagDetailModal
-            document={selectedRagDocument}
-            isLoading={isLoadingRagDetail}
-            isProcessing={selectedRagDocument ? processingDocumentId === selectedRagDocument.id : false}
-            onClose={() => {
-              setIsRagDetailVisible(false);
-              setSelectedRagDocument(null);
-            }}
-            onDelete={() => {
-              if (selectedRagDocument) {
-                requestDeleteRagDocument(selectedRagDocument);
-              }
-            }}
-            onEdit={() => {
-              if (selectedRagDocument) {
-                queueOpenEditRagMetadata(selectedRagDocument, { closeDetail: true });
-              }
-            }}
-            onReindex={() => {
-              if (selectedRagDocument) {
-                void reindexRagDocument(selectedRagDocument);
-              }
-            }}
-            visible={isRagDetailVisible}
-          />
-          <RagMetadataModal
-            form={ragMetadataForm}
-            isSaving={isSavingRagMetadata}
-            onChange={setRagMetadataForm}
-            onClose={() => {
-              if (!isSavingRagMetadata) {
-                setIsRagMetadataVisible(false);
-                setEditingRagDocument(null);
-              }
-            }}
-            onSubmit={saveRagMetadata}
-            theme={theme}
-            visible={isRagMetadataVisible}
-          />
-        </SafeAreaView>
+        </View>
       </FocusedScreenTransition>
     );
   }
 
   return (
-    <FocusedScreenTransition style={styles.screen} triggerKey={view} variant="slide-right">
-      <SafeAreaView style={styles.screen} edges={["top"]}>
-        <ScrollView
-          contentContainerStyle={styles.content}
-          refreshControl={
-            <RefreshControl
-              refreshing={isRefreshing}
-              onRefresh={() => loadAdminData({ refresh: true })}
-              tintColor={theme.primary}
-            />
-          }
-          showsVerticalScrollIndicator={false}
-        >
-          <View style={styles.welcomeRow}>
-            <View>
-              <Text style={styles.eyebrow}>ADMIN CONSOLE</Text>
-              <Text style={styles.title}>Xin chào, {currentUser?.displayName ?? currentUser?.username}</Text>
-            </View>
-            <View style={styles.adminActions}>
-              <View style={styles.adminAvatar}>
-                <Text style={styles.adminAvatarText}>A</Text>
-              </View>
-              <Pressable
-                style={[styles.logoutButton, isLoggingOut && styles.disabledText]}
-                onPress={confirmLogout}
-                disabled={isLoggingOut}
-              >
-                {isLoggingOut ? (
-                  <ActivityIndicator color={theme.textInverse} />
-                ) : (
-                  <Text style={styles.logoutButtonText}>Đăng xuất</Text>
-                )}
-              </Pressable>
-            </View>
-          </View>
-
-          {isLoading ? (
-            <View style={styles.loadingCard}>
-              <ActivityIndicator color={theme.primary} />
-              <Text style={styles.loadingText}>Đang tải dữ liệu admin...</Text>
-            </View>
-          ) : (
-            <>
-              <View style={styles.tileGrid}>
-                <AdminTile
-                  color="#58c768"
-                  label="User"
-                  metric={users.length}
-                  note="Quản lý người dùng"
-                  onPress={() => setView("users")}
-                />
-                <AdminTile
-                  color="#4a90e2"
-                  label="Category"
-                  metric={defaultCategories.length}
-                  note="Danh mục mặc định"
-                  onPress={() => setView("categories")}
-                />
-                <AdminTile
-                  color="#8b5cf6"
-                  label="RAG Docs"
-                  metric={ragDocuments.length}
-                  note="Tài liệu tri thức AI"
-                  onPress={() => setView("documents")}
-                />
-              </View>
-
-              <Text style={styles.sectionLabel}>Thống kê hệ thống</Text>
-              <View style={styles.statsCard}>
-                <StatRow label="Tổng user" value={String(users.length)} />
-                <StatRow label="Tổng giao dịch" value={String(transactions.length)} />
-                <StatRow label="Category mặc định" value={String(defaultCategories.length)} />
-                <StatRow label="Tài liệu RAG" value={String(ragDocuments.length)} />
-              </View>
-            </>
-          )}
-        </ScrollView>
-      </SafeAreaView>
-    </FocusedScreenTransition>
+    <AdminShell view={view} onNavigate={navigateAdmin} name={currentUser?.displayName ?? currentUser?.username ?? "Admin"} onLogout={confirmLogout} isLoggingOut={isLoggingOut}>
+      <View style={[styles.screen, view === "training" && styles.hidden]}>{renderContent()}</View>
+      {hasOpenedTraining ? <View style={[styles.screen, view !== "training" && styles.hidden]}><ForecastTrainingWorkspace active={view === "training"} renderResult={result => <ForecastTrainingResult result={result} />} /></View> : null}
+    </AdminShell>
   );
 }
 
-function AdminTile({
-  color,
-  label,
-  metric,
-  note,
-  onPress,
-}: {
-  color: string;
-  label: string;
-  metric: number;
-  note: string;
-  onPress: () => void;
+function AdminTile({ Icon, label, metric, note, onPress }: {
+  Icon: CategoryIconComponent; label: string; metric: number; note: string; onPress: () => void;
 }) {
   const styles = useAdminStyles();
-
+  const theme = useAdminTheme();
   return (
-    <Pressable style={[styles.tile, { backgroundColor: color }]} onPress={onPress}>
-      <Text style={styles.tileLabel}>{label}</Text>
-      <Text style={styles.tileMetric}>{metric}</Text>
-      <Text style={styles.tileNote}>{note}</Text>
+    <Pressable accessibilityRole="button" style={({ hovered, pressed }) => [styles.tile, (hovered || pressed) && styles.tileHovered]} onPress={onPress}>
+      <View style={styles.tileTop}><Text style={styles.tileLabel}>{label}</Text><Icon size={18} strokeWidth={1.6} color={theme.textMuted} /></View>
+      <Text style={styles.tileMetric}>{new Intl.NumberFormat("vi-VN").format(metric)}</Text>
+      <View style={styles.tileTop}><Text style={styles.tileNote}>{note}</Text><ArrowUpRight size={14} color={theme.textMuted} /></View>
     </Pressable>
   );
+}
+
+function AdminUserRow({ user, onPress, compact = false }: { user: AdminUser; onPress: () => void; compact?: boolean }) {
+  const styles = useAdminStyles();
+  const theme = useAdminTheme();
+  const desktop = useWindowDimensions().width >= 1100;
+  return <Pressable accessibilityRole="button" onPress={onPress} style={({ hovered, pressed }) => [styles.userRow, compact && styles.compactUserRow, (hovered || pressed) && styles.hoverSurface]}>
+    <View style={styles.userMiniAvatar}><Text style={styles.userMiniAvatarText}>{(user.displayName || user.username || "U").charAt(0).toUpperCase()}</Text></View>
+    <View style={styles.rowCopy}><Text numberOfLines={1} style={styles.rowTitle}>{user.displayName || user.username}</Text><Text numberOfLines={1} style={styles.rowSubtitle}>{user.email}</Text></View>
+    {!compact && desktop ? <View style={styles.userStatusColumn}><View style={styles.statusLine}><View style={[styles.statusDot, { backgroundColor: user.status === "Active" ? theme.primary : theme.textMuted }]} /><Text style={styles.rowSubtitle}>{getUserStatusLabel(user.status)}</Text></View><Text style={styles.rowSubtitle}>{formatDate(user.createdAt)}</Text></View> : null}
+    {!compact && !desktop ? <Text style={styles.mobileStatus}>{getUserStatusLabel(user.status)}</Text> : null}
+    <View style={[styles.roleBadge, user.role === "Admin" && styles.roleBadgeAdmin]}><Text style={[styles.roleBadgeText, user.role === "Admin" && styles.roleBadgeTextAdmin]}>{user.role === "Admin" ? "Quản trị" : "Thành viên"}</Text></View>
+    {desktop && !compact ? <ArrowUpRight size={15} color={theme.textMuted} /> : null}
+  </Pressable>;
 }
 
 function RagDocumentRow({
@@ -1238,7 +1314,7 @@ function RagDocumentRow({
   onDelete: () => void;
   onMore: () => void;
 }) {
-  const theme = useAppTheme();
+  const theme = useAdminTheme();
   const styles = useAdminStyles();
 
   return (
@@ -1303,7 +1379,7 @@ function RagActionMenuModal({
   onEdit: () => void;
   onReindex: () => void;
 }) {
-  const theme = useAppTheme();
+  const theme = useAdminTheme();
   const styles = useAdminStyles();
   const statusLabel = document ? getRagDocumentStatusLabel(document) : "";
   const canReindex = statusLabel.toLowerCase() !== "draft";
@@ -1491,7 +1567,7 @@ function RagUploadModal({
   onClose: () => void;
   onPickFile: () => void;
   onSubmit: () => void;
-  theme: AppTheme;
+  theme: AdminTheme;
   visible: boolean;
 }) {
   const styles = useAdminStyles();
@@ -1592,7 +1668,7 @@ function RagMetadataModal({
   onChange: (form: RagMetadataFormState) => void;
   onClose: () => void;
   onSubmit: () => void;
-  theme: AppTheme;
+  theme: AdminTheme;
   visible: boolean;
 }) {
   const styles = useAdminStyles();
@@ -1698,7 +1774,7 @@ function InfoRow({ label, value }: { label: string; value: string }) {
 }
 
 function CategoryIconMark({ icon }: { icon: string | null | undefined }) {
-  const theme = useAppTheme();
+  const theme = useAdminTheme();
   const styles = useAdminStyles();
   const iconOption = getCategoryIconOption(icon);
 
@@ -1718,7 +1794,7 @@ function CategoryIconPickerContent({
   onSelect: (icon: string) => void;
   selectedIcon: string;
 }) {
-  const theme = useAppTheme();
+  const theme = useAdminTheme();
   const styles = useAdminStyles();
 
   return (
@@ -1779,7 +1855,7 @@ function CategoryFormModal({
   onOpenIconPicker: () => void;
   onSelectIcon: (icon: string) => void;
   onSubmit: () => void;
-  theme: AppTheme;
+  theme: AdminTheme;
   title: string;
   visible: boolean;
 }) {
@@ -1894,88 +1970,86 @@ function CategoryFormModal({
   );
 }
 
-function createStyles(theme: AppTheme) {
-  return StyleSheet.create({
+function createStyles(theme: AdminTheme, isDesktop: boolean) {
+  return adminStyleSheet({
     screen: { backgroundColor: theme.screen, flex: 1 },
-    content: { padding: 18, paddingBottom: 96 },
-    welcomeRow: {
-      alignItems: "center",
-      flexDirection: "row",
-      justifyContent: "space-between",
-      marginBottom: 20,
-      marginTop: 8,
-    },
-    eyebrow: { color: theme.textMuted, fontSize: 11, fontWeight: "900" },
-    title: { color: theme.text, fontSize: 24, fontWeight: "900", marginTop: 4, maxWidth: 260 },
-    adminAvatar: {
-      alignItems: "center",
-      backgroundColor: theme.card,
+    hidden: { display: "none" },
+    content: { alignSelf: "center", width: "100%", maxWidth: 1360, padding: isDesktop ? 36 : 18, paddingBottom: 48 },
+    welcomeRow: { alignItems: "flex-start", flexDirection: "row", gap: 12, justifyContent: "space-between", marginBottom: 28, marginTop: 4 },
+    welcomeCopy: { flex: 1, minWidth: 0 },
+    eyebrow: { color: theme.textMuted, fontSize: 10, fontWeight: "500", letterSpacing: 1.4, marginBottom: 9 },
+    title: { color: theme.text, fontSize: isDesktop ? 27 : 23, fontWeight: "600", letterSpacing: -0.8, lineHeight: isDesktop ? 36 : 31 },
+    pageDescription: { color: theme.textMuted, fontSize: 13, lineHeight: 21, marginTop: 7 },
+    refreshButton: { flexDirection: "row", alignItems: "center", gap: 7, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.card, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 7 },
+    refreshText: { color: theme.textMuted, fontSize: 12, fontWeight: "500" },
+    hoverSurface: { backgroundColor: theme.cardAlt },
+    tileGrid: { flexDirection: "row", flexWrap: "wrap", gap: 16, marginBottom: 26 },
+    tile: { backgroundColor: theme.card, borderColor: theme.border, borderWidth: 1, borderRadius: 10, flexBasis: isDesktop ? "29%" : "100%", flexGrow: 1, minWidth: 0, padding: 22 },
+    tileHovered: { borderColor: theme.primary },
+    tileTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
+    tileLabel: { color: theme.textMuted, fontSize: 13, fontWeight: "500" },
+    tileMetric: { color: theme.text, fontSize: 34, fontWeight: "600", letterSpacing: -1, lineHeight: 44, marginTop: 15, marginBottom: 12, fontVariant: ["tabular-nums"] },
+    tileNote: { color: theme.textMuted, fontSize: 11, lineHeight: 17 },
+    sectionLabel: { color: theme.text, fontSize: 13, fontWeight: "500", marginBottom: 10, marginTop: 16 },
+    statsCard: { backgroundColor: theme.card, borderColor: theme.border, borderRadius: 10, borderWidth: 1, overflow: "hidden" },
+    overviewGrid: { flexDirection: isDesktop ? "row" : "column", alignItems: "stretch", gap: 20 },
+    overviewMain: { flex: isDesktop ? 1.65 : undefined, minWidth: 0, backgroundColor: theme.card, borderColor: theme.border, borderWidth: 1, borderRadius: 10, overflow: "hidden" },
+    overviewAside: { flex: isDesktop ? 1 : undefined, minWidth: 0, backgroundColor: theme.card, borderColor: theme.border, borderWidth: 1, borderRadius: 10, overflow: "hidden" },
+    panelHeading: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12, padding: 20, borderBottomColor: theme.border, borderBottomWidth: 1 },
+    panelTitle: { color: theme.text, fontSize: 14, fontWeight: "600", lineHeight: 21 },
+    panelSubtitle: { color: theme.textMuted, fontSize: 12, lineHeight: 19, marginTop: 3 },
+    inlineLink: { flexDirection: "row", alignItems: "center", gap: 4, paddingVertical: 5 },
+    inlineLinkText: { color: theme.primary, fontSize: 11, fontWeight: "500" },
+    panelEmpty: { color: theme.textMuted, fontSize: 13, padding: 24 },
+    knowledgeStats: { paddingHorizontal: 4, paddingVertical: 7 },
+    panelFooter: { borderTopColor: theme.border, borderTopWidth: 1, flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: 18 },
+    trainingEntry: { flexDirection: "row", alignItems: "center", gap: 15, backgroundColor: theme.card, borderWidth: 1, borderColor: theme.border, borderRadius: 10, marginTop: 22, padding: 20 },
+    trainingEntryIcon: { backgroundColor: theme.primaryPressed, width: 42, height: 42, borderRadius: 9, alignItems: "center", justifyContent: "center" },
+    userTable: { borderWidth: 1, borderColor: theme.border, borderRadius: 10, overflow: "hidden", backgroundColor: theme.card },
+    tableHeading: { flexDirection: "row", justifyContent: "space-between", paddingHorizontal: 20, paddingVertical: 13, backgroundColor: theme.cardAlt, borderBottomWidth: 1, borderBottomColor: theme.border },
+    tableHeadingText: { color: theme.textMuted, fontSize: 10, fontWeight: "500", letterSpacing: 0.6 },
+    compactUserRow: { minHeight: 68, paddingHorizontal: 20 },
+    userStatusColumn: { width: 190, gap: 3 },
+    statusLine: { flexDirection: "row", alignItems: "center", gap: 6 },
+    statusDot: { width: 6, height: 6, borderRadius: 3, marginTop: 3 },
+    mobileStatus: { color: theme.textMuted, fontSize: 10, maxWidth: 62, lineHeight: 16 },
+    loadWarningCard: {
+      backgroundColor: theme.warningBackground,
       borderColor: theme.border,
-      borderRadius: 24,
+      borderRadius: 8,
       borderWidth: 1,
-      height: 48,
-      justifyContent: "center",
-      width: 48,
-    },
-    adminAvatarText: { color: theme.text, fontSize: 20, fontWeight: "900" },
-    adminActions: { alignItems: "flex-end", gap: 8 },
-    logoutButton: {
-      alignItems: "center",
-      backgroundColor: theme.danger,
-      borderRadius: 8,
-      justifyContent: "center",
-      minHeight: 34,
-      minWidth: 92,
-      paddingHorizontal: 12,
-    },
-    logoutButtonText: { color: theme.textInverse, fontSize: 13, fontWeight: "900" },
-    tileGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
-    tile: {
-      borderRadius: 8,
-      flexBasis: "30%",
-      flexGrow: 1,
-      minHeight: 128,
-      minWidth: 120,
+      gap: 6,
+      marginBottom: 18,
       padding: 14,
-      shadowColor: "#000",
-      shadowOpacity: 0.14,
-      shadowRadius: 12,
     },
-    tileLabel: { color: theme.textInverse, fontSize: 14, fontWeight: "900" },
-    tileMetric: { color: theme.textInverse, fontSize: 34, fontWeight: "900", marginTop: 20 },
-    tileNote: { color: theme.textInverse, fontSize: 11, fontWeight: "700", opacity: 0.88 },
-    sectionLabel: { color: theme.textMuted, fontSize: 12, fontWeight: "900", marginBottom: 10, marginTop: 22 },
-    statsCard: {
-      backgroundColor: theme.card,
-      borderColor: theme.border,
-      borderRadius: 8,
-      borderWidth: 1,
-      overflow: "hidden",
-    },
+    loadWarningText: { color: theme.dangerText, fontSize: 13, fontWeight: "400", lineHeight: 19 },
     statRow: {
       alignItems: "center",
       borderBottomColor: theme.border,
       borderBottomWidth: StyleSheet.hairlineWidth,
       flexDirection: "row",
       justifyContent: "space-between",
-      minHeight: 58,
+      minHeight: 43,
       paddingHorizontal: 16,
     },
-    statLabel: { color: theme.textMuted, fontSize: 14, fontWeight: "800" },
-    statValue: { color: theme.text, fontSize: 18, fontWeight: "900" },
+    statLabel: { color: theme.textMuted, fontSize: 12, fontWeight: "400" },
+    statValue: { color: theme.text, fontSize: 14, fontWeight: "500", fontVariant: ["tabular-nums"] },
     header: {
       alignItems: "center",
       flexDirection: "row",
       justifyContent: "space-between",
+      alignSelf: "center",
+      width: "100%",
+      maxWidth: 1360,
       paddingBottom: 14,
-      paddingHorizontal: 18,
-      paddingTop: 12,
+      paddingHorizontal: isDesktop ? 36 : 18,
+      paddingTop: isDesktop ? 28 : 12,
     },
-    backText: { color: theme.primary, fontSize: 17, fontWeight: "800" },
-    headerTitle: { color: theme.text, fontSize: 20, fontWeight: "900" },
+    backText: { color: theme.textMuted, fontSize: 12, fontWeight: "500" },
+    headerTitle: { color: theme.text, fontSize: isDesktop ? 23 : 17, fontWeight: "600", flex: 1, textAlign: "center", letterSpacing: -0.4 },
     headerSpacer: { width: 74 },
-    headerCount: { color: theme.textMuted, fontSize: 14, fontWeight: "900", minWidth: 74, textAlign: "right" },
-    listContent: { gap: 10, padding: 18, paddingBottom: 96 },
+    headerCount: { color: theme.textMuted, fontSize: 14, fontWeight: "600", minWidth: 74, textAlign: "right" },
+    listContent: { alignSelf: "center", width: "100%", maxWidth: 1360, gap: 16, padding: isDesktop ? 36 : 18, paddingBottom: isDesktop ? 48 : 96 },
     userFilterCard: {
       backgroundColor: theme.card,
       borderColor: theme.border,
@@ -1988,37 +2062,20 @@ function createStyles(theme: AppTheme) {
     filterChip: {
       backgroundColor: theme.cardAlt,
       borderColor: theme.border,
-      borderRadius: 18,
+      borderRadius: 6,
       borderWidth: 1,
       paddingHorizontal: 12,
       paddingVertical: 8,
     },
-    filterChipSelected: { backgroundColor: theme.primary, borderColor: theme.primary },
-    filterChipText: { color: theme.textMuted, fontSize: 12, fontWeight: "900" },
-    filterChipTextSelected: { color: theme.textInverse },
-    userRow: {
-      alignItems: "center",
-      backgroundColor: theme.card,
-      borderColor: theme.border,
-      borderRadius: 8,
-      borderWidth: 1,
-      flexDirection: "row",
-      minHeight: 76,
-      padding: 12,
-    },
-    userMiniAvatar: {
-      alignItems: "center",
-      backgroundColor: theme.avatar,
-      borderRadius: 22,
-      height: 44,
-      justifyContent: "center",
-      marginRight: 12,
-      width: 44,
-    },
-    userMiniAvatarText: { color: theme.textInverse, fontSize: 18, fontWeight: "900" },
-    rowCopy: { flex: 1 },
-    rowTitle: { color: theme.text, fontSize: 16, fontWeight: "900" },
-    rowSubtitle: { color: theme.textMuted, fontSize: 13, fontWeight: "700", marginTop: 3 },
+    filterChipSelected: { backgroundColor: theme.primaryPressed, borderColor: theme.primary },
+    filterChipText: { color: theme.textMuted, fontSize: 12, fontWeight: "600" },
+    filterChipTextSelected: { color: theme.primary },
+    userRow: { alignItems: "center", backgroundColor: theme.card, borderBottomColor: theme.border, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: "row", gap: 14, minHeight: 80, padding: 18 },
+    userMiniAvatar: { alignItems: "center", backgroundColor: theme.cardAlt, borderRadius: 9, height: 36, justifyContent: "center", width: 36 },
+    userMiniAvatarText: { color: theme.textMuted, fontSize: 13, fontWeight: "500" },
+    rowCopy: { flex: 1, minWidth: 0 },
+    rowTitle: { color: theme.text, fontSize: 13, fontWeight: "500", lineHeight: 20 },
+    rowSubtitle: { color: theme.textMuted, fontSize: 12, fontWeight: "400", marginTop: 3, lineHeight: 18 },
     roleBadge: {
       backgroundColor: theme.cardAlt,
       borderRadius: 12,
@@ -2026,10 +2083,10 @@ function createStyles(theme: AppTheme) {
       paddingVertical: 5,
     },
     roleBadgeAdmin: { backgroundColor: theme.primaryPressed },
-    roleBadgeText: { color: theme.textMuted, fontSize: 11, fontWeight: "900" },
+    roleBadgeText: { color: theme.textMuted, fontSize: 11, fontWeight: "600" },
     roleBadgeTextAdmin: { color: theme.primary },
-    categoryContent: { gap: 10, padding: 18, paddingBottom: 96 },
-    documentContent: { gap: 10, padding: 18, paddingBottom: 96 },
+    categoryContent: { alignSelf: "center", width: "100%", maxWidth: 1360, gap: 10, padding: isDesktop ? 36 : 18, paddingBottom: isDesktop ? 48 : 96 },
+    documentContent: { alignSelf: "center", width: "100%", maxWidth: 1360, gap: 10, padding: isDesktop ? 36 : 18, paddingBottom: isDesktop ? 48 : 96 },
     categoryRow: {
       alignItems: "center",
       backgroundColor: theme.card,
@@ -2049,15 +2106,15 @@ function createStyles(theme: AppTheme) {
       marginRight: 12,
       width: 40,
     },
-    categoryIconText: { color: theme.primary, fontSize: 16, fontWeight: "900" },
-    defaultTag: { color: theme.primary, fontSize: 12, fontWeight: "900" },
+    categoryIconText: { color: theme.primary, fontSize: 16, fontWeight: "600" },
+    defaultTag: { color: theme.primary, fontSize: 12, fontWeight: "600" },
     deleteCategoryButton: {
       backgroundColor: theme.warningBackground,
       borderRadius: 8,
       paddingHorizontal: 10,
       paddingVertical: 7,
     },
-    deleteCategoryText: { color: theme.dangerText, fontSize: 12, fontWeight: "900" },
+    deleteCategoryText: { color: theme.dangerText, fontSize: 12, fontWeight: "600" },
     documentCard: {
       backgroundColor: theme.card,
       borderColor: theme.border,
@@ -2077,18 +2134,18 @@ function createStyles(theme: AppTheme) {
     },
     documentListMain: { flex: 1, gap: 10, minWidth: 0 },
     documentTopRow: { alignItems: "flex-start", flexDirection: "row", gap: 10, justifyContent: "space-between" },
-    documentDescription: { color: theme.textMuted, fontSize: 13, fontWeight: "700", lineHeight: 19 },
+    documentDescription: { color: theme.textMuted, fontSize: 13, fontWeight: "400", lineHeight: 19 },
     documentMetaRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
     documentMetaText: {
       backgroundColor: theme.cardAlt,
       borderRadius: 8,
       color: theme.textMuted,
       fontSize: 11,
-      fontWeight: "900",
+      fontWeight: "600",
       paddingHorizontal: 8,
       paddingVertical: 5,
     },
-    documentError: { color: theme.dangerText, fontSize: 12, fontWeight: "800", lineHeight: 18 },
+    documentError: { color: theme.dangerText, fontSize: 12, fontWeight: "500", lineHeight: 18 },
     documentStatusBadge: {
       backgroundColor: theme.cardAlt,
       borderRadius: 12,
@@ -2098,7 +2155,7 @@ function createStyles(theme: AppTheme) {
     documentStatusGood: { backgroundColor: theme.goodBackground },
     documentStatusDanger: { backgroundColor: `${theme.danger}22` },
     documentStatusWarning: { backgroundColor: theme.warningBackground },
-    documentStatusText: { color: theme.text, fontSize: 11, fontWeight: "900" },
+    documentStatusText: { color: theme.text, fontSize: 11, fontWeight: "600" },
     documentActionRail: { alignItems: "center", gap: 8 },
     documentIconButton: {
       alignItems: "center",
@@ -2128,7 +2185,7 @@ function createStyles(theme: AppTheme) {
     actionMenuTitle: {
       color: theme.text,
       fontSize: 16,
-      fontWeight: "900",
+      fontWeight: "600",
       marginBottom: 8,
     },
     actionMenuItem: {
@@ -2145,7 +2202,7 @@ function createStyles(theme: AppTheme) {
       justifyContent: "center",
       width: 28,
     },
-    actionMenuLabel: { color: theme.text, fontSize: 15, fontWeight: "800" },
+    actionMenuLabel: { color: theme.text, fontSize: 15, fontWeight: "500" },
     actionMenuDangerLabel: { color: theme.dangerText },
     documentActions: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
     documentActionButton: {
@@ -2155,7 +2212,7 @@ function createStyles(theme: AppTheme) {
       paddingHorizontal: 12,
       paddingVertical: 8,
     },
-    documentActionText: { color: theme.primary, fontSize: 12, fontWeight: "900" },
+    documentActionText: { color: theme.primary, fontSize: 12, fontWeight: "600" },
     documentDeleteButton: {
       backgroundColor: theme.warningBackground,
       borderRadius: 8,
@@ -2163,7 +2220,7 @@ function createStyles(theme: AppTheme) {
       paddingHorizontal: 12,
       paddingVertical: 8,
     },
-    documentDeleteText: { color: theme.dangerText, fontSize: 12, fontWeight: "900" },
+    documentDeleteText: { color: theme.dangerText, fontSize: 12, fontWeight: "600" },
     emptyDocumentCard: {
       backgroundColor: theme.card,
       borderColor: theme.border,
@@ -2172,8 +2229,8 @@ function createStyles(theme: AppTheme) {
       gap: 12,
       padding: 20,
     },
-    emptyDocumentTitle: { color: theme.text, fontSize: 18, fontWeight: "900" },
-    emptyDocumentText: { color: theme.textMuted, fontSize: 13, fontWeight: "700", lineHeight: 20 },
+    emptyDocumentTitle: { color: theme.text, fontSize: 18, fontWeight: "600" },
+    emptyDocumentText: { color: theme.textMuted, fontSize: 13, fontWeight: "400", lineHeight: 20 },
     addButton: {
       alignItems: "center",
       backgroundColor: theme.primary,
@@ -2182,8 +2239,8 @@ function createStyles(theme: AppTheme) {
       justifyContent: "center",
       width: 36,
     },
-    addButtonText: { color: theme.textInverse, fontSize: 24, fontWeight: "800", lineHeight: 27 },
-    detailContent: { gap: 14, padding: 18, paddingBottom: 96 },
+    addButtonText: { color: theme.textInverse, fontSize: 24, fontWeight: "500", lineHeight: 27 },
+    detailContent: { alignSelf: "center", width: "100%", maxWidth: 900, gap: 18, padding: isDesktop ? 36 : 18, paddingBottom: 48 },
     detailLoadingState: {
       alignItems: "center",
       justifyContent: "center",
@@ -2200,16 +2257,16 @@ function createStyles(theme: AppTheme) {
     },
     userAvatar: {
       alignItems: "center",
-      backgroundColor: theme.avatar,
+      backgroundColor: theme.primaryPressed,
       borderRadius: 35,
       height: 70,
       justifyContent: "center",
       marginBottom: 12,
       width: 70,
     },
-    userAvatarText: { color: theme.textInverse, fontSize: 30, fontWeight: "900" },
-    userDetailName: { color: theme.text, fontSize: 21, fontWeight: "900" },
-    userDetailEmail: { color: theme.textMuted, fontSize: 14, fontWeight: "700", marginTop: 5 },
+    userAvatarText: { color: theme.primary, fontSize: 30, fontWeight: "600" },
+    userDetailName: { color: theme.text, fontSize: 21, fontWeight: "600" },
+    userDetailEmail: { color: theme.textMuted, fontSize: 14, fontWeight: "400", marginTop: 5 },
     infoCard: {
       backgroundColor: theme.card,
       borderColor: theme.border,
@@ -2232,9 +2289,9 @@ function createStyles(theme: AppTheme) {
       paddingHorizontal: 16,
       paddingVertical: 12,
     },
-    infoLabel: { color: theme.textMuted, fontSize: 12, fontWeight: "900" },
-    infoValue: { color: theme.text, fontSize: 15, fontWeight: "800" },
-    modalOverlay: { flex: 1, justifyContent: "flex-end" },
+    infoLabel: { color: theme.textMuted, fontSize: 12, fontWeight: "600" },
+    infoValue: { color: theme.text, fontSize: 15, fontWeight: "500" },
+    modalOverlay: { flex: 1, justifyContent: isDesktop ? "center" : "flex-end" },
     modalBackdrop: {
       backgroundColor: theme.overlay,
       bottom: 0,
@@ -2244,9 +2301,15 @@ function createStyles(theme: AppTheme) {
       top: 0,
     },
     categoryFormSheet: {
+      alignSelf: "center",
+      width: "100%",
+      maxWidth: isDesktop ? 580 : undefined,
+      maxHeight: "90%",
       backgroundColor: theme.sheet,
-      borderTopLeftRadius: 8,
-      borderTopRightRadius: 8,
+      borderRadius: isDesktop ? 12 : 0,
+      borderTopLeftRadius: 12,
+      borderTopRightRadius: 12,
+      overflow: "hidden",
       paddingBottom: 24,
     },
     formHeader: {
@@ -2258,9 +2321,9 @@ function createStyles(theme: AppTheme) {
       minHeight: 60,
       paddingHorizontal: 18,
     },
-    formClose: { color: theme.textMuted, fontSize: 15, fontWeight: "900" },
-    formTitle: { color: theme.text, fontSize: 17, fontWeight: "900" },
-    formSave: { color: theme.primary, fontSize: 15, fontWeight: "900" },
+    formClose: { color: theme.textMuted, fontSize: 15, fontWeight: "600" },
+    formTitle: { color: theme.text, fontSize: 17, fontWeight: "600" },
+    formSave: { color: theme.primary, fontSize: 15, fontWeight: "600" },
     disabledText: { opacity: 0.55 },
     paginationRow: {
       alignItems: "center",
@@ -2274,20 +2337,20 @@ function createStyles(theme: AppTheme) {
       paddingHorizontal: 14,
       paddingVertical: 10,
     },
-    paginationButtonText: { color: theme.primary, fontSize: 13, fontWeight: "900" },
-    paginationText: { color: theme.textMuted, fontSize: 13, fontWeight: "900" },
+    paginationButtonText: { color: theme.primary, fontSize: 13, fontWeight: "600" },
+    paginationText: { color: theme.textMuted, fontSize: 13, fontWeight: "600" },
     formBody: { gap: 16, padding: 18 },
     formField: { gap: 8 },
-    formLabel: { color: theme.text, fontSize: 13, fontWeight: "900" },
+    formLabel: { color: theme.text, fontSize: 13, fontWeight: "600" },
     formInput: {
       backgroundColor: theme.inputBackground,
       borderColor: theme.border,
       borderRadius: 8,
       borderWidth: 1,
       color: theme.text,
-      fontSize: 16,
-      paddingHorizontal: 14,
-      paddingVertical: 13,
+      fontSize: 14,
+      paddingHorizontal: 13,
+      paddingVertical: 11,
     },
     iconSelectButton: {
       alignItems: "center",
@@ -2308,11 +2371,11 @@ function createStyles(theme: AppTheme) {
       justifyContent: "center",
       width: 36,
     },
-    iconSelectPreviewText: { color: theme.primary, fontSize: 15, fontWeight: "900" },
+    iconSelectPreviewText: { color: theme.primary, fontSize: 15, fontWeight: "600" },
     iconSelectCopy: { flex: 1 },
-    iconSelectTitle: { color: theme.text, fontSize: 14, fontWeight: "900" },
-    iconSelectSubtitle: { color: theme.textMuted, fontSize: 11, fontWeight: "700", marginTop: 3 },
-    iconSelectChevron: { color: theme.textMuted, fontSize: 24, fontWeight: "800" },
+    iconSelectTitle: { color: theme.text, fontSize: 14, fontWeight: "600" },
+    iconSelectSubtitle: { color: theme.textMuted, fontSize: 11, fontWeight: "400", marginTop: 3 },
+    iconSelectChevron: { color: theme.textMuted, fontSize: 24, fontWeight: "500" },
     iconPickerContent: {
       flexDirection: "row",
       flexWrap: "wrap",
@@ -2340,7 +2403,7 @@ function createStyles(theme: AppTheme) {
       justifyContent: "center",
       width: 40,
     },
-    iconPickerLabel: { color: theme.text, fontSize: 11, fontWeight: "800", textAlign: "center" },
+    iconPickerLabel: { color: theme.text, fontSize: 11, fontWeight: "500", textAlign: "center" },
     multilineInput: { minHeight: 92, textAlignVertical: "top" },
     filePickerButton: {
       backgroundColor: theme.card,
@@ -2351,8 +2414,8 @@ function createStyles(theme: AppTheme) {
       gap: 4,
       padding: 16,
     },
-    filePickerTitle: { color: theme.text, fontSize: 15, fontWeight: "900" },
-    filePickerSubtitle: { color: theme.textMuted, fontSize: 12, fontWeight: "700" },
+    filePickerTitle: { color: theme.text, fontSize: 15, fontWeight: "600" },
+    filePickerSubtitle: { color: theme.textMuted, fontSize: 12, fontWeight: "400" },
     typeToggleRow: { flexDirection: "row", gap: 10 },
     typeToggle: {
       alignItems: "center",
@@ -2365,7 +2428,7 @@ function createStyles(theme: AppTheme) {
       justifyContent: "center",
     },
     typeToggleSelected: { backgroundColor: theme.primary, borderColor: theme.primary },
-    typeToggleText: { color: theme.text, fontSize: 14, fontWeight: "900" },
+    typeToggleText: { color: theme.text, fontSize: 14, fontWeight: "600" },
     typeToggleTextSelected: { color: theme.textInverse },
     fullSaveButton: {
       alignItems: "center",
@@ -2374,7 +2437,7 @@ function createStyles(theme: AppTheme) {
       justifyContent: "center",
       minHeight: 50,
     },
-    fullSaveButtonText: { color: theme.textInverse, fontSize: 16, fontWeight: "900" },
+    fullSaveButtonText: { color: theme.textInverse, fontSize: 16, fontWeight: "600" },
     loadingCard: {
       alignItems: "center",
       backgroundColor: theme.card,
@@ -2384,7 +2447,7 @@ function createStyles(theme: AppTheme) {
       gap: 10,
       padding: 26,
     },
-    loadingText: { color: theme.textMuted, fontSize: 14, fontWeight: "700" },
+    loadingText: { color: theme.textMuted, fontSize: 14, fontWeight: "400" },
     deniedCard: {
       backgroundColor: theme.card,
       borderColor: theme.border,
@@ -2393,7 +2456,7 @@ function createStyles(theme: AppTheme) {
       margin: 18,
       padding: 20,
     },
-    deniedTitle: { color: theme.text, fontSize: 18, fontWeight: "900" },
-    deniedText: { color: theme.textMuted, fontSize: 14, fontWeight: "700", lineHeight: 21, marginTop: 8 },
+    deniedTitle: { color: theme.text, fontSize: 18, fontWeight: "600" },
+    deniedText: { color: theme.textMuted, fontSize: 14, fontWeight: "400", lineHeight: 21, marginTop: 8 },
   });
 }

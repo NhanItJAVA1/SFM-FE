@@ -1,7 +1,7 @@
 import { BottomPopup, BottomPopupSheet } from "@/components/bottom-popup";
 import { router, useFocusEffect } from "expo-router";
 import { useCallback, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, FlatList, Keyboard, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { ScreenGradientBackground } from "@/components/screen-gradient-background";
 import { ArrowDown, ArrowDownToLine, ArrowUp, ChartNoAxesCombined, Check, ChevronLeft, ChevronRight, Funnel, Landmark, LayoutGrid, ReceiptText, Search, SlidersHorizontal, Sparkles, Wallet, X } from "lucide-react-native";
@@ -18,6 +18,7 @@ import { requestSpendingStatsFromTransactions } from "@/stores/spendingStatsNavi
 import type { AppTheme } from "@/theme/appTheme";
 import { emptyTransactionFilters, getTransactionMonthRange, TransactionFilterScreen, type TransactionFilters } from "@/screens/transactions/transaction-filter-screen";
 import { calendarDay, getAnomalyWindow } from "@/screens/transactions/anomaly-window";
+import { getCurrentAnomalyReasonCodes } from "@/utils/anomalyReasons";
 type AnomalyDateFilter = string;
 type AnomalyFilters = { category: string; date: AnomalyDateFilter; reason: string };
 
@@ -35,7 +36,6 @@ const anomalyReasonLabels: Record<string, string> = {
   HIGH_VS_CATEGORY_MEDIAN: "Cao trong danh mục",
   HIGH_USER_ROBUST_Z: "Lệch khỏi lịch sử",
   HIGH_CATEGORY_ROBUST_Z: "Lệch khỏi danh mục",
-  WEEKEND_TRANSACTION: "Cuối tuần",
   UNUSUAL_FEATURE_COMBINATION: "Mẫu chi tiêu lạ",
 };
 
@@ -126,7 +126,10 @@ export default function TransactionsScreen() {
       if (!anomaly.isAnomaly) return false;
       const day = calendarDay(anomaly.date);
       return anomalyWindow === null || (day !== null && day >= anomalyWindow.start && day <= anomalyWindow.end);
-    }),
+    }).map(anomaly => ({ ...anomaly,
+      // Ẩn lý do đã bỏ nếu kết quả phân tích cũ vẫn còn trong cache.
+      reasonCodes: getCurrentAnomalyReasonCodes(anomaly.reasonCodes),
+    })),
     [analysis, anomalyWindow],
   );
   const anomalyCategories = useMemo(() => {
@@ -263,7 +266,11 @@ export default function TransactionsScreen() {
                   </Pressable>
                 ) : null}
               </View>
-              <Pressable accessibilityRole="button" accessibilityLabel="Bộ lọc giao dịch" onPress={() => showAnomaliesOnly ? setIsAnomalyFilterOpen(true) : setIsAccountPickerOpen(true)} style={styles.toolbarButton}>
+              <Pressable accessibilityRole="button" accessibilityLabel="Bộ lọc giao dịch" onPress={() => {
+                Keyboard.dismiss();
+                if (showAnomaliesOnly) setIsAnomalyFilterOpen(true);
+                else setIsAccountPickerOpen(true);
+              }} style={styles.toolbarButton}>
                 <Funnel size={21} color={theme.text} />
                 {(showAnomaliesOnly ? activeFilterCount : listFilterCount) > 0 ? <View style={styles.toolbarBadge}><Text style={styles.toolbarBadgeText}>{showAnomaliesOnly ? activeFilterCount : listFilterCount}</Text></View> : null}
               </Pressable>
@@ -330,7 +337,7 @@ export default function TransactionsScreen() {
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={activeFilterCount ? `Bộ lọc, ${activeFilterCount} điều kiện đang chọn` : "Bộ lọc giao dịch bất thường"}
-                  onPress={() => setIsAnomalyFilterOpen(true)}
+                  onPress={() => { Keyboard.dismiss(); setIsAnomalyFilterOpen(true); }}
                   style={styles.anomalyFilterButton}
                 >
                   <SlidersHorizontal size={18} color={theme.text} />

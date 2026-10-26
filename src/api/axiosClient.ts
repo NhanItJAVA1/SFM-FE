@@ -5,6 +5,8 @@ import type { AuthUser } from "@/api/authApi";
 import { getAuthRefreshToken, setAuthAccessToken, setAuthRefreshToken, setAuthUser } from "@/stores/authSession";
 
 type RequestOptions = {
+  signal?: AbortSignal;
+  timeout?: number;
   method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   body?: unknown;
   headers?: Record<string, string>;
@@ -28,6 +30,7 @@ type RefreshTokenResponse = {
 };
 
 type TokenRefreshHandler = (response: RefreshTokenResponse) => void | Promise<void>;
+type AuthExpiredHandler = () => void | Promise<void>;
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL;
 
@@ -40,6 +43,7 @@ let accessToken: string | null = null;
 let refreshAccessTokenPromise: Promise<boolean> | null = null;
 
 let tokenRefreshHandler: TokenRefreshHandler | null = null;
+let authExpiredHandler: AuthExpiredHandler | null = null;
 
 export function setApiAccessToken(token: string | null) {
   accessToken = token;
@@ -47,6 +51,10 @@ export function setApiAccessToken(token: string | null) {
 
 export function setApiTokenRefreshHandler(handler: TokenRefreshHandler | null) {
   tokenRefreshHandler = handler;
+}
+
+export function setApiAuthExpiredHandler(handler: AuthExpiredHandler | null) {
+  authExpiredHandler = handler;
 }
 
 /**
@@ -130,12 +138,16 @@ function getNoCacheHeaders(method?: RequestOptions["method"]): Record<string, st
  */
 
 function logRequest(config: InternalAxiosRequestConfig) {
+  if (!__DEV__) {
+    return;
+  }
+
   console.log("========== API REQUEST ==========");
   console.log("METHOD:", config.method?.toUpperCase());
   console.log("URL:", config.url);
   console.log("FULL URL:", `${config.baseURL ?? ""}${config.url ?? ""}`);
   console.log("HEADERS:", getSafeHeaders(config.headers as unknown as Record<string, unknown>));
-  console.log("DATA:", config.data);
+  console.log("DATA:", config.data instanceof FormData ? "[FormData payload]" : config.data);
   console.log("=================================");
 }
 
@@ -188,7 +200,8 @@ async function refreshAccessToken() {
   console.log("🔄 REFRESH TOKEN REQUEST");
 
   if (!refreshToken) {
-    console.log("❌ No refresh token available");
+    console.warn("🔒 No refresh token is available; returning to sign in");
+    await authExpiredHandler?.();
     return false;
   }
 
@@ -246,7 +259,19 @@ async function refreshAccessToken() {
 
     return true;
   } catch (error) {
-    console.error("❌ Refresh token failed:", error);
+    const status = axios.isAxiosError(error) ? error.response?.status : undefined;
+
+    const failureContext = {
+      endpoint: `${API_URL?.replace(/\/$/, "") ?? ""}/v1/auth/refresh-token`,
+      status,
+    };
+
+    if (status === 401) {
+      console.warn("🔒 Refresh token was rejected; clearing the saved session", failureContext);
+      await authExpiredHandler?.();
+    } else {
+      console.error("❌ Refresh token request failed", failureContext);
+    }
 
     return false;
   }
@@ -378,6 +403,8 @@ async function request<T = unknown>(path: string, options: RequestOptions = {}):
   const method = options.method ?? "GET";
 
   const response = await httpClient.request<T>({
+    signal: options.signal,
+    timeout: options.timeout,
     url: path,
     method,
     data: options.body,
@@ -425,6 +452,8 @@ async function uploadFormData<T = unknown>(path: string, formData: FormData): Pr
   const response = await httpClient.post<T>(path, formData, {
     headers: {
       Accept: "application/json",
+      // Remove inherited JSON defaults; the native/browser adapter adds the boundary.
+      "Content-Type": undefined,
       /*
        * Don't manually set Content-Type:
        *
@@ -449,14 +478,15 @@ async function uploadFormData<T = unknown>(path: string, formData: FormData): Pr
  */
 
 export const axiosClient = {
-  get: <T = unknown>(path: string) => request<T>(path),
+  get: <T = unknown>(path: string, options?: Pick<RequestOptions, "signal" | "timeout">) => request<T>(path, options),
 
   getBinary: (path: string) => requestBinary(path),
 
-  post: <T = unknown>(path: string, body?: unknown) =>
+  post: <T = unknown>(path: string, body?: unknown, options?: Pick<RequestOptions, "signal" | "timeout">) =>
     request<T>(path, {
       method: "POST",
       body,
+      ...options,
     }),
 
   put: <T = unknown>(path: string, body?: unknown) =>

@@ -12,7 +12,7 @@ import type { AppTheme } from "@/theme/appTheme";
 
 const loadingGif = require("../../assets/loading.gif");
 
-type BillPhoto = Pick<CameraCapturedPicture, "uri">;
+type BillPhoto = Pick<CameraCapturedPicture, "uri"> & { name?: string | null; type?: string | null; file?: Blob | null };
 
 export default function ScanBillScreen() {
   const theme = useAppTheme();
@@ -36,7 +36,7 @@ export default function ScanBillScreen() {
         imageType: "jpg",
       });
 
-      setPhoto(nextPhoto);
+      setPhoto({ ...nextPhoto, name: `bill-${Date.now()}.jpg`, type: "image/jpeg" });
     } catch (error) {
       Alert.alert("Không chụp được ảnh", error instanceof Error ? error.message : "Vui lòng thử lại.");
     } finally {
@@ -60,7 +60,8 @@ export default function ScanBillScreen() {
       });
 
       if (!result.canceled) {
-        setPhoto({ uri: result.assets[0].uri });
+        const asset = result.assets[0];
+        setPhoto({ uri: asset.uri, name: asset.fileName, type: asset.mimeType, file: asset.file });
       }
     } catch (error) {
       Alert.alert("Không chọn được ảnh", error instanceof Error ? error.message : "Vui lòng thử lại.");
@@ -74,7 +75,7 @@ export default function ScanBillScreen() {
 
     try {
       setIsUploading(true);
-      const response = await transactionsApi.scanBill(photo.uri);
+      const response = await transactionsApi.scanBill(photo);
       setDraft(response.data);
     } catch (error) {
       Alert.alert("Gửi hóa đơn thất bại", error instanceof Error ? error.message : "Vui lòng thử lại.");

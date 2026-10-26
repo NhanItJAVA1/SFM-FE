@@ -1,3 +1,5 @@
+import { Platform } from "react-native";
+
 import { axiosClient } from "./axiosClient";
 
 export type TransactionDraftItem = {
@@ -26,6 +28,31 @@ export type TransactionDraft = {
 };
 
 export type ScanBillResponse = TransactionDraft;
+
+export type BillImageUpload = {
+  uri: string;
+  name?: string | null;
+  type?: string | null;
+  /** Browser File provided by expo-image-picker on web. */
+  file?: Blob | null;
+};
+
+function inferImageMimeType(fileName?: string | null) {
+  const extension = fileName?.split(".").pop()?.toLowerCase();
+  const mimeTypes: Record<string, string> = {
+    avif: "image/avif",
+    bmp: "image/bmp",
+    gif: "image/gif",
+    heic: "image/heic",
+    heif: "image/heif",
+    jpeg: "image/jpeg",
+    jpg: "image/jpeg",
+    png: "image/png",
+    webp: "image/webp",
+  };
+
+  return extension ? mimeTypes[extension] ?? "application/octet-stream" : "application/octet-stream";
+}
 
 export type CreateTransactionFromScanPayload = {
   accountId: number;
@@ -249,13 +276,23 @@ function compareTransactionsNewestFirst(left: Transaction, right: Transaction) {
 }
 
 export const transactionsApi = {
-  scanBill: async (imageUri: string) => {
-    const imageResponse = await fetch(imageUri);
-    const imageBlob = await imageResponse.blob();
-    const jpegBlob = imageBlob.type === "image/jpeg" ? imageBlob : new Blob([imageBlob], { type: "image/jpeg" });
+  scanBill: async (image: BillImageUpload) => {
     const formData = new FormData();
+    const extension = image.name?.split(".").pop()?.toLowerCase();
+    const mimeType = image.type || inferImageMimeType(image.name);
+    const fileName = image.name || `bill-${Date.now()}${extension ? `.${extension}` : ""}`;
 
-    formData.append("image", jpegBlob, `bill-${Date.now()}.jpg`);
+    if (Platform.OS === "web") {
+      const file = image.file ?? await (await fetch(image.uri)).blob();
+      formData.append("image", file, fileName);
+    } else {
+      // React Native's FormData adapter reads the local file from its URI.
+      formData.append("image", { uri: image.uri, name: fileName, type: mimeType } as unknown as Blob);
+    }
+
+    if (__DEV__) {
+      console.debug("[scan-bill] Uploading image", { name: fileName, type: mimeType, platform: Platform.OS });
+    }
 
     return axiosClient.uploadFormData<ScanBillResponse>("/v1/transactions/scan-bill", formData);
   },

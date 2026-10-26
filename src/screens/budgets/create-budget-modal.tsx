@@ -54,6 +54,8 @@ export function CreateBudgetModal({
   onClose,
   onSubmit,
   visible,
+  mode = "create",
+  error,
 }: {
   categories: Category[];
   form: BudgetFormState;
@@ -62,6 +64,8 @@ export function CreateBudgetModal({
   onClose: () => void;
   onSubmit: () => void;
   visible: boolean;
+  mode?: "create" | "edit";
+  error?: string | null;
 }) {
   const theme = useAppTheme();
   const themeMode = useThemeMode();
@@ -122,7 +126,7 @@ export function CreateBudgetModal({
           <Pressable onPress={onClose} hitSlop={12}>
             <Text style={styles.formClose}>×</Text>
           </Pressable>
-          <Text style={styles.formTitle}>Tạo Ngân sách</Text>
+          <Text style={styles.formTitle}>{mode === "edit" ? "Sửa ngân sách" : "Tạo Ngân sách"}</Text>
           <Pressable onPress={onSubmit} disabled={isSubmitting} hitSlop={12}>
             <Text style={[styles.formSave, isSubmitting && styles.disabledText]}>Lưu</Text>
           </Pressable>
@@ -262,6 +266,7 @@ export function CreateBudgetModal({
         </ScrollView>
 
         <View style={styles.formFooter}>
+          {error ? <Text accessibilityRole="alert" style={{ color: theme.dangerText, marginBottom: 10 }}>{error}</Text> : null}
           <Pressable
             style={[styles.fullCreateButton, isSubmitting && styles.buttonDisabled]}
             onPress={onSubmit}
@@ -270,7 +275,7 @@ export function CreateBudgetModal({
             {isSubmitting ? (
               <ActivityIndicator color={theme.textInverse} />
             ) : (
-              <Text style={styles.createButtonText}>Tạo Ngân sách</Text>
+              <Text style={styles.createButtonText}>{mode === "edit" ? "Lưu thay đổi" : "Tạo Ngân sách"}</Text>
             )}
           </Pressable>
         </View>

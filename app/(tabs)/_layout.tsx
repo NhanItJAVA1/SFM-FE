@@ -1,4 +1,5 @@
 import { Redirect, router, Tabs } from "expo-router";
+import { ChartPie, ListOrdered } from "lucide-react-native";
 import { type ComponentProps, useRef, useState } from "react";
 import { Animated, Easing, Pressable, StyleSheet, Text, View } from "react-native";
 
@@ -25,6 +26,11 @@ function TabIcon({ name, focused, theme }: { name: TabIconName; focused: boolean
         <Text style={[styles.addIcon, { color: theme.textInverse }]}>{tabIcons.plus}</Text>
       </View>
     );
+  }
+
+  if (name === "ledger" || name === "budget") {
+    const Icon = name === "ledger" ? ListOrdered : ChartPie;
+    return <Icon size={23} strokeWidth={focused ? 2.3 : 1.8} color={focused ? theme.text : theme.textSubtle} />;
   }
 
   return <Text style={[styles.icon, { color: focused ? theme.text : theme.textSubtle }]}>{tabIcons[name]}</Text>;
