@@ -482,10 +482,11 @@ export const axiosClient = {
 
   getBinary: (path: string) => requestBinary(path),
 
-  post: <T = unknown>(path: string, body?: unknown) =>
+  post: <T = unknown>(path: string, body?: unknown, options?: Pick<RequestOptions, "signal" | "timeout">) =>
     request<T>(path, {
       method: "POST",
       body,
+      ...options,
     }),
 
   put: <T = unknown>(path: string, body?: unknown) =>

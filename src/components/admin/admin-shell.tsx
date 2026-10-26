@@ -1,11 +1,11 @@
-import { Activity, BookOpen, ChevronRight, FolderOpen, HeartPulse, LayoutDashboard, LogOut, PanelLeft, ShieldCheck, SlidersHorizontal, Users } from 'lucide-react-native';
+import { Activity, BookOpen, ChevronRight, FolderOpen, Gauge, HeartPulse, LayoutDashboard, LogOut, PanelLeft, ShieldCheck, SlidersHorizontal, Users } from 'lucide-react-native';
 import type { ReactNode } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { adminStyleSheet, useAdminTheme } from './admin-design';
 
-export type AdminView = 'dashboard' | 'users' | 'categories' | 'documents' | 'training' | 'monitoring' | 'analysis-config';
+export type AdminView = 'dashboard' | 'users' | 'categories' | 'documents' | 'training' | 'monitoring' | 'analysis-config' | 'load-testing';
 const navigation = [
   { key: 'dashboard', label: 'Tổng quan', Icon: LayoutDashboard },
   { key: 'users', label: 'Người dùng', Icon: Users },
@@ -14,6 +14,7 @@ const navigation = [
   { key: 'training', label: 'Huấn luyện AI', Icon: SlidersHorizontal },
   { key: 'analysis-config', label: 'Cấu hình phân tích', Icon: HeartPulse },
   { key: 'monitoring', label: 'Giám sát hệ thống', Icon: Activity },
+  { key: 'load-testing', label: 'Kiểm thử tải', Icon: Gauge },
 ] as const;
 
 export function AdminShell({ children, view, onNavigate, name, onLogout, isLoggingOut }: {
@@ -57,7 +58,7 @@ export function AdminShell({ children, view, onNavigate, name, onLogout, isLoggi
     logout: { padding: 8, borderRadius: 6 },
     body: { flex: 1, minHeight: 0 },
   });
-  const navItems = navigation.map(({ key, label, Icon }) => (
+  const navItems = navigation.filter(({ key }) => key !== 'load-testing' || __DEV__).map(({ key, label, Icon }) => (
     <Pressable key={key} accessibilityRole="button" accessibilityState={{ selected: view === key }} onPress={() => onNavigate(key)}
       style={({ hovered, pressed }) => [styles.navItem, (hovered || pressed) && styles.hover, view === key && styles.active]}>
       <Icon size={17} strokeWidth={1.7} color={view === key ? theme.primary : theme.textMuted} />
