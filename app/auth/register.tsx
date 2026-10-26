@@ -35,6 +35,7 @@ export default function RegisterScreen() {
       <Text style={styles.subtitle}>Set up your SFM user profile.</Text>
       <TextInput
         placeholder="Username"
+        placeholderTextColor="#7b8494"
         autoCapitalize="none"
         style={styles.input}
         value={username}
@@ -42,6 +43,7 @@ export default function RegisterScreen() {
       />
       <TextInput
         placeholder="Email"
+        placeholderTextColor="#7b8494"
         keyboardType="email-address"
         autoCapitalize="none"
         style={styles.input}
@@ -50,6 +52,7 @@ export default function RegisterScreen() {
       />
       <TextInput
         placeholder="Password"
+        placeholderTextColor="#7b8494"
         secureTextEntry
         style={styles.input}
         value={password}

@@ -14,7 +14,7 @@ export type AvatarUploadUrlResponse = {
 
 export type UpdateUserPayload = {
   email: string;
-  displayName: string | null;
+  displayName: string;
   avatarUrl: string | null;
 };
 

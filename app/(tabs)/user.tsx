@@ -1,7 +1,9 @@
 import { BottomPopup, BottomPopupPressable } from "@/components/bottom-popup";
 import { ScreenGradientBackground } from "@/components/screen-gradient-background";
 import DateTimePicker, { DateTimePickerEvent } from "@react-native-community/datetimepicker";
+import axios from "axios";
 import * as Google from "expo-auth-session/providers/google";
+import * as FileSystem from "expo-file-system/legacy";
 import * as ImagePicker from "expo-image-picker";
 import { router, useNavigation } from "expo-router";
 import { SymbolView } from "expo-symbols";
@@ -191,7 +193,7 @@ export default function UserScreen() {
     themeMode,
   });
   const initial = (user?.displayName ?? user?.username ?? "U").trim().charAt(0).toUpperCase() || "U";
-  const [editDisplayName, setEditDisplayName] = useState(user?.displayName ?? "");
+  const [editDisplayName, setEditDisplayName] = useState(user?.displayName ?? user?.username ?? "");
   const [editAvatarUrl, setEditAvatarUrl] = useState<string | null>(user?.avatarUrl ?? null);
   const [selectedAvatar, setSelectedAvatar] = useState<ImagePicker.ImagePickerAsset | null>(null);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
@@ -499,7 +501,7 @@ export default function UserScreen() {
   }
 
   function openEditProfile() {
-    setEditDisplayName(user?.displayName ?? "");
+    setEditDisplayName(user?.displayName ?? user?.username ?? "");
     setEditAvatarUrl(user?.avatarUrl ?? null);
     setSelectedAvatar(null);
     setView("editProfile");
@@ -583,16 +585,27 @@ export default function UserScreen() {
     const uploadUrlResponse = await usersApi.createAvatarUploadUrl({ contentType, fileName });
     const signedHeaders = getSignedHeaders(uploadUrlResponse.data.uploadUrl);
     const headers = signedHeaders.includes("content-type") ? { "Content-Type": contentType } : undefined;
-    const s3Response = await fetch(uploadUrlResponse.data.uploadUrl, {
-      method: "PUT",
+    console.log("[Avatar Upload]", {
+      assetMimeType: asset.mimeType,
+      blobType: imageBlob.type,
+      contentType,
+      signedHeaders,
       headers,
-      body: imageBlob,
+      blobSize: imageBlob.size,
     });
+    const s3Response = await FileSystem.uploadAsync(
+      uploadUrlResponse.data.uploadUrl,
+      asset.uri,
+      {
+        httpMethod: "PUT",
+        headers,
+        uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
+      },
+    );
 
-    if (!s3Response.ok) {
-      const detail = await s3Response.text();
+    if (s3Response.status < 200 || s3Response.status >= 300) {
+      const detail = s3Response.body;
       const s3ErrorCode = getS3ErrorCode(detail);
-      const statusText = s3Response.statusText ? ` ${s3Response.statusText}` : "";
       console.warn("Upload avatar lên S3 thất bại", {
         contentType,
         detail,
@@ -600,12 +613,11 @@ export default function UserScreen() {
         s3ErrorCode,
         signedHeaders,
         status: s3Response.status,
-        statusText: s3Response.statusText,
       });
       throw new Error(
         s3ErrorCode
           ? `Upload S3 lỗi ${s3Response.status}: ${s3ErrorCode}.`
-          : `Upload S3 lỗi ${s3Response.status}${statusText}.`,
+          : `Upload S3 lỗi ${s3Response.status}.`,
       );
     }
 
@@ -618,10 +630,11 @@ export default function UserScreen() {
       return;
     }
 
+    const nextDisplayName = editDisplayName.trim() || user.username;
+
     try {
       setIsSavingProfile(true);
       const nextAvatarUrl = selectedAvatar ? await uploadAvatar(selectedAvatar) : editAvatarUrl;
-      const nextDisplayName = editDisplayName.trim() || null;
 
       await usersApi.update(user.id, {
         avatarUrl: nextAvatarUrl,
@@ -638,6 +651,13 @@ export default function UserScreen() {
       setView("menu");
       Alert.alert("Đã cập nhật", "Hồ sơ người dùng đã được lưu.");
     } catch (error) {
+      if (axios.isAxiosError(error)) {
+        console.log(
+          "UPDATE USER VALIDATION:",
+          JSON.stringify(error.response?.data?.errors, null, 2),
+        );
+        console.log("UPDATE USER REQUEST:", error.config?.data);
+      }
       console.warn("Không lưu được hồ sơ", error);
       Alert.alert("Không lưu được hồ sơ", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
     } finally {
