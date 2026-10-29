@@ -200,68 +200,6 @@ function getNiceChartMax(value: number) {
   return Math.ceil(safeValue / step) * step;
 }
 
-function readNumber(data: unknown, ...keys: string[]) {
-  if (!data || typeof data !== "object") {
-    return undefined;
-  }
-
-  const record = data as Record<string, unknown>;
-
-  for (const key of keys) {
-    const value = record[key];
-
-    if (typeof value === "number") {
-      return value;
-    }
-
-    if (typeof value === "string") {
-      const parsed = Number(value);
-
-      if (Number.isFinite(parsed)) {
-        return parsed;
-      }
-    }
-  }
-
-  return undefined;
-}
-
-function readString(data: unknown, ...keys: string[]) {
-  if (!data || typeof data !== "object") {
-    return undefined;
-  }
-
-  const record = data as Record<string, unknown>;
-
-  for (const key of keys) {
-    const value = record[key];
-
-    if (typeof value === "string") {
-      return value;
-    }
-  }
-
-  return undefined;
-}
-
-function readArray<T = unknown>(data: unknown, ...keys: string[]) {
-  if (!data || typeof data !== "object") {
-    return [] as T[];
-  }
-
-  const record = data as Record<string, unknown>;
-
-  for (const key of keys) {
-    const value = record[key];
-
-    if (Array.isArray(value)) {
-      return value as T[];
-    }
-  }
-
-  return [] as T[];
-}
-
 function getPriorityRecommendation(analysis: AIAnalysis) {
   const dashboardRecommendations = (analysis.recommendations ?? []).filter(
     (recommendation) => !/^\d+$/.test(recommendation.category.trim()),
@@ -756,12 +694,10 @@ function SpendingForecastChart({
   theme: AppTheme;
 }) {
   const forecast = analysis?.forecast;
-  const forecastAsOf = readString(forecast, "asOf", "AsOf");
-  const forecastEndDate = readString(forecast, "forecastEndDate", "ForecastEndDate");
-  const forecastModel = readString(forecast, "model", "Model");
-  const forecastStatus = readString(forecast, "status", "Status");
-  const actualMonthToDateExpense = readNumber(forecast, "actualMonthToDateExpense", "ActualMonthToDateExpense");
-  const dailyForecasts = readArray(forecast, "dailyForecasts", "DailyForecasts");
+  const forecastAsOf = forecast?.asOf;
+  const forecastEndDate = forecast?.forecastEndDate;
+  const forecastStatus = forecast?.status;
+  const dailyForecasts = forecast?.dailyForecasts ?? [];
   const daysInMonth = getDaysInMonthFromDate(forecastAsOf ?? forecastEndDate, dailySpending.length || 31);
   const now = new Date();
   const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
@@ -780,19 +716,13 @@ function SpendingForecastChart({
 
       return [...points, { day: index + 1, value: runningTotal }];
     }, []);
-  const actualTotal = actualMonthToDateExpense ?? actualPoints[actualPoints.length - 1]?.value ?? 0;
-  if (actualPoints.length > 0 && actualMonthToDateExpense !== undefined) {
-    actualPoints[actualPoints.length - 1] = {
-      ...actualPoints[actualPoints.length - 1],
-      value: actualMonthToDateExpense,
-    };
-  }
+  const actualTotal = actualPoints[actualPoints.length - 1]?.value ?? 0;
   let forecastRunningTotal = actualTotal;
   const forecastPoints = [{ day: asOfDay, value: actualTotal }];
 
   for (const item of dailyForecasts) {
-    const date = readString(item, "date", "Date");
-    const predictedExpense = readNumber(item, "predictedExpense", "PredictedExpense") ?? 0;
+    const date = item.date;
+    const predictedExpense = item.predictedExpense;
     const day = date ? getDayOffsetFromMonthStart(date, chartBaseYear, chartBaseMonth) : undefined;
 
     if (day === undefined || day <= asOfDay || day > daysInMonth) {

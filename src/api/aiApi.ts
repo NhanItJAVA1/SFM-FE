@@ -1,10 +1,9 @@
 import { axiosClient } from './axiosClient';
 
-export type AIHealthStatus = 'Healthy' | 'Warning' | 'Risk' | 'Critical' | string;
+export type AIHealthStatus = 'Healthy' | 'Warning' | 'Risk';
 
 export type AIAnalysis = {
   user_id: number;
-  health_label: number;
   health_status: AIHealthStatus;
   health_breakdown: {
     cashflowStatus: AIHealthStatus;
@@ -14,24 +13,16 @@ export type AIAnalysis = {
   features: {
     total_income: number;
     total_expense: number;
-    savings: number;
     net_cashflow: number;
     savings_rate: number;
     transaction_count: number;
-    expense_count: number;
     avg_expense: number;
     max_expense: number;
-    expense_std: number;
-    std_expense: number;
-    budget_count: number;
-    avg_budget_usage: number;
     max_budget_usage: number;
     top_categories: AITopCategory[];
   };
-  anomalies: AIAnomaly[];
   anomalySummary: AIAnomalySummary;
   forecast: AIForecast;
-  forecastEvaluation: AIForecastEvaluation;
   recommendations: AIRecommendation[];
   metadata: AIAnalysisMetadata;
 };
@@ -41,65 +32,34 @@ export type AITopCategory = {
   amount: number;
 };
 
-export type AIAnomaly = {
-  transactionId: number | null;
-  isAnomaly: boolean;
-  anomalyScore: number;
-  date: string;
-  categoryId: number | null;
-  category: string;
-  amount: number;
-  reasonCodes: string[];
+export type AnomalyAssessment = {
+  transactionId: number | null; date: string; categoryId: number | null; category: string;
+  amount: number; reasonCodes: string[];
+  status: 'normal' | 'anomaly' | 'insufficient_history';
+  anomalyScore: number | null;
+  categorySampleCount: number; categoryMedian: number | null;
 };
+// Kiểu dẫn xuất cho UI sau khi lọc assessments; API không gửi danh sách thứ hai.
+export type AIAnomaly = AnomalyAssessment & { status: 'anomaly' };
 
 export type AIAnomalySummary = {
-  status: string;
-  scoredTransactionCount: number;
-  anomalyCount: number;
-  returnedCount: number;
-  confidence: string;
-  requestedPeriodDays: number;
-  minRequiredExpenseCount: number;
-  availableExpenseCount: number;
-  contamination: number;
-  monthlyIncomeAvailable: boolean;
-  notes: string[];
+  status: 'ok' | 'partial' | 'insufficient_data';
+  assessedTransactionCount: number; anomalyCount: number; insufficientCount: number;
+  assessments: AnomalyAssessment[];
 };
 
 export type AIForecast = {
-  status: string;
-  method: string;
-  model: string | null;
-  modelVersion: string | null;
-  asOf: string;
-  forecastStartDate: string | null;
-  forecastEndDate: string | null;
-  dailyForecasts: AIDailyForecast[];
-  actualMonthToDateExpense: number;
-  predictedRemainingExpense: number;
-  predictedMonthEndExpense: number;
-  lookbackDays: number;
+  status: string; method: string; model: string; modelVersion: string | null;
+  asOf: string; forecastStartDate: string; forecastEndDate: string;
+  forecastHorizonDays: number; lookbackDays: number;
+  dailyForecasts: AIDailyForecast[]; predictedTotalExpense: number;
   dataQuality: AIDataQuality;
 };
-
-export type AIDailyForecast = {
-  date: string;
-  predictedExpense: number;
-  model: string;
-};
-
-export type AIForecastEvaluation = {
-  available: boolean;
-  reason: string;
-  metricsSource: string;
-  dataQuality: AIDataQuality;
-};
-
+export type AIDailyForecast = { date: string; predictedExpense: number };
 export type AIDataQuality = {
-  asOf: string;
-  status: string;
-  missingDaysFilledWithZero: number;
-  notes: string[];
+  asOf: string; status: string; requiredHistoryDays: number; availableHistoryDays: number;
+  missingDaysFilledWithZero: number; monthlyIncomeAvailable: boolean; notes: string[];
+  [key: string]: unknown;
 };
 
 export type AIRecommendation = {
@@ -113,13 +73,12 @@ export type AIRecommendation = {
 };
 
 export type AIAnalysisMetadata = {
+  asOf: string; periodStart: string; forecastContextStart: string;
+  inputTransactionCount: number; periodTransactionCount: number; forecastTransactionCount: number;
   environment: string;
   periodDays: number;
-  healthModel?: string;
-  healthModelVersion?: string | null;
-  analysisConfigVersion?: string;
-  forecastModel: string;
-  forecastModelVersion: string | null;
+  healthModel: string;
+  analysisConfigVersion: string;
   rankingModel: string;
   note: string;
 };
@@ -250,15 +209,13 @@ export type AnalysisConfigVersion = {
 };
 export type AnalysisPreviewInput = {
   settings: AnalysisSettings; income: number; expense: number; budgetLimit: number;
-  budgetSpent: number; unusualExpense: number;
+  budgetSpent: number; unusualExpense: number; currentBalance: number;
 };
 export type AnalysisPreview = {
   preview: true; currency: 'VND'; sampleExpenseCount: number;
-  health: { label: number; status: string; savingsRate: number; budgetUsage: number;
+  health: { status: AIHealthStatus; savingsRate: number; budgetUsage: number;
     breakdown: { cashflowStatus: string; budgetStatus: string; reasons: string[] } };
-  anomaly: { summary: { status: string; availableExpenseCount: number; minRequiredExpenseCount: number;
-    anomalyCount: number; contamination: number }; transactions: { transactionId: number; date: string;
-      category: string; amount: number; anomalyScore: number; reasonCodes: string[] }[] };
+  anomaly: { summary: AIAnomalySummary };
 };
 
 export const aiApi = {

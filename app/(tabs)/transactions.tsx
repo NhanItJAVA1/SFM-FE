@@ -18,7 +18,6 @@ import { requestSpendingStatsFromTransactions } from "@/stores/spendingStatsNavi
 import type { AppTheme } from "@/theme/appTheme";
 import { emptyTransactionFilters, getTransactionMonthRange, TransactionFilterScreen, type TransactionFilters } from "@/screens/transactions/transaction-filter-screen";
 import { calendarDay, getAnomalyWindow } from "@/screens/transactions/anomaly-window";
-import { getCurrentAnomalyReasonCodes } from "@/utils/anomalyReasons";
 type AnomalyDateFilter = string;
 type AnomalyFilters = { category: string; date: AnomalyDateFilter; reason: string };
 
@@ -32,11 +31,10 @@ function matchesAnomalyFilters(anomaly: AIAnomaly, filters: AnomalyFilters) {
 }
 
 const anomalyReasonLabels: Record<string, string> = {
-  HIGH_VS_USER_MEDIAN: "Cao hơn mức thường",
   HIGH_VS_CATEGORY_MEDIAN: "Cao trong danh mục",
-  HIGH_USER_ROBUST_Z: "Lệch khỏi lịch sử",
   HIGH_CATEGORY_ROBUST_Z: "Lệch khỏi danh mục",
-  UNUSUAL_FEATURE_COMBINATION: "Mẫu chi tiêu lạ",
+  LARGE_SHARE_OF_BALANCE: "Chi lớn so với số dư hiện tại",
+  LIMITED_HISTORY: "Chưa đủ dữ liệu",
 };
 
 function useTransactionStyles() {
@@ -78,7 +76,7 @@ export default function TransactionsScreen() {
   const [showAllAnomalies, setShowAllAnomalies] = useState(false);
   const [isAnomalyFilterOpen, setIsAnomalyFilterOpen] = useState(false);
   const { analysis, isLoading: isAnalysisLoading, error: analysisError, refresh: refreshAI } = useAIAnalysis();
-  const anomalyWindow = useMemo(() => getAnomalyWindow(analysis?.forecast?.asOf, analysis?.metadata?.periodDays), [analysis]);
+  const anomalyWindow = useMemo(() => getAnomalyWindow(analysis?.metadata.asOf, analysis?.metadata.periodDays), [analysis]);
 
   const loadMonthlySpending = useCallback(async () => {
     try {
@@ -122,14 +120,12 @@ export default function TransactionsScreen() {
   );
 
   const anomalies = useMemo(
-    () => (analysis?.anomalies ?? []).filter((anomaly) => {
-      if (!anomaly.isAnomaly) return false;
+    () => (analysis?.anomalySummary.assessments ?? [])
+      .filter((row): row is AIAnomaly => row.status === "anomaly")
+      .filter((anomaly) => {
       const day = calendarDay(anomaly.date);
       return anomalyWindow === null || (day !== null && day >= anomalyWindow.start && day <= anomalyWindow.end);
-    }).map(anomaly => ({ ...anomaly,
-      // Ẩn lý do đã bỏ nếu kết quả phân tích cũ vẫn còn trong cache.
-      reasonCodes: getCurrentAnomalyReasonCodes(anomaly.reasonCodes),
-    })),
+    }),
     [analysis, anomalyWindow],
   );
   const anomalyCategories = useMemo(() => {
@@ -150,7 +146,7 @@ export default function TransactionsScreen() {
     return anomalies
       .filter((anomaly) => matchesAnomalyFilters(anomaly, { category: anomalyCategoryFilter, date: anomalyDateFilter, reason: anomalyReasonFilter }))
       .filter((anomaly) => !searchQuery.trim() || [anomaly.category, String(anomaly.amount), ...(anomaly.reasonCodes ?? []).map((code) => anomalyReasonLabels[code] ?? code)].some((text) => text.toLocaleLowerCase("vi").includes(searchQuery.trim().toLocaleLowerCase("vi"))))
-      .sort((left, right) => right.anomalyScore - left.anomalyScore);
+      .sort((left, right) => (right.anomalyScore ?? 0) - (left.anomalyScore ?? 0) || right.amount - left.amount);
   }, [anomalies, anomalyCategoryFilter, anomalyDateFilter, anomalyReasonFilter, searchQuery]);
   const anomalyIds = useMemo(
     () => new Set(anomalies.flatMap((anomaly) => anomaly.transactionId === null ? [] : [anomaly.transactionId])),
@@ -365,7 +361,7 @@ export default function TransactionsScreen() {
               {!analysis && isAnalysisLoading ? <TransactionSkeleton /> : filteredAnomalies.length === 0 ? (
                 <View style={styles.empty}>
                   <Text style={styles.emptyTitle}>{!analysis ? "Chưa có kết quả phân tích" : activeFilterCount || searchQuery.trim() ? "Không có giao dịch phù hợp" : "Chưa có giao dịch được đánh dấu"}</Text>
-                  <Text style={styles.emptyText}>{!analysis ? (analysisError?.message || "Cập nhật phân tích tại Tổng quan.") : analysis.anomalySummary?.status !== "ok" && analysis.anomalySummary?.notes?.length ? analysis.anomalySummary.notes.join(" ") : anomalyWindow ? `Trong kỳ ${anomalyWindow.label}.` : "Chưa có dữ liệu bất thường trong kết quả AI."}</Text>
+                  <Text style={styles.emptyText}>{!analysis ? (analysisError?.message || "Cập nhật phân tích tại Tổng quan.") : analysis.anomalySummary.status === "insufficient_data" ? "Chưa đủ lịch sử để đánh giá giao dịch bất thường." : analysis.anomalySummary.status === "partial" ? `${analysis.anomalySummary.insufficientCount} khoản chưa đủ dữ liệu. Chưa có cảnh báo mạnh trong bộ lọc hiện tại.` : anomalyWindow ? `Trong kỳ ${anomalyWindow.label}.` : "Chưa có dữ liệu bất thường trong kết quả AI."}</Text>
                 </View>
               ) : (
                 (showAllAnomalies ? filteredAnomalies : filteredAnomalies.slice(0, 5)).map((anomaly) => (
@@ -584,7 +580,7 @@ function AnomalyRow({ anomaly }: { anomaly: AIAnomaly }) {
         <Text style={styles.anomalyRowReasons}>
           {(anomaly.reasonCodes ?? []).slice(0, 2).map((reason) => anomalyReasonLabels[reason] ?? reason).join(" · ") || "Được AI đánh dấu bất thường"}
         </Text>
-        <Text style={styles.anomalyScore}>Điểm {anomaly.anomalyScore.toFixed(2)}</Text>
+        {anomaly.anomalyScore !== null ? <Text style={styles.anomalyScore}>Điểm {anomaly.anomalyScore.toFixed(2)}</Text> : null}
       </View>
     </View>
   );

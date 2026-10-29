@@ -5,7 +5,6 @@ import {
   type AnalysisPreviewInput,
   type AnalysisSettings,
 } from "@/api/aiApi";
-import { getCurrentAnomalyReasonCodes } from "@/utils/anomalyReasons";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Modal, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { adminStyleSheet, useAdminTheme } from "./admin-design";
@@ -51,17 +50,16 @@ const sampleFields = [
   { key: "expense", label: "Chi tiêu trong kỳ (VND)", value: "15000000" },
   { key: "budgetLimit", label: "Hạn mức ngân sách (VND)", value: "8000000" },
   { key: "budgetSpent", label: "Đã dùng ngân sách (VND)", value: "6800000" },
+  { key: "currentBalance", label: "Tổng số dư hiện tại (VND)", value: "10000000" },
   { key: "unusualExpense", label: "Khoản chi cần thử (VND)", value: "3000000" },
 ] as const;
 type SampleKey = (typeof sampleFields)[number]["key"];
 const statusName = (status: string) => ({ Healthy: "Ổn định", Warning: "Cảnh báo", Risk: "Rủi ro" })[status] || status;
 const reasons: Record<string, string> = {
-  HIGH_VS_USER_MEDIAN: "Cao so với mức chi thường ngày",
   HIGH_VS_CATEGORY_MEDIAN: "Cao so với danh mục",
-  HIGH_USER_ROBUST_Z: "Lệch nhiều so với lịch sử",
   HIGH_CATEGORY_ROBUST_Z: "Lệch nhiều trong danh mục",
-  LARGE_SHARE_OF_MONTHLY_INCOME: "Chiếm tỷ trọng thu nhập lớn",
-  UNUSUAL_FEATURE_COMBINATION: "Cần xem xét thêm",
+  LARGE_SHARE_OF_BALANCE: "Chi lớn so với số dư hiện tại",
+  LIMITED_HISTORY: "Chưa đủ dữ liệu",
 };
 const percent = (v: number) => `${new Intl.NumberFormat("vi-VN", { maximumFractionDigits: 2 }).format(v * 100)}%`;
 const vnd = (v: number) =>
@@ -174,6 +172,7 @@ export function AnalysisConfigWorkspace() {
     expense: "15000000",
     budgetLimit: "8000000",
     budgetSpent: "6800000",
+    currentBalance: "10000000",
     unusualExpense: "3000000",
   });
   const [reason, setReason] = useState("");
@@ -376,15 +375,15 @@ export function AnalysisConfigWorkspace() {
           <View style={styles.panel}>
             <Text style={styles.title}>Xem thử trước khi áp dụng</Text>
             <Text style={styles.help}>
-              Health dùng tổng thu/chi và ngân sách bên dưới. Anomaly dùng 60 giao dịch chi mô phỏng ăn uống, đi lại,
-              mua sắm trong 60 ngày; khoản chi cuối do bạn điều chỉnh. Xem thử không lưu cấu hình.
+              Health dùng tổng thu/chi và ngân sách bên dưới. Anomaly dùng lịch sử giao dịch chi mô phỏng ăn uống, đi lại,
+              mua sắm; khoản chi cuối do bạn điều chỉnh. Xem thử không lưu cấu hình.
             </Text>
             <View style={styles.grid}>
               {sampleFields
                 .filter((field) =>
                   tab === "health"
-                    ? field.key !== "unusualExpense"
-                    : field.key === "unusualExpense" || field.key === "income",
+                    ? field.key !== "unusualExpense" && field.key !== "currentBalance"
+                    : field.key === "unusualExpense" || field.key === "currentBalance",
                 )
                 .map((field) => (
                   <View key={field.key} style={styles.field}>
@@ -433,21 +432,24 @@ export function AnalysisConfigWorkspace() {
                   <Text style={styles.title}>
                     {preview.anomaly.summary.status === "insufficient_data"
                       ? "Chưa đủ dữ liệu mẫu"
-                      : `${preview.anomaly.summary.anomalyCount} / ${preview.sampleExpenseCount} khoản chi được đánh dấu`}
+                      : `${preview.anomaly.summary.anomalyCount} cảnh báo mạnh · ${preview.anomaly.summary.insufficientCount} thiếu dữ liệu`}
                   </Text>
                   <Text style={styles.help}>
-                    Cần ít nhất {preview.anomaly.summary.minRequiredExpenseCount} khoản chi. Đây là kết quả trên dữ liệu
+                    Đây là kết quả trên dữ liệu
                     mô phỏng, cần xem xét ngữ cảnh trước khi kết luận.
                   </Text>
-                  {preview.anomaly.transactions.map((row) => (
+                  {preview.anomaly.summary.assessments.map((row) => (
                     <View key={row.transactionId} style={styles.line}>
                       <Text style={styles.text}>
                         {row.date.slice(0, 10)} · {row.category} · {vnd(row.amount)}
                       </Text>
                       <Text style={styles.help}>
-                        {getCurrentAnomalyReasonCodes(row.reasonCodes)
+                        {row.status === "anomaly" ? "Bất thường" : row.status === "normal" ? "Chưa phát hiện bất thường" : "Chưa đủ cơ sở đánh giá"}
+                      </Text>
+                      <Text style={styles.help}>
+                        {row.reasonCodes
                           .map((code) => reasons[code] || code)
-                          .join(" · ") || "Được AI đánh dấu bất thường"}
+                          .join(" · ") || "Không có mã cảnh báo bổ sung"}
                       </Text>
                     </View>
                   ))}
