@@ -3,7 +3,7 @@ import { BottomPopup, BottomPopupPressable } from "@/components/bottom-popup";
 import { ScreenGradientBackground } from "@/components/screen-gradient-background";
 import DateTimePicker, { DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import { SymbolView } from "expo-symbols";
-import { Check, LayoutGrid } from "lucide-react-native";
+import { Check } from "lucide-react-native";
 import { useState } from "react";
 import {
   ActivityIndicator,
@@ -19,7 +19,7 @@ import {
 import type { Category } from "@/api/categoriesApi";
 import { useAppTheme } from "@/hooks/use-app-theme";
 import { useThemeMode } from "@/hooks/use-theme-mode";
-import { getLightCategoryColor } from "@/utils/lightCategoryColors";
+import { CategoryIconBadge, getCategoryVisual } from '@/components/category-icon';
 
 import { useBudgetStyles } from "./budgets.styles";
 import { formatDateInput } from "./helpers";
@@ -69,6 +69,7 @@ export function CreateBudgetModal({
   const theme = useAppTheme();
   const themeMode = useThemeMode();
   const isDark = themeMode === "dark";
+  const allCategoryColor = getCategoryVisual({ icon: 'all' }).color;
   const styles = useBudgetStyles();
   const [activeDateField, setActiveDateField] = useState<BudgetDateField | null>(null);
 
@@ -215,23 +216,23 @@ export function CreateBudgetModal({
                 accessibilityState={{ checked: form.categoryId === null }}
                 style={[
                   styles.categoryGridItem,
-                  !isDark && form.categoryId !== null && getLightCategoryColor("all-categories"),
+                  !isDark && form.categoryId !== null && { backgroundColor: `${allCategoryColor}12`, borderColor: `${allCategoryColor}40` },
                   form.categoryId === null && styles.categoryGridItemSelected,
                   isDark && form.categoryId === null && styles.categoryGridItemSelectedDark,
                 ]}
                 onPress={() => updateForm({ categoryId: null })}
               >
                 <View style={styles.categoryGridContent}>
-                  {isDark ? <LayoutGrid size={18} color={form.categoryId === null ? theme.primary : theme.textMuted} style={styles.categoryMarker} /> : null}
+                  <CategoryIconBadge icon="all" size={32} iconSize={18} style={styles.categoryMarker} />
                   <Text style={[styles.categoryGridText, isDark && styles.darkFormText, form.categoryId === null && styles.categoryGridTextSelected, isDark && form.categoryId === null && styles.categoryGridTextSelectedDark]}>
                     Tất cả
                   </Text>
                 </View>
-                {isDark && form.categoryId === null ? <Check size={16} color={theme.primary} style={styles.categorySelectedCheck} /> : null}
+                {form.categoryId === null ? <Check size={16} color={theme.primary} style={styles.categorySelectedCheck} /> : null}
               </Pressable>
               {(categories ?? []).map((category) => {
                 const isSelected = form.categoryId === category.id;
-                const categoryColor = getLightCategoryColor(category.id ?? category.name);
+                const categoryColor = getCategoryVisual(category).color;
 
                 return (
                   <Pressable
@@ -241,14 +242,14 @@ export function CreateBudgetModal({
                     accessibilityState={{ checked: isSelected }}
                     style={[
                       styles.categoryGridItem,
-                      !isDark && !isSelected && categoryColor,
+                      !isDark && !isSelected && { backgroundColor: `${categoryColor}12`, borderColor: `${categoryColor}40` },
                       isSelected && styles.categoryGridItemSelected,
                       isDark && isSelected && styles.categoryGridItemSelectedDark,
                     ]}
                     onPress={() => updateForm({ categoryId: category.id })}
                   >
                     <View style={styles.categoryGridContent}>
-                      {isDark ? <View style={[styles.categoryColorDot, { backgroundColor: categoryColor.borderColor }]} /> : null}
+                      <CategoryIconBadge {...category} size={32} iconSize={18} style={styles.categoryMarker} />
                       <Text
                         numberOfLines={2}
                         style={[styles.categoryGridText, isDark && styles.darkFormText, isSelected && styles.categoryGridTextSelected, isDark && isSelected && styles.categoryGridTextSelectedDark]}
@@ -256,7 +257,7 @@ export function CreateBudgetModal({
                         {category.name}
                       </Text>
                     </View>
-                    {isDark && isSelected ? <Check size={16} color={theme.primary} style={styles.categorySelectedCheck} /> : null}
+                    {isSelected ? <Check size={16} color={theme.primary} style={styles.categorySelectedCheck} /> : null}
                   </Pressable>
                 );
               })}

@@ -1,11 +1,12 @@
 import {
   ArrowRightLeft, BadgeDollarSign, Banknote, Briefcase, Car, CircleDollarSign,
   Coffee, Fuel, Gamepad2, Gift, GraduationCap, HeartPulse, Home,
-  PiggyBank, Plane, ReceiptText, Shapes, ShoppingBag, TrendingUp, Utensils, Wallet,
+  LayoutGrid, PiggyBank, Plane, ReceiptText, Shapes, ShoppingBag, TrendingUp, Utensils, Wallet,
   type LucideIcon,
 } from 'lucide-react-native';
+import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
-type CategoryVisualInput = { icon?: string | null; name?: string | null; type?: string };
+type CategoryVisualInput = { icon?: string | null; name?: string | null; type?: string; transferId?: number | null };
 type CategoryVisual = { Icon: LucideIcon; color: string };
 
 const visuals: Record<string, CategoryVisual> = {
@@ -31,6 +32,7 @@ const visuals: Record<string, CategoryVisual> = {
   coffee: { Icon: Coffee, color: '#b4825d' },
   transfer: { Icon: ArrowRightLeft, color: '#489db2' },
   other: { Icon: Shapes, color: '#7d8fa1' },
+  all: { Icon: LayoutGrid, color: '#489db2' },
 };
 
 const aliases: Record<string, string> = {
@@ -42,9 +44,17 @@ const aliases: Record<string, string> = {
   'piggy-bank': 'saving', savings: 'saving', plane: 'travel',
   banknote: 'cash', 'circle-dollar-sign': 'income', 'trending-up': 'investment',
   'gas-pump': 'fuel', 'arrow-right-left': 'transfer',
+  'heartpulse': 'health', 'gamepad2': 'entertainment', 'badge-dollar-sign': 'bonus',
+  'fork.knife': 'food', 'cart.fill': 'shopping', 'car.fill': 'transport',
+  'all-categories': 'all',
+  '🍽': 'food', '🍔': 'food', '🚗': 'transport', '🛒': 'shopping',
+  '🏠': 'home', '🏥': 'health', '🎓': 'education', '🎮': 'entertainment',
+  '🧾': 'bill', '🎁': 'gift', '💰': 'income', '🐷': 'saving', '✈': 'travel',
+  '💵': 'cash', '📈': 'investment', '⛽': 'fuel', '☕': 'coffee', '↔': 'transfer',
 };
 
 const nameRules: [RegExp, string][] = [
+  [/chuyen tien|chuyen khoan|transfer/, 'transfer'],
   [/ca phe|cafe|coffee|tra sua/, 'coffee'],
   [/xang|nhien lieu|fuel|petrol|gasoline/, 'fuel'],
   [/an uong|thuc pham|nha hang|food|meal|restaurant|grocer/, 'food'],
@@ -69,17 +79,34 @@ function normalize(value: string) {
   return value.normalize('NFD').replace(/\p{Diacritic}/gu, '').replace(/[đĐ]/g, 'd').toLowerCase();
 }
 
-export function getCategoryVisual({ icon, name, type }: CategoryVisualInput): CategoryVisual {
-  if (type === 'TransferIn' || type === 'TransferOut') return visuals.transfer;
-  const key = normalize(icon?.trim() ?? '').replace(/[_\s]+/g, '-');
-  const explicit = key !== 'other' && visuals[aliases[key] ?? key];
-  if (explicit) return explicit;
+export function getCategoryIconKey({ icon, name, type, transferId }: CategoryVisualInput): string {
+  if (transferId != null || type === 'TransferIn' || type === 'TransferOut') return 'transfer';
+  const key = normalize((icon?.trim() ?? '').replace(/([a-z0-9])([A-Z])/g, '$1-$2'))
+    .replace(/[_\s]+/g, '-').replace(/[\uFE0E\uFE0F]/g, '');
+  const explicit = Object.hasOwn(aliases, key) ? aliases[key] : key;
+  if (Object.hasOwn(visuals, explicit)) return explicit;
   const normalizedName = normalize(name ?? '');
   const match = nameRules.find(([pattern]) => pattern.test(normalizedName));
-  return visuals[match?.[1] ?? (type === 'Income' ? 'income' : 'other')];
+  return match?.[1] ?? 'other';
+}
+
+export function getCategoryVisual(category: CategoryVisualInput): CategoryVisual {
+  return visuals[getCategoryIconKey(category)];
 }
 
 export function CategoryIcon({ size = 22, ...category }: CategoryVisualInput & { size?: number }) {
   const { Icon, color } = getCategoryVisual(category);
   return <Icon size={size} color={color} strokeWidth={1.8} />;
+}
+
+export function CategoryIconBadge({ size = 38, iconSize = 22, style, ...category }: CategoryVisualInput & {
+  size?: number;
+  iconSize?: number;
+  style?: StyleProp<ViewStyle>;
+}) {
+  const { color } = getCategoryVisual(category);
+  return <View style={[
+    { alignItems: 'center', justifyContent: 'center', flexShrink: 0, width: size, height: size, borderRadius: size / 2, borderWidth: StyleSheet.hairlineWidth, backgroundColor: `${color}18`, borderColor: `${color}40` },
+    style,
+  ]}><CategoryIcon {...category} size={iconSize} /></View>;
 }

@@ -41,7 +41,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { categoriesApi, Category, CategoryType } from "@/api/categoriesApi";
 import { FinancialAccount, financialAccountApi } from "@/api/financialAccountApi";
 import { CreateTransactionPayload, transactionsApi, TransactionType } from "@/api/transactionsApi";
-import { CategoryIcon } from "@/components/category-icon";
+import { CategoryIcon, CategoryIconBadge, getCategoryIconKey } from "@/components/category-icon";
 import { FocusedScreenTransition } from "@/components/screen-transition";
 import { invalidateAIAnalysis } from "@/hooks/use-ai-analysis";
 import { useAppTheme } from "@/hooks/use-app-theme";
@@ -296,7 +296,7 @@ export default function CreateScreen() {
     try {
       setIsCreatingCategory(true);
       await categoriesApi.create({
-        icon: trimmedName.charAt(0).toLowerCase() || "tag",
+        icon: getCategoryIconKey({ name: trimmedName, type: categoryType }),
         isDefault: false,
         name: trimmedName,
         type: categoryType,
@@ -1079,10 +1079,15 @@ export default function CreateScreen() {
                         setIsCategoryPickerVisible(false);
                       }}
                     >
-                      <Text style={[styles.pickerItemText, { color: theme.text }]}>{category.name}</Text>
-                      <Text style={[styles.pickerItemSubtext, { color: theme.textSubtle }]}>
-                        {category.type === "Expense" ? "Chi tiêu" : "Thu nhập"}
-                      </Text>
+                      <View style={styles.categoryPickerRow}>
+                        <CategoryIconBadge {...category} size={36} iconSize={20} />
+                        <View style={styles.categoryPickerCopy}>
+                          <Text style={[styles.pickerItemText, { color: theme.text }]}>{category.name}</Text>
+                          <Text style={[styles.pickerItemSubtext, { color: theme.textSubtle }]}>
+                            {category.type === "Expense" ? "Chi tiêu" : "Thu nhập"}
+                          </Text>
+                        </View>
+                      </View>
                     </Pressable>
                   ))}
                 </ScrollView>
@@ -1366,5 +1371,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   pickerItemText: { fontSize: 16, fontWeight: "600" },
+  categoryPickerRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  categoryPickerCopy: { flex: 1 },
   pickerItemSubtext: { fontSize: 12, marginTop: 4 },
 });

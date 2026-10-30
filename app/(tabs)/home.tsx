@@ -18,7 +18,7 @@ import Svg, { Circle, Defs, Line, LinearGradient, Path, Rect, Stop, Text as SvgT
 
 import type { AIAnalysis } from "@/api/aiApi";
 import { AIRecommendations } from '@/components/ai-recommendations';
-import { CategoryIcon } from '@/components/category-icon';
+import { CategoryIconBadge } from '@/components/category-icon';
 import { TransactionDayHeader } from '@/components/transaction-day-header';
 import { formatTransactionTime, getTransactionDayKey, isTransferTransaction } from '@/utils/transactionPresentation';
 import { categoriesApi, Category } from "@/api/categoriesApi";
@@ -1010,14 +1010,10 @@ function CategoryRow({
   index: number;
 }) {
   const styles = useHomeStyles();
-  const colors = ["#3557a4", "#c05b3e", "#1b8f5a", "#7c61d9"];
-  const color = colors[index % colors.length];
 
   return (
     <View style={[styles.categoryRow, index > 0 && styles.rowDivider]}>
-      <View style={[styles.categoryIcon, { backgroundColor: `${color}18` }]}>
-        <Text style={[styles.categoryIconText, { color }]}>{category.icon?.charAt(0).toUpperCase() ?? "?"}</Text>
-      </View>
+      <CategoryIconBadge icon={category.icon} name={category.categoryName} type="Expense" style={styles.categoryIcon} />
       <View style={styles.categoryMain}>
         <Text numberOfLines={1} style={styles.categoryName}>
           {category.categoryName}
@@ -1050,9 +1046,7 @@ function TransactionRow({
 
   return (
     <View style={styles.transactionRow}>
-      <View style={[styles.transactionIcon, positive ? styles.incomeIcon : styles.expenseIcon]}>
-        <CategoryIcon icon={transfer ? 'transfer' : category?.icon} name={title} type={transaction.type} />
-      </View>
+      <CategoryIconBadge icon={category?.icon} name={category?.name || transaction.categoryName} type={transaction.type} transferId={transaction.transferId} style={styles.transactionIcon} />
       <View style={styles.transactionMain}>
         <Text numberOfLines={1} style={styles.transactionTitle}>
           {transaction.description || title}
@@ -1340,7 +1334,6 @@ function createStyles(theme: AppTheme) {
       marginRight: 12,
       width: 38,
     },
-    categoryIconText: { fontSize: 17, fontWeight: '600' },
     categoryMain: { flex: 1 },
     categoryName: { color: theme.text, fontSize: 14, fontWeight: '600' },
     categoryMeta: { color: theme.textSubtle, fontSize: 11, fontWeight: '600', marginTop: 3 },
@@ -1368,8 +1361,6 @@ function createStyles(theme: AppTheme) {
       marginRight: 12,
       width: 38,
     },
-    incomeIcon: { backgroundColor: theme.goodBackground },
-    expenseIcon: { backgroundColor: theme.warningBackground },
     transactionMain: { flex: 1 },
     transactionTitle: { ...Typography.label, color: theme.text },
     transactionMeta: { ...Typography.caption, color: theme.textSubtle, marginTop: 4 },

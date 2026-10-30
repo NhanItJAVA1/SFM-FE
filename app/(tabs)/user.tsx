@@ -35,7 +35,7 @@ import {
 import { subscribeUserTabPress } from "@/stores/userTabPress";
 import type { AppTheme } from "@/theme/appTheme";
 import { exportTransactionsFile } from "@/utils/transactionExportFile";
-import { CategoryIcon } from '@/components/category-icon';
+import { CategoryIconBadge, getCategoryVisual } from '@/components/category-icon';
 import { isIncomingTransaction } from '@/utils/transactionPresentation';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -48,7 +48,6 @@ type TabsNavigation = {
   navigate: (screen: string) => void;
 };
 
-const chartColors = ["#8e7cf4", "#ffb14a", "#31c48d", "#f06292", "#60a5fa", "#facc15", "#9ca3af"];
 const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID;
 const googleIosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID;
 const googleAndroidClientId = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID;
@@ -252,9 +251,9 @@ export default function UserScreen() {
 
     return (spendingStats.categories ?? [])
       .filter((category) => category.amount > 0)
-      .map((category, index) => ({
+      .map((category) => ({
         amount: category.amount,
-        color: chartColors[index % chartColors.length],
+        color: getCategoryVisual({ icon: category.icon, name: category.categoryName, type: 'Expense' }).color,
         key: getCategoryKey(category),
         label: category.categoryName,
         percentage: category.percentage,
@@ -1279,7 +1278,6 @@ export default function UserScreen() {
                   const categoryKey = getCategoryKey(category);
                   const isSelected = selectedCategoryKey === categoryKey;
                   const isExpanded = expandedCategoryKey === categoryKey;
-                  const chartColor = chartData.find((item) => item.key === categoryKey)?.color ?? "#9ca3af";
 
                   return (
                     <Pressable
@@ -1288,11 +1286,7 @@ export default function UserScreen() {
                       style={[styles.statCard, isSelected && styles.statCardSelected]}
                     >
                       <View style={styles.statCategoryHeader}>
-                        <View style={[styles.statIcon, { backgroundColor: `${chartColor}24` }]}>
-                          <Text style={[styles.statIconText, { color: chartColor }]}>
-                            {category.icon?.charAt(0).toUpperCase() ?? "?"}
-                          </Text>
-                        </View>
+                        <CategoryIconBadge icon={category.icon} name={category.categoryName} type="Expense" size={40} style={{ marginRight: 14 }} />
                         <View style={styles.walletInfo}>
                           <Text style={styles.statCategoryName}>{category.categoryName}</Text>
                           <Text style={styles.statCategoryMeta}>
@@ -1345,7 +1339,7 @@ export default function UserScreen() {
                             categoryTransactions.map((transaction) => (
                               <View key={transaction.id} style={styles.categoryTransactionRow}>
                                 <View style={{ marginRight: 8 }}>
-                                  <CategoryIcon icon={category.icon} name={category.categoryName} type={transaction.type} size={18} />
+                                  <CategoryIconBadge icon={category.icon} name={category.categoryName} type={transaction.type} transferId={transaction.transferId} size={28} iconSize={18} />
                                 </View>
                                 <View style={styles.categoryTransactionCopy}>
                                   <Text numberOfLines={1} style={styles.categoryTransactionDescription}>
@@ -1948,16 +1942,6 @@ function createStyles(theme: AppTheme) {
     },
     statCardSelected: { borderColor: theme.accent, shadowColor: theme.accent, shadowOpacity: 0.2, shadowRadius: 10 },
     statCategoryHeader: { alignItems: "center", flexDirection: "row" },
-    statIcon: {
-      alignItems: "center",
-      backgroundColor: theme.cardAlt,
-      borderRadius: 20,
-      height: 40,
-      justifyContent: "center",
-      marginRight: 14,
-      width: 40,
-    },
-    statIconText: { color: theme.primary, fontSize: 18, fontWeight: '600' },
     statCategoryName: { color: theme.text, fontSize: 16, fontWeight: '600' },
     statCategoryMeta: { color: theme.textMuted, fontSize: 13, fontWeight: '600', marginTop: 3 },
     statCategoryAmount: { color: theme.text, fontSize: 15, fontWeight: '600' },

@@ -7,7 +7,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import type { BudgetDailySpending } from '@/api/budgetsApi';
 import type { Category } from '@/api/categoriesApi';
 import { useAppTheme } from '@/hooks/use-app-theme';
-import { CategoryIcon } from '@/components/category-icon';
+import { CategoryIconBadge } from '@/components/category-icon';
 import { TransactionDayHeader } from '@/components/transaction-day-header';
 import { formatTransactionTime, isIncomingTransaction } from '@/utils/transactionPresentation';
 import { formatMoney } from './helpers';
@@ -44,7 +44,7 @@ export function BudgetTransactionList({ dailySpendings = [], categories = [] }: 
               const positive = isIncomingTransaction(transaction.type);
               return (
                 <View key={transaction.id} style={[s.row, { borderBottomColor: theme.listDivider }]}>
-                  <View style={[s.icon, { backgroundColor: theme.cardAlt }]}><CategoryIcon icon={category?.icon} name={categoryName} type={transaction.type} size={18} /></View>
+                  <CategoryIconBadge icon={category?.icon} name={categoryName} type={transaction.type} transferId={transaction.transferId} size={32} iconSize={18} />
                   <View style={s.copy}>
                     <Text style={[s.description, { color: theme.text }]} numberOfLines={2}>{transaction.description || categoryName}</Text>
                     <View style={s.footer}>
@@ -70,7 +70,7 @@ const s = StyleSheet.create({
   section: { gap: 10 }, title: { ...Typography.section, paddingHorizontal: 4 },
   all: { borderWidth: 1, borderRadius: 4, paddingHorizontal: 10, paddingVertical: 6, flexDirection: 'row', gap: 5, alignItems: 'center', alignSelf: 'flex-start' }, filterText: { fontSize: 12, fontWeight: '600' },
   row: { flexDirection: 'row', paddingHorizontal: 10, paddingVertical: 14, gap: 10, borderBottomWidth: StyleSheet.hairlineWidth },
-  icon: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' }, copy: { flex: 1, minWidth: 0, gap: 7 },
+  copy: { flex: 1, minWidth: 0, gap: 7 },
   description: { fontSize: 14, lineHeight: 20, fontWeight: '500' }, footer: { flexDirection: 'row', gap: 8, alignItems: 'center' }, meta: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 }, category: { borderWidth: 1, borderRadius: 4, paddingHorizontal: 7, paddingVertical: 3, maxWidth: '100%' }, categoryText: { fontSize: 11 }, time: { fontSize: 10 }, amount: { maxWidth: '55%', fontSize: 14, fontWeight: '600', textAlign: 'right' },
   empty: { padding: 16, fontSize: 13 }, more: { padding: 14, alignItems: 'center' },
 });
