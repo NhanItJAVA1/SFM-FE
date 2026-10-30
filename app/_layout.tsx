@@ -6,11 +6,20 @@ import { clearAuthSession, restoreAuthSession } from '@/stores/persistedAuthSess
 import { restoreThemeMode } from '@/stores/themePreference';
 import { useAppTheme } from '@/hooks/use-app-theme';
 import { setApiAuthExpiredHandler } from '@/api/axiosClient';
+import { AppTypographyProvider } from '@/components/app-text';
+import { useAppFonts } from '@/hooks/use-app-fonts';
 
 export default function RootLayout() {
   const router = useRouter();
   const theme = useAppTheme();
   const [isRestoringSession, setIsRestoringSession] = useState(true);
+  const [fontsLoaded, fontError] = useAppFonts();
+
+  useEffect(() => {
+    if (fontError) {
+      console.warn('Unable to load Inter; using system fonts.', fontError);
+    }
+  }, [fontError]);
 
   useEffect(() => {
     // Expired-session redirects were added for the web admin flow. Keep the
@@ -36,7 +45,7 @@ export default function RootLayout() {
     hydrateSession();
   }, []);
 
-  if (isRestoringSession) {
+  if (isRestoringSession || (!fontsLoaded && !fontError)) {
     return (
       <View style={[styles.loadingScreen, { backgroundColor: theme.screen }]}>
         <ActivityIndicator color={theme.primary} />
@@ -44,7 +53,11 @@ export default function RootLayout() {
     );
   }
 
-  return <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.screen } }} />;
+  return (
+    <AppTypographyProvider ready={fontsLoaded}>
+      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.screen } }} />
+    </AppTypographyProvider>
+  );
 }
 
 const styles = StyleSheet.create({

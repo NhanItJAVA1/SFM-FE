@@ -1,39 +1,29 @@
 import { Redirect, router, Tabs } from "expo-router";
-import { ChartPie, ListOrdered } from "lucide-react-native";
+import { ChartPie, House, ListOrdered, Plus, UserRound } from "lucide-react-native";
 import { type ComponentProps, useRef, useState } from "react";
-import { Animated, Easing, Pressable, StyleSheet, Text, View } from "react-native";
+import { Animated, Easing, Pressable, StyleSheet } from "react-native";
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useAppTheme } from "@/hooks/use-app-theme";
 import { getAuthAccessToken } from "@/stores/authSession";
 import { clearSpendingStatsFromTransactions } from "@/stores/spendingStatsNavigation";
 import { emitUserTabPress } from "@/stores/userTabPress";
 import type { AppTheme } from "@/theme/appTheme";
+import { CREATE_BUTTON_SIZE, CURVED_TAB_BAR_HEIGHT } from '@/components/curved-tab-bar-background';
+import { UserTabBar } from '@/components/user-tab-bar';
 
-type TabIconName = "home" | "ledger" | "plus" | "budget" | "user";
+type TabIconName = "home" | "ledger" | "budget" | "user";
 
-const tabIcons: Record<TabIconName, string> = {
-  home: "⌂",
-  ledger: "▤",
-  plus: "+",
-  budget: "▧",
-  user: "♙",
+const tabIcons = {
+  home: House,
+  ledger: ListOrdered,
+  budget: ChartPie,
+  user: UserRound,
 };
 
 function TabIcon({ name, focused, theme }: { name: TabIconName; focused: boolean; theme: AppTheme }) {
-  if (name === "plus") {
-    return (
-      <View style={[styles.addButton, { backgroundColor: theme.primary }]}>
-        <Text style={[styles.addIcon, { color: theme.textInverse }]}>{tabIcons.plus}</Text>
-      </View>
-    );
-  }
-
-  if (name === "ledger" || name === "budget") {
-    const Icon = name === "ledger" ? ListOrdered : ChartPie;
-    return <Icon size={23} strokeWidth={focused ? 2.3 : 1.8} color={focused ? theme.text : theme.textSubtle} />;
-  }
-
-  return <Text style={[styles.icon, { color: focused ? theme.text : theme.textSubtle }]}>{tabIcons[name]}</Text>;
+  const Icon = tabIcons[name];
+  return <Icon size={22} strokeWidth={focused ? 2.2 : 1.8} color={focused ? theme.text : theme.textSubtle} />;
 }
 
 type CreateTabButtonProps = Omit<ComponentProps<typeof Pressable>, "ref"> & {
@@ -41,14 +31,18 @@ type CreateTabButtonProps = Omit<ComponentProps<typeof Pressable>, "ref"> & {
 };
 
 function CreateTabButton({
-  children,
+  children: _children,
   onLongPress,
   onPress,
   onPressIn,
   onPressOut,
+  onHoverIn,
+  onHoverOut,
   ref: _ref,
+  style,
   ...props
 }: CreateTabButtonProps) {
+  const theme = useAppTheme();
   const lastLongPressAt = useRef(0);
   const [pressScale] = useState(() => new Animated.Value(1));
 
@@ -64,13 +58,16 @@ function CreateTabButton({
   return (
     <Pressable
       {...props}
+      android_ripple={undefined}
+      style={(state) => [typeof style === 'function' ? style(state) : style, styles.createTabButton]}
+      accessibilityHint="Nhấn giữ để quét hóa đơn"
       onPressIn={(event) => {
-        animatePressScale(1.14);
+        animatePressScale(0.94);
         onPressIn?.(event);
       }}
       onLongPress={(event) => {
         lastLongPressAt.current = Date.now();
-        animatePressScale(1.24);
+        animatePressScale(0.98);
         onLongPress?.(event);
         router.push("/(tabs)/scan-bill");
       }}
@@ -85,18 +82,21 @@ function CreateTabButton({
         animatePressScale(1);
         onPressOut?.(event);
       }}
+      onHoverIn={(event) => { animatePressScale(0.98); onHoverIn?.(event); }}
+      onHoverOut={(event) => { animatePressScale(1); onHoverOut?.(event); }}
     >
-      {(state) => (
-        <Animated.View style={{ transform: [{ scale: pressScale }] }}>
-          {typeof children === "function" ? children(state) : children}
-        </Animated.View>
-      )}
+      <Animated.View style={[styles.addButton, { backgroundColor: theme.primary, transform: [{ scale: pressScale }] }]}>
+        <Plus size={30} strokeWidth={2.4} color={theme.textInverse} />
+      </Animated.View>
     </Pressable>
   );
 }
 
 export default function TabsLayout() {
   const theme = useAppTheme();
+  const insets = useSafeAreaInsets();
+  const bottomInset = Math.max(insets.bottom, 6);
+  const tabBarHeight = CURVED_TAB_BAR_HEIGHT + bottomInset;
 
   if (!getAuthAccessToken()) {
     return <Redirect href="/auth/login" />;
@@ -104,16 +104,15 @@ export default function TabsLayout() {
 
   return (
     <Tabs
+      tabBar={(props) => <UserTabBar {...props} />}
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: theme.text,
         tabBarInactiveTintColor: theme.textSubtle,
-        tabBarLabelStyle: styles.label,
         tabBarStyle: [
           styles.tabBar,
-          { backgroundColor: theme.tabBar, borderTopColor: theme.tabBorder },
+          { height: tabBarHeight, paddingBottom: bottomInset },
         ],
-        tabBarItemStyle: styles.tabItem,
       }}
     >
       <Tabs.Screen
@@ -144,8 +143,8 @@ export default function TabsLayout() {
         options={{
           tabBarHideOnKeyboard: true,
           title: "",
+          tabBarAccessibilityLabel: 'Tạo giao dịch',
           tabBarButton: (props) => <CreateTabButton {...props} />,
-          tabBarIcon: ({ focused }) => <TabIcon name="plus" focused={focused} theme={theme} />,
           tabBarLabel: () => null,
         }}
       />
@@ -186,35 +185,7 @@ export default function TabsLayout() {
 }
 
 const styles = StyleSheet.create({
-  tabBar: {
-    height: 64,
-    paddingBottom: 6,
-    paddingTop: 6,
-  },
-  tabItem: {
-    minHeight: 52,
-  },
-  label: {
-    fontSize: 11,
-    fontWeight: "600",
-    marginTop: 1,
-  },
-  icon: {
-    fontSize: 23,
-    fontWeight: "700",
-    lineHeight: 26,
-  },
-  addButton: {
-    alignItems: "center",
-    borderRadius: 26,
-    height: 52,
-    justifyContent: "center",
-    marginBottom: 12,
-    width: 52,
-  },
-  addIcon: {
-    fontSize: 30,
-    fontWeight: "700",
-    lineHeight: 34,
-  },
+  tabBar: { position: 'absolute', backgroundColor: 'transparent', borderTopWidth: 0, elevation: 0, shadowOpacity: 0 },
+  createTabButton: { flex: 1, height: '100%', alignItems: 'center', justifyContent: 'center', padding: 0, borderRadius: CREATE_BUTTON_SIZE / 2, overflow: 'hidden', backgroundColor: 'transparent' },
+  addButton: { alignItems: 'center', justifyContent: 'center', borderRadius: CREATE_BUTTON_SIZE / 2, height: CREATE_BUTTON_SIZE, width: CREATE_BUTTON_SIZE },
 });

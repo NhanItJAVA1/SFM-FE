@@ -1,8 +1,10 @@
+import { Typography } from '@/theme/typography';
+import { AppText as Text } from '@/components/app-text';
 import { CameraCapturedPicture, CameraView, useCameraPermissions } from "expo-camera";
 import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
 import { useMemo, useRef, useState } from "react";
-import { Alert, Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, Image, Pressable, StyleSheet, View } from "react-native";
 
 import { TransactionDraft, transactionsApi } from "@/api/transactionsApi";
 import { FocusedScreenTransition } from "@/components/screen-transition";
@@ -209,8 +211,8 @@ function createStyles(theme: AppTheme) {
     top: 0,
   },
   topBar: { alignItems: "center", flexDirection: "row", justifyContent: "space-between", paddingTop: 26 },
-  topAction: { color: theme.primary, fontSize: 17, fontWeight: "800" },
-  topTitle: { color: theme.textInverse, fontSize: 20, fontWeight: "800" },
+  topAction: { color: theme.primary, fontSize: 17, fontWeight: '600' },
+  topTitle: { ...Typography.title, color: theme.textInverse },
   topSpacer: { width: 58 },
   scanFrame: { alignSelf: "center", height: 390, marginTop: 48, position: "relative", width: "88%" },
   galleryButton: {
@@ -269,7 +271,7 @@ function createStyles(theme: AppTheme) {
     right: 0,
     width: 54,
   },
-  hint: { color: theme.textInverse, fontSize: 15, fontWeight: "700", lineHeight: 22, marginHorizontal: 18, textAlign: "center" },
+  hint: { color: theme.textInverse, fontSize: 15, fontWeight: '600', lineHeight: 22, marginHorizontal: 18, textAlign: "center" },
   shutterButton: {
     alignItems: "center",
     alignSelf: "center",
@@ -289,7 +291,7 @@ function createStyles(theme: AppTheme) {
     justifyContent: "center",
     padding: 24,
   },
-  permissionTitle: { color: theme.text, fontSize: 28, fontWeight: "800", marginBottom: 10 },
+  permissionTitle: { color: theme.text, fontSize: 28, fontWeight: '600', marginBottom: 10 },
   permissionText: { color: theme.textMuted, fontSize: 16, lineHeight: 23, marginBottom: 24, textAlign: "center" },
   primaryButton: {
     alignItems: "center",
@@ -300,9 +302,9 @@ function createStyles(theme: AppTheme) {
     paddingHorizontal: 20,
     width: "100%",
   },
-  primaryButtonText: { color: theme.textInverse, fontSize: 16, fontWeight: "800" },
+  primaryButtonText: { ...Typography.button, color: theme.textInverse },
   secondaryButton: { alignItems: "center", minHeight: 48, justifyContent: "center", marginTop: 10, width: "100%" },
-  secondaryButtonText: { color: theme.textSubtle, fontSize: 16, fontWeight: "700" },
+  secondaryButtonText: { ...Typography.button, color: theme.textSubtle },
   previewImage: { height: "100%", width: "100%" },
   previewOverlay: {
     bottom: 0,
@@ -321,7 +323,7 @@ function createStyles(theme: AppTheme) {
     minHeight: 54,
     justifyContent: "center",
   },
-  uploadButtonText: { color: theme.textInverse, fontSize: 17, fontWeight: "800" },
+  uploadButtonText: { color: theme.textInverse, fontSize: 17, fontWeight: '600' },
   buttonDisabled: { opacity: 0.65 },
   loadingOverlay: {
     alignItems: "center",

@@ -1,6 +1,8 @@
+import { Typography } from '@/theme/typography';
+import { AppText as Text, AppTextInput as TextInput } from '@/components/app-text';
 import { Link, router } from 'expo-router';
 import { useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, TextInput } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, StyleSheet} from 'react-native';
 
 import { authApi } from '@/api/authApi';
 import { FocusedScreenTransition } from '@/components/screen-transition';
@@ -65,18 +67,18 @@ export default function RegisterScreen() {
       >
         {isSubmitting ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Register</Text>}
       </Pressable>
-      <Link href="/auth/login" style={styles.link}>Already have a user profile?</Link>
+      <Link href="/auth/login" asChild><Text style={styles.link}>Already have a user profile?</Text></Link>
     </FocusedScreenTransition>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, justifyContent: 'center', padding: 24, gap: 14 },
-  title: { fontSize: 32, fontWeight: '700' },
+  title: { ...Typography.title },
   subtitle: { color: '#68707d', marginBottom: 12 },
   input: { borderWidth: 1, borderColor: '#d4d9e1', borderRadius: 10, padding: 14 },
   button: { backgroundColor: '#1f6feb', borderRadius: 10, padding: 15, alignItems: 'center' },
   buttonDisabled: { opacity: 0.7 },
-  buttonText: { color: '#fff', fontWeight: '700' },
+  buttonText: { ...Typography.button, color: '#fff' },
   link: { color: '#1f6feb', textAlign: 'center', marginTop: 8 },
 });

@@ -1,15 +1,21 @@
+import { Typography } from '@/theme/typography';
+import { AppText as Text, AppTextInput as TextInput } from '@/components/app-text';
 import { BottomPopup, BottomPopupSheet } from "@/components/bottom-popup";
 import { router, useFocusEffect } from "expo-router";
+import { useBottomTabBarHeight } from 'expo-router/js-tabs';
 import { useCallback, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, FlatList, Keyboard, Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, FlatList, Keyboard, Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { ScreenGradientBackground } from "@/components/screen-gradient-background";
-import { ArrowDown, ArrowDownToLine, ArrowUp, ChartNoAxesCombined, Check, ChevronLeft, ChevronRight, Funnel, Landmark, LayoutGrid, ReceiptText, Search, SlidersHorizontal, Sparkles, Wallet, X } from "lucide-react-native";
+import { ArrowDown, ArrowRight, ArrowUp, ChartNoAxesCombined, Check, ChevronLeft, ChevronRight, Funnel, LayoutGrid, Search, SlidersHorizontal, Sparkles, TriangleAlert, Wallet, X } from "lucide-react-native";
 
 import { FinancialAccount, financialAccountApi } from "@/api/financialAccountApi";
 import { categoriesApi, type Category } from "@/api/categoriesApi";
 import type { AIAnomaly } from "@/api/aiApi";
-import { CategorySpendingResponse, Transaction, TransactionType, transactionsApi } from "@/api/transactionsApi";
+import { CategorySpendingResponse, Transaction, transactionsApi } from "@/api/transactionsApi";
+import { CategoryIcon } from '@/components/category-icon';
+import { TransactionDayHeader } from '@/components/transaction-day-header';
+import { formatTransactionTime, getCurrentTransactionMonth, getTransactionDayHeading, getTransactionDayKey, isIncomingTransaction } from '@/utils/transactionPresentation';
 import { FocusedScreenTransition } from "@/components/screen-transition";
 import { useAIAnalysis } from "@/hooks/use-ai-analysis";
 import { useAppTheme } from "@/hooks/use-app-theme";
@@ -20,6 +26,7 @@ import { emptyTransactionFilters, getTransactionMonthRange, TransactionFilterScr
 import { calendarDay, getAnomalyWindow } from "@/screens/transactions/anomaly-window";
 type AnomalyDateFilter = string;
 type AnomalyFilters = { category: string; date: AnomalyDateFilter; reason: string };
+type TransactionRowData = Pick<Transaction, 'amount' | 'description' | 'categoryName' | 'transactionDate'> & { type?: Transaction['type'] };
 
 function matchesAnomalyFilters(anomaly: AIAnomaly, filters: AnomalyFilters) {
   const categoryKey = anomaly.categoryId === null ? "uncategorized" : String(anomaly.categoryId);
@@ -47,14 +54,11 @@ function formatMoney(amount: number, currency = "VND") {
   return new Intl.NumberFormat("vi-VN", { currency, maximumFractionDigits: 0, style: "currency" }).format(amount).replace(/\s*₫$/, "đ");
 }
 
-function isPositive(type: TransactionType) {
-  return type === "Income" || type === "TransferIn";
-}
-
 export default function TransactionsScreen() {
   const theme = useAppTheme();
+  const tabBarHeight = useBottomTabBarHeight();
   const styles = useTransactionStyles();
-  const [filters, setFilters] = useState<TransactionFilters>(emptyTransactionFilters);
+  const [filters, setFilters] = useState<TransactionFilters>(() => ({ ...emptyTransactionFilters, month: getCurrentTransactionMonth() }));
   const [accounts, setAccounts] = useState<FinancialAccount[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const listRef = useRef<FlatList<Transaction>>(null);
@@ -185,7 +189,9 @@ export default function TransactionsScreen() {
   const currentMonth = new Date().getMonth() + 1;
   const overviewMonth = monthlySpending?.currentPeriod.month ?? currentMonth;
   const spendingDifference = monthlySpending ? monthlySpending.totalAmount - monthlySpending.compareTotalAmount : null;
-  const listFilterCount = Number(filters.month !== null) + Number(filters.accountId !== null) + Number(filters.categoryId !== null);
+  const listFilterCount = Number(filters.month !== getCurrentTransactionMonth()) + Number(filters.accountId !== null) + Number(filters.categoryId !== null);
+  const categoryMap = useMemo(() => new Map(categories.map((category) => [category.id, category])), [categories]);
+  const transactionMap = useMemo(() => new Map(transactions.map((transaction) => [transaction.id, transaction])), [transactions]);
   const openMonthlyOverview = () => {
     requestSpendingStatsFromTransactions();
     router.navigate("/(tabs)/user");
@@ -210,7 +216,8 @@ export default function TransactionsScreen() {
           renderItem={({ item, index }) => (
             <TransactionListItem
               transaction={item}
-              showMonth={index === 0 || getTransactionMonth(item.transactionDate) !== getTransactionMonth(filteredTransactions[index - 1].transactionDate)}
+              showDay={index === 0 || getTransactionDayKey(item.transactionDate) !== getTransactionDayKey(filteredTransactions[index - 1].transactionDate)}
+              category={item.categoryId === null ? undefined : categoryMap.get(item.categoryId)}
               isAnomaly={anomalyIds.has(item.id)}
               currency={currency}
             />
@@ -225,7 +232,7 @@ export default function TransactionsScreen() {
             setShowScrollToTop((current) => current === visible ? current : visible);
           }}
           scrollEventThrottle={100}
-          contentContainerStyle={styles.content}
+          contentContainerStyle={[styles.content, { paddingBottom: tabBarHeight + 12 }]}
           refreshControl={
             <RefreshControl
               refreshing={isRefreshing}
@@ -302,9 +309,9 @@ export default function TransactionsScreen() {
                   </View>
                 </Pressable>
               </View>
-              <Pressable onPress={() => router.navigate("/(tabs)/budgets")} style={styles.budgetPrompt}>
-                <Text style={styles.budgetPromptText}>Bạn muốn tiết kiệm tiền hơn?</Text>
-                <Text style={styles.budgetPromptAction}>Đặt ngân sách</Text>
+              <Pressable accessibilityRole="button" accessibilityLabel="Mở ngân sách" onPress={() => router.navigate("/(tabs)/budgets")} style={styles.budgetPrompt}>
+                <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85} style={styles.budgetPromptText}>Bạn muốn tiết kiệm tiền hơn?</Text>
+                <ArrowRight size={18} color={theme.primary} strokeWidth={2} />
               </Pressable>
             </View>
           </View>
@@ -313,13 +320,13 @@ export default function TransactionsScreen() {
             {[{ label: "Tất cả giao dịch", selected: !showAnomaliesOnly, value: false }, { label: "Bất thường", selected: showAnomaliesOnly, value: true }].map((tab) => (
               <Pressable key={tab.label} accessibilityRole="tab" accessibilityState={{ selected: tab.selected }} onPress={() => setShowAnomaliesOnly(tab.value)} style={[styles.ledgerTab, tab.selected && styles.ledgerTabSelected]}>
                 <Text style={[styles.ledgerTabText, tab.selected && styles.ledgerTabTextSelected]}>
-                  {tab.label}{tab.value ? <> · <Text style={{ color: theme.dangerText, fontWeight: "700" }}>{visibleAnomalyCount}</Text></> : null}
+                  {tab.label}{tab.value ? <> · <Text style={{ color: theme.dangerText, fontWeight: '600' }}>{visibleAnomalyCount}</Text></> : null}
                 </Text>
               </Pressable>
             ))}
           </View>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>{showAnomaliesOnly ? "Giao dịch bất thường" : "Giao dịch gần đây"}</Text>
+            <Text style={styles.sectionTitle}>{showAnomaliesOnly ? "Giao dịch bất thường" : filters.month === getCurrentTransactionMonth() ? "Giao dịch gần đây" : "Lịch sử giao dịch"}</Text>
             <Text style={styles.sectionMeta}>
               {showAnomaliesOnly ? `${displayedTransactionCount} giao dịch` : `${displayedTransactionCount}/${totalCount}`}
             </Text>
@@ -364,9 +371,19 @@ export default function TransactionsScreen() {
                   <Text style={styles.emptyText}>{!analysis ? (analysisError?.message || "Cập nhật phân tích tại Tổng quan.") : analysis.anomalySummary.status === "insufficient_data" ? "Chưa đủ lịch sử để đánh giá giao dịch bất thường." : analysis.anomalySummary.status === "partial" ? `${analysis.anomalySummary.insufficientCount} khoản chưa đủ dữ liệu. Chưa có cảnh báo mạnh trong bộ lọc hiện tại.` : anomalyWindow ? `Trong kỳ ${anomalyWindow.label}.` : "Chưa có dữ liệu bất thường trong kết quả AI."}</Text>
                 </View>
               ) : (
-                (showAllAnomalies ? filteredAnomalies : filteredAnomalies.slice(0, 5)).map((anomaly) => (
-                  <AnomalyRow key={anomaly.transactionId ?? `${anomaly.date}-${anomaly.amount}`} anomaly={anomaly} />
-                ))
+                (showAllAnomalies ? filteredAnomalies : filteredAnomalies.slice(0, 5)).map((anomaly) => {
+                  const transaction = anomaly.transactionId === null ? undefined : transactionMap.get(anomaly.transactionId);
+                  const categoryId = transaction?.categoryId ?? anomaly.categoryId;
+                  return (
+                    <AnomalyRow
+                      key={anomaly.transactionId ?? `${anomaly.date}-${anomaly.amount}`}
+                      anomaly={anomaly}
+                      transaction={transaction}
+                      category={categoryId === null ? undefined : categoryMap.get(categoryId)}
+                      currency={accounts.find((account) => account.id === transaction?.accountId)?.currency ?? 'VND'}
+                    />
+                  );
+                })
               )}
               {filteredAnomalies.length > 5 ? (
                 <Pressable onPress={() => setShowAllAnomalies((show) => !show)} style={styles.showMoreAnomalies}>
@@ -396,7 +413,7 @@ export default function TransactionsScreen() {
             accessibilityLabel="Lên đầu danh sách"
             accessibilityHint="Cuộn về đầu để chọn tháng hoặc đổi bộ lọc"
             onPress={() => listRef.current?.scrollToOffset({ offset: 0, animated: true })}
-            style={({ pressed }) => [styles.scrollToTop, pressed && { opacity: 0.8 }]}
+            style={({ pressed }) => [styles.scrollToTop, { bottom: tabBarHeight + 12 }, pressed && { opacity: 0.8 }]}
           >
             <ArrowUp size={22} color={theme.textInverse} strokeWidth={2} />
           </Pressable>
@@ -560,87 +577,98 @@ function AnomalyFilterSheet({
   );
 }
 
-function AnomalyRow({ anomaly }: { anomaly: AIAnomaly }) {
-  const styles = useTransactionStyles();
-  const anomalyDate = new Date(anomaly.date);
-  const dateLabel = Number.isNaN(anomalyDate.getTime())
-    ? anomaly.date
-    : new Intl.DateTimeFormat("vi-VN", { day: "2-digit", month: "short", year: "numeric" }).format(anomalyDate);
+function AnomalyRow({ anomaly, transaction, category, currency }: {
+  anomaly: AIAnomaly;
+  transaction?: Transaction;
+  category?: Category;
+  currency: string;
+}) {
+  const row: TransactionRowData = transaction ?? {
+    categoryName: anomaly.category,
+    description: null,
+    amount: anomaly.amount,
+    transactionDate: anomaly.date,
+  };
+  const dateLabel = getTransactionDayHeading(row.transactionDate).date || anomaly.date;
+  // Assessments may contain only a day; do not invent a midnight timestamp.
+  const timeLabel = /\d{2}:\d{2}/.test(row.transactionDate)
+    ? `${dateLabel} · ${formatTransactionTime(row.transactionDate)}` : dateLabel;
+  const reason = (anomaly.reasonCodes ?? []).map((code) => anomalyReasonLabels[code] ?? code).join(' · ')
+    || 'Được AI đánh dấu bất thường';
 
-  return (
-    <View style={styles.anomalyRow}>
-      <View style={styles.anomalyRowHeader}>
-        <View style={styles.anomalyRowCopy}>
-          <Text style={styles.anomalyRowCategory}>{anomaly.category || "Chưa phân loại"}</Text>
-          <Text style={styles.anomalyRowDate}>{dateLabel} · #{anomaly.transactionId ?? "—"}</Text>
-        </View>
-        <Text style={styles.anomalyRowAmount}>{formatMoney(anomaly.amount)}</Text>
-      </View>
-      <View style={styles.anomalyRowFooter}>
-        <Text style={styles.anomalyRowReasons}>
-          {(anomaly.reasonCodes ?? []).slice(0, 2).map((reason) => anomalyReasonLabels[reason] ?? reason).join(" · ") || "Được AI đánh dấu bất thường"}
-        </Text>
-        {anomaly.anomalyScore !== null ? <Text style={styles.anomalyScore}>Điểm {anomaly.anomalyScore.toFixed(2)}</Text> : null}
-      </View>
-    </View>
-  );
-}
-
-function getTransactionMonth(date: string) {
-  const value = new Date(date);
-  return `${value.getFullYear()}-${value.getMonth()}`;
+  return <TransactionListItem transaction={row} category={category} currency={currency} isAnomaly showDay={false} timeLabel={timeLabel} reason={reason} anomalyScore={anomaly.anomalyScore} />;
 }
 
 function TransactionListItem({
   isAnomaly,
-  showMonth,
+  showDay,
   transaction,
   currency,
+  category,
+  timeLabel,
+  reason,
+  anomalyScore,
 }: {
   isAnomaly: boolean;
-  showMonth: boolean;
-  transaction: Transaction;
+  showDay: boolean;
+  transaction: TransactionRowData;
   currency: string;
+  category?: Category;
+  timeLabel?: string;
+  reason?: string;
+  anomalyScore?: number | null;
 }) {
   const theme = useAppTheme();
   const styles = useTransactionStyles();
   const date = transaction.transactionDate;
-  const positive = isPositive(transaction.type);
-  const transfer = transaction.type === "TransferIn" || transaction.type === "TransferOut";
-  const Icon = positive ? ArrowDownToLine : transfer ? Landmark : ReceiptText;
-  const iconColor = positive ? theme.goodText : transfer ? theme.avatar : theme.warning;
+  const positive = transaction.type !== undefined && isIncomingTransaction(transaction.type);
 
   return (
     <View style={styles.dayGroup}>
-      {showMonth ? <View style={styles.dayHeader}>
-        <Text style={styles.dayTitle}>
-          Tháng {String(new Date(date).getMonth() + 1).padStart(2, "0")}/{new Date(date).getFullYear()}
-        </Text>
-      </View> : null}
-        <View key={transaction.id} style={styles.transactionRow}>
-          <View style={styles.transactionIcon}>
-            <Icon color={iconColor} size={24} strokeWidth={1.8} />
-          </View>
-          <View style={styles.transactionCopy}>
-            <View style={styles.transactionTitleRow}>
-              <Text numberOfLines={3} style={styles.transactionTitle}>{transaction.description || transaction.categoryName || (positive ? "Nhận tiền" : "Chi tiêu")}</Text>
-            </View>
-            <Text style={styles.transactionDescription}>{new Intl.DateTimeFormat("vi-VN", { hour: "2-digit", minute: "2-digit" }).format(new Date(transaction.transactionDate))} - {new Intl.DateTimeFormat("vi-VN", { day: "2-digit", month: "2-digit" }).format(new Date(transaction.transactionDate))}</Text>
-            {isAnomaly ? <Text style={styles.anomalyTagText}>Bất thường</Text> : null}
-          </View>
-          <Text
-            adjustsFontSizeToFit
-            minimumFontScale={0.75}
-            numberOfLines={1}
-            style={[
-              styles.transactionAmount,
-              { color: positive ? theme.goodText : theme.text },
-            ]}
-          >
-            {positive ? "+" : "-"}
-            {formatMoney(transaction.amount, currency)}
-          </Text>
+      {showDay ? <TransactionDayHeader date={date} /> : null}
+      <View style={styles.transactionRow}>
+        <View style={styles.transactionIcon}>
+          <CategoryIcon icon={category?.icon} name={category?.name || transaction.categoryName} type={transaction.type} size={24} />
         </View>
+        <View style={styles.transactionCopy}>
+          <View style={styles.transactionTitleRow}>
+            <Text numberOfLines={3} style={styles.transactionTitle}>{transaction.description || transaction.categoryName || (positive ? "Nhận tiền" : "Chi tiêu")}</Text>
+            <Text
+              adjustsFontSizeToFit
+              minimumFontScale={0.75}
+              numberOfLines={1}
+              style={[
+                styles.transactionAmount,
+                { color: transaction.type === undefined ? theme.text : positive ? theme.goodText : theme.dangerText },
+              ]}
+            >
+              {transaction.type === undefined ? '' : positive ? "+" : "-"}
+              {formatMoney(Math.abs(transaction.amount), currency)}
+            </Text>
+          </View>
+          <View style={styles.transactionFooter}>
+            <View style={styles.transactionMeta}>
+              <View style={styles.transactionCategory}>
+                <Text numberOfLines={1} style={styles.transactionCategoryText}>
+                  {category?.name || transaction.categoryName || 'Chưa phân loại'}
+                </Text>
+              </View>
+              <Text style={styles.transactionTime}>{timeLabel ?? formatTransactionTime(transaction.transactionDate)}</Text>
+            </View>
+            {isAnomaly ? (
+              <View accessible accessibilityRole="image" accessibilityLabel="Giao dịch bất thường" style={styles.transactionWarning}>
+                <TriangleAlert accessible={false} color={theme.warning} size={16} strokeWidth={2} />
+              </View>
+            ) : null}
+          </View>
+          {reason ? (
+            <View style={styles.transactionReasonRow}>
+              <Text style={styles.transactionReasonText}>Lý do: {reason}</Text>
+              {anomalyScore != null ? <Text style={styles.transactionAnomalyScore}>Điểm {anomalyScore.toFixed(2)}</Text> : null}
+            </View>
+          ) : null}
+        </View>
+      </View>
     </View>
   );
 }
@@ -682,33 +710,32 @@ function createStyles(theme: AppTheme) {
     feedFooter: { alignItems: "center", gap: 10, paddingHorizontal: 16, paddingVertical: 20 },
     feedRetry: { minHeight: 44, justifyContent: "center", paddingHorizontal: 16 },
     feedRetryText: { color: theme.primary, fontSize: 14, fontWeight: "600" },
-    ledgerTabs: { flexDirection: "row", marginHorizontal: 12, marginTop: 16, borderBottomWidth: 1, borderBottomColor: theme.border },
+    ledgerTabs: { flexDirection: "row", marginHorizontal: 12, marginTop: 4, borderBottomWidth: 1, borderBottomColor: theme.border },
     ledgerTab: { flex: 1, minHeight: 46, alignItems: "center", justifyContent: "center", paddingHorizontal: 6, borderBottomWidth: 2, borderBottomColor: "transparent" },
     ledgerTabSelected: { borderBottomColor: theme.primary },
     ledgerTabText: { fontSize: 14, lineHeight: 20, color: theme.textMuted, fontWeight: "500", textAlign: "center" },
-    ledgerTabTextSelected: { color: theme.primary, fontWeight: "700" },
+    ledgerTabTextSelected: { color: theme.primary, fontWeight: '600' },
     analysisPeriod: { color: theme.textMuted, fontSize: 12, lineHeight: 18, marginHorizontal: 16, marginBottom: 8 },
     screen: { backgroundColor: theme.screen, flex: 1 },
     content: { paddingBottom: 88 },
-    ledgerTop: { paddingTop: 16, paddingBottom: 4 },
+    ledgerTop: { paddingTop: 16 },
     searchToolbar: { alignItems: "center", flexDirection: "row", gap: 8, paddingHorizontal: 16, marginBottom: 16 },
     searchField: { alignItems: "center", flexDirection: "row", flex: 1, minWidth: 0, gap: 8, minHeight: 44, paddingHorizontal: 12, backgroundColor: theme.inputBackground, borderRadius: 24 },
     searchInput: { flex: 1, minWidth: 0, fontSize: 14, color: theme.text, paddingVertical: 10 },
     toolbarButton: { alignItems: "center", justifyContent: "center", height: 44, width: 44, borderRadius: 22, backgroundColor: theme.card, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.border },
     toolbarBadge: { position: "absolute", right: -2, top: -2, minWidth: 16, height: 16, borderRadius: 8, alignItems: "center", justifyContent: "center", backgroundColor: theme.primary },
-    toolbarBadgeText: { color: theme.textInverse, fontSize: 10, fontWeight: "700" },
+    toolbarBadgeText: { color: theme.textInverse, fontSize: 10, fontWeight: '600' },
     monthOverview: { backgroundColor: theme.card, borderRadius: 8, marginHorizontal: 12, padding: 12 },
     overviewHeading: { alignItems: "center", flexDirection: "row", gap: 12, marginBottom: 8 },
-    overviewTitle: { color: theme.text, fontSize: 18, fontWeight: "700", flex: 1 },
+    overviewTitle: { color: theme.text, fontSize: 18, fontWeight: '600', flex: 1 },
     overviewArrow: { alignItems: "center", justifyContent: "center", width: 28, height: 28, backgroundColor: theme.primaryPressed, borderRadius: 14 },
     overviewMetrics: { flexDirection: "row", gap: 8 },
     overviewMetric: { flex: 1, minWidth: 0, borderRadius: 8, borderColor: theme.border, borderWidth: 1, padding: 10, minHeight: 64, justifyContent: "center" },
     overviewMetricLabel: { color: theme.textMuted, fontSize: 13, marginBottom: 6 },
     overviewAmountRow: { alignItems: "center", flexDirection: "row", gap: 3 },
-    overviewMetricValue: { color: theme.text, fontSize: 15, fontWeight: "700", flexShrink: 1 },
-    budgetPrompt: { alignItems: "center", flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", gap: 8, backgroundColor: theme.primaryPressed, paddingVertical: 10, paddingHorizontal: 12, marginTop: 8, borderRadius: 8 },
-    budgetPromptText: { color: theme.textSoft, fontSize: 12, lineHeight: 18, flexShrink: 1 },
-    budgetPromptAction: { color: theme.primary, fontSize: 13, lineHeight: 18, fontWeight: "700" },
+    overviewMetricValue: { color: theme.text, fontSize: 15, fontWeight: '600', flexShrink: 1 },
+    budgetPrompt: { alignItems: "center", flexDirection: "row", justifyContent: "space-between", gap: 8, backgroundColor: theme.primaryPressed, paddingVertical: 8, paddingHorizontal: 12, marginTop: 8, borderRadius: 8 },
+    budgetPromptText: { color: theme.textSoft, fontSize: 12, lineHeight: 18, flex: 1, minWidth: 0 },
     utilityRow: { alignItems: "center", flexDirection: "row", minHeight: 64, gap: 12, borderBottomColor: theme.border, borderBottomWidth: StyleSheet.hairlineWidth },
     utilityLabel: { color: theme.text, fontSize: 14, flex: 1 },
     sheetBottomSpace: { height: 32 },
@@ -717,10 +744,10 @@ function createStyles(theme: AppTheme) {
       flexDirection: "row",
       justifyContent: "space-between",
       paddingHorizontal: 16,
-      marginBottom: 14,
-      marginTop: 22,
+      marginBottom: 8,
+      marginTop: 10,
     },
-    sectionTitle: { color: theme.text, fontSize: 20, fontWeight: "700", flexShrink: 1 },
+    sectionTitle: { ...Typography.section, color: theme.text, flexShrink: 1 },
     sectionMeta: { color: theme.textMuted, fontSize: 12 },
     skeletonGroup: {
       backgroundColor: theme.listSurface,
@@ -771,21 +798,21 @@ function createStyles(theme: AppTheme) {
     },
     anomalyBannerIcon: { color: theme.warning, fontSize: 16 },
     anomalyBannerCopy: { flex: 1, gap: 6 },
-    anomalyBannerText: { color: theme.warning, flex: 1, fontSize: 12, fontWeight: "800", lineHeight: 17 },
+    anomalyBannerText: { color: theme.warning, flex: 1, fontSize: 12, fontWeight: '600', lineHeight: 17 },
     anomalyBannerButton: { alignItems: "center", flexDirection: "row", gap: 4, alignSelf: "flex-start" },
-    anomalyBannerButtonText: { color: theme.warning, fontSize: 12, fontWeight: "900" },
-    anomalyBannerButtonArrow: { color: theme.warning, fontSize: 18, fontWeight: "900", lineHeight: 18 },
+    anomalyBannerButtonText: { color: theme.warning, fontSize: 12, fontWeight: '600' },
+    anomalyBannerButtonArrow: { color: theme.warning, fontSize: 18, fontWeight: '600', lineHeight: 18 },
     anomalyToolbar: { alignItems: "center", flexDirection: "row", justifyContent: "space-between", marginBottom: 10, marginHorizontal: 16 },
     anomalyResultCount: { color: theme.textMuted, fontSize: 12, fontWeight: "600" },
     anomalyFilterButton: { alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 6, minWidth: 44, height: 44, borderRadius: 8, borderWidth: 1, borderColor: theme.border, paddingHorizontal: 10 },
-    anomalyFilterBadge: { color: theme.primary, fontSize: 12, fontWeight: "800" },
+    anomalyFilterBadge: { color: theme.primary, fontSize: 12, fontWeight: '600' },
     anomalyActiveFilters: { alignItems: "center", flexDirection: "row", gap: 12, marginBottom: 14, marginHorizontal: 16 },
     anomalyActiveFilterText: { color: theme.textMuted, fontSize: 12, lineHeight: 18, flex: 1 },
     filterModal: { flex: 1, justifyContent: "flex-end", backgroundColor: theme.overlay },
     filterSheet: { backgroundColor: theme.sheet, borderTopLeftRadius: 8, borderTopRightRadius: 8, maxHeight: "80%" },
     filterHandle: { alignSelf: "center", backgroundColor: theme.borderStrong, borderRadius: 2, width: 32, height: 4, marginTop: 10, marginBottom: 6 },
     filterSheetHeader: { alignItems: "center", flexDirection: "row", paddingHorizontal: 12, paddingBottom: 8, borderBottomColor: theme.border, borderBottomWidth: StyleSheet.hairlineWidth },
-    filterSheetTitle: { color: theme.text, fontSize: 16, fontWeight: "700", flex: 1, textAlign: "center" },
+    filterSheetTitle: { ...Typography.section, color: theme.text, flex: 1, textAlign: "center" },
     filterIconButton: { alignItems: "center", justifyContent: "center", width: 44, height: 44 },
     filterSheetScroll: { flexShrink: 1 },
     filterSheetContent: { paddingHorizontal: 20 },
@@ -799,58 +826,57 @@ function createStyles(theme: AppTheme) {
     filterReset: { alignItems: "center", justifyContent: "center", minWidth: 64, minHeight: 48 },
     filterResetText: { color: theme.textMuted, fontSize: 14, fontWeight: "600" },
     filterApply: { alignItems: "center", justifyContent: "center", flex: 1, minHeight: 48, paddingHorizontal: 12, paddingVertical: 12, backgroundColor: theme.primary, borderRadius: 8 },
-    filterApplyText: { color: theme.textInverse, fontSize: 14, fontWeight: "700", textAlign: "center" },
-    anomalyRow: { backgroundColor: theme.listSurface, borderBottomColor: theme.listDivider, borderBottomWidth: StyleSheet.hairlineWidth, padding: 16 },
-    anomalyRowHeader: { alignItems: "center", flexDirection: "row", justifyContent: "space-between", gap: 10 },
-    anomalyRowCopy: { flex: 1 },
-    anomalyRowCategory: { color: theme.text, fontSize: 13, fontWeight: "800" },
-    anomalyRowDate: { color: theme.textMuted, fontSize: 10, marginTop: 3 },
-    anomalyRowAmount: { color: theme.warning, fontSize: 13, fontWeight: "900" },
-    anomalyRowFooter: { alignItems: "center", flexDirection: "row", justifyContent: "space-between", gap: 8, marginTop: 9 },
-    anomalyRowReasons: { color: theme.textSubtle, flex: 1, fontSize: 10, lineHeight: 14 },
-    anomalyScore: { color: theme.warning, fontSize: 10, fontWeight: "800" },
+    filterApplyText: { color: theme.textInverse, fontSize: 14, fontWeight: '600', textAlign: "center" },
+
+
+
+
+
+
+
+
+
     showMoreAnomalies: { alignItems: "center", paddingVertical: 12 },
-    showMoreAnomaliesText: { color: theme.primary, fontSize: 12, fontWeight: "800" },
+    showMoreAnomaliesText: { color: theme.primary, fontSize: 12, fontWeight: '600' },
     dayGroup: {
       backgroundColor: theme.listSurface,
       paddingHorizontal: 12,
       paddingTop: 4,
     },
-    dayHeader: {
-      alignItems: "center",
-      backgroundColor: theme.listHeader,
-      borderRadius: 8,
-      flexDirection: "row",
-      justifyContent: "space-between",
-      paddingVertical: 12,
-      paddingHorizontal: 12,
-    },
-    dayTitle: { color: theme.textSoft, fontSize: 15, fontWeight: "700" },
+
+
     transactionRow: {
       alignItems: "flex-start",
       borderBottomColor: theme.listDivider,
       borderBottomWidth: StyleSheet.hairlineWidth,
       flexDirection: "row",
-      paddingVertical: 18,
+      paddingVertical: 12,
       paddingHorizontal: 2,
-      minHeight: 96,
+      minHeight: 72,
     },
     transactionIcon: {
       alignItems: "center",
-      borderRadius: 20,
+      borderRadius: 18,
       borderWidth: 1,
       borderColor: theme.border,
-      height: 40,
+      height: 36,
       justifyContent: "center",
       marginRight: 10,
-      width: 40,
+      width: 36,
     },
     transactionCopy: { flex: 1, minWidth: 0 },
-    transactionTitleRow: { alignItems: "center", flexDirection: "row", gap: 6 },
-    transactionTitle: { color: theme.textSoft, fontSize: 14, lineHeight: 21, fontWeight: "600", flex: 1 },
-    transactionDescription: { color: theme.textMuted, fontSize: 11, lineHeight: 16, marginTop: 7 },
-    anomalyTagText: { color: theme.warning, fontSize: 10, fontWeight: "700", marginTop: 4 },
-    transactionAmount: { fontSize: 15, lineHeight: 21, fontWeight: "700", marginLeft: 8, maxWidth: "38%", textAlign: "right" },
+    transactionTitleRow: { alignItems: "flex-start", flexDirection: "row", gap: 8 },
+    transactionTitle: { ...Typography.label, color: theme.textSoft, flex: 1, minWidth: 0 },
+    transactionFooter: { alignItems: 'center', flexDirection: 'row', gap: 8, marginTop: 4, minHeight: 20 },
+    transactionMeta: { alignItems: 'center', flexDirection: 'row', flex: 1, minWidth: 0, gap: 8 },
+    transactionCategory: { borderColor: theme.border, borderWidth: 1, borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2, maxWidth: '75%', flexShrink: 1 },
+    transactionCategoryText: { ...Typography.caption, color: theme.textMuted, fontSize: 11, lineHeight: 16 },
+    transactionTime: { ...Typography.caption, color: theme.textMuted, flexShrink: 0 },
+    transactionWarning: { alignItems: 'center', justifyContent: 'center', width: 20, height: 20 },
+    transactionAmount: { ...Typography.label, maxWidth: "48%", textAlign: "right", fontWeight: '600' },
+    transactionReasonRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginTop: 4 },
+    transactionReasonText: { ...Typography.caption, color: theme.textMuted, flex: 1 },
+    transactionAnomalyScore: { ...Typography.caption, color: theme.warning, fontSize: 11 },
     empty: {
       alignItems: "center",
       backgroundColor: theme.listSurface,
@@ -859,7 +885,7 @@ function createStyles(theme: AppTheme) {
       borderWidth: 1,
       padding: 28,
     },
-    emptyTitle: { color: theme.text, fontSize: 16, fontWeight: "700" },
+    emptyTitle: { color: theme.text, fontSize: 16, fontWeight: '600' },
     emptyText: { color: theme.textSubtle, fontSize: 12, marginTop: 6 },
   });
 }

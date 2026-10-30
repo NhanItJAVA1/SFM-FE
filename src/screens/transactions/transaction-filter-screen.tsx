@@ -1,13 +1,11 @@
+import { Typography } from '@/theme/typography';
+import { AppText as Text } from '@/components/app-text';
 import { useMemo, useState } from "react";
-import { ImageBackground, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ImageBackground, Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
-import {
-  ArrowLeft, BadgeDollarSign, Banknote, Briefcase, Car, ChevronDown, CircleDollarSign,
-  Gamepad2, Gift, GraduationCap, Headset, HeartPulse, Home, LayoutGrid,
-  PiggyBank, Plane, ReceiptText, Shapes, ShoppingBag, TrendingUp, Utensils, Wallet,
-  type LucideIcon,
-} from "lucide-react-native";
+import { ArrowLeft, ChevronDown, Headset, Home, LayoutGrid } from "lucide-react-native";
+import { getCategoryVisual } from '@/components/category-icon';
 
 import type { Category } from "@/api/categoriesApi";
 import type { FinancialAccount } from "@/api/financialAccountApi";
@@ -24,28 +22,6 @@ export type TransactionFilters = {
 
 export const emptyTransactionFilters: TransactionFilters = { month: null, accountId: null, categoryId: null };
 const background = require("../../../assets/expo.icon/Assets/Serene Blue Abstract Gradient Wallpaper.png");
-
-const categoryIcons: Record<string, { Icon: LucideIcon; color: string }> = {
-  food: { Icon: Utensils, color: "#e5a13a" },
-  transport: { Icon: Car, color: "#3997cb" },
-  home: { Icon: Home, color: "#dfa640" },
-  shopping: { Icon: ShoppingBag, color: "#d95391" },
-  health: { Icon: HeartPulse, color: "#e16d79" },
-  education: { Icon: GraduationCap, color: "#488fc0" },
-  entertainment: { Icon: Gamepad2, color: "#b46ba9" },
-  bill: { Icon: ReceiptText, color: "#24b299" },
-  wallet: { Icon: Wallet, color: "#31aa84" },
-  work: { Icon: Briefcase, color: "#489db2" },
-  gift: { Icon: Gift, color: "#d95391" },
-  income: { Icon: CircleDollarSign, color: "#24b299" },
-  saving: { Icon: PiggyBank, color: "#d69440" },
-  travel: { Icon: Plane, color: "#3997cb" },
-  cash: { Icon: Banknote, color: "#24b299" },
-  salary: { Icon: Banknote, color: "#24b299" },
-  bonus: { Icon: BadgeDollarSign, color: "#d69440" },
-  investment: { Icon: TrendingUp, color: "#3997cb" },
-  other: { Icon: Shapes, color: "#7d8fa1" },
-};
 
 export function getTransactionMonthRange(month: string | null) {
   if (!month) return null;
@@ -180,9 +156,7 @@ export function TransactionFilterScreen({
                   <Text style={styles.serviceText}>Tất cả</Text>
                 </Pressable>
                 {categories.map((category) => {
-                  const iconKey = category.icon?.trim().toLowerCase() || "other";
-                  const fallback = category.type === "Income" ? categoryIcons.income : categoryIcons.other;
-                  const { Icon, color } = iconKey === "other" ? fallback : categoryIcons[iconKey] ?? fallback;
+                  const { Icon, color } = getCategoryVisual(category);
                   return (
                     <Pressable
                       key={category.id}
@@ -223,14 +197,14 @@ function createStyles(theme: AppTheme) {
     backgroundImage: { opacity: 0.18 },
     header: { alignItems: "center", flexDirection: "row", gap: 8, paddingHorizontal: 12, paddingTop: 12, paddingBottom: 24 },
     backButton: { alignItems: "center", justifyContent: "center", width: 38, height: 38, borderRadius: 19, backgroundColor: theme.card, borderColor: theme.border, borderWidth: StyleSheet.hairlineWidth },
-    title: { color: theme.text, fontSize: 16, fontWeight: "700", lineHeight: 22, flex: 1 },
+    title: { ...Typography.title, color: theme.text, flex: 1 },
     headerTools: { alignItems: "center", flexDirection: "row", borderRadius: 22, backgroundColor: theme.card, borderColor: theme.border, borderWidth: StyleSheet.hairlineWidth },
     toolButton: { width: 36, height: 40, alignItems: "center", justifyContent: "center" },
     toolDivider: { width: StyleSheet.hairlineWidth, height: 18, backgroundColor: theme.borderStrong },
     scroll: { flex: 1 },
     content: { paddingHorizontal: 12, paddingTop: 10, paddingBottom: 32 },
     section: { marginBottom: 30 },
-    sectionTitle: { color: theme.text, fontSize: 20, fontWeight: "700", lineHeight: 28, marginBottom: 14 },
+    sectionTitle: { ...Typography.section, color: theme.text, marginBottom: 14 },
     grid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", rowGap: 8 },
     serviceGrid: { justifyContent: "flex-start", columnGap: "1.33%" },
     tile: { width: "32%", minHeight: 64, paddingHorizontal: 5, paddingVertical: 12, alignItems: "center", justifyContent: "center", backgroundColor: theme.card, borderRadius: 8, borderWidth: 1.5, borderColor: "transparent" },
@@ -238,15 +212,15 @@ function createStyles(theme: AppTheme) {
     tileSelected: { backgroundColor: theme.primaryPressed, borderColor: theme.primary },
     tileText: { color: theme.text, fontSize: 13, lineHeight: 19, textAlign: "center" },
     showMore: { alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 6, minHeight: 44, marginTop: 8 },
-    showMoreText: { color: theme.primary, fontSize: 14, fontWeight: "700" },
+    showMoreText: { color: theme.primary, fontSize: 14, fontWeight: '600' },
     serviceTile: { width: "24%", minHeight: 104, paddingHorizontal: 4, paddingVertical: 14, gap: 10, alignItems: "center", backgroundColor: theme.card, borderRadius: 8, borderWidth: 1.5, borderColor: "transparent" },
     serviceText: { color: theme.text, fontSize: 12, lineHeight: 18, textAlign: "center" },
     footer: { flexDirection: "row", gap: 8, paddingHorizontal: 12, paddingVertical: 10, backgroundColor: theme.sheet, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.border },
     clearButton: { alignItems: "center", justifyContent: "center", flex: 1, minHeight: 48, paddingHorizontal: 8, paddingVertical: 12, borderRadius: 8, backgroundColor: theme.primaryPressed },
     clearDisabled: { backgroundColor: theme.cardAlt },
-    clearText: { color: theme.primary, fontSize: 16, fontWeight: "700" },
+    clearText: { color: theme.primary, fontSize: 16, fontWeight: '600' },
     clearTextDisabled: { color: theme.textSubtle, opacity: 0.55 },
     applyButton: { alignItems: "center", justifyContent: "center", flex: 1, minHeight: 48, paddingHorizontal: 8, paddingVertical: 12, borderRadius: 8, backgroundColor: theme.primary },
-    applyText: { color: theme.textInverse, fontSize: 16, fontWeight: "700" },
+    applyText: { ...Typography.button, color: theme.textInverse },
   });
 }

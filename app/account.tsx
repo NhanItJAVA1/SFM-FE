@@ -1,3 +1,5 @@
+import { Typography } from '@/theme/typography';
+import { AppText as Text, AppTextInput as TextInput } from '@/components/app-text';
 import { router } from "expo-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -9,8 +11,6 @@ import {
   RefreshControl,
   ScrollView,
   StyleSheet,
-  Text,
-  TextInput,
   View,
 } from "react-native";
 
@@ -440,10 +440,10 @@ function createStyles(theme: AppTheme) {
       paddingHorizontal: 20,
       paddingTop: 56,
     },
-    backText: { color: theme.primary, fontSize: 17, fontWeight: "700" },
+    backText: { color: theme.primary, fontSize: 17, fontWeight: '600' },
     closeText: { color: theme.text, fontSize: 32, fontWeight: "300", lineHeight: 34 },
-    saveText: { color: theme.text, fontSize: 14, fontWeight: "800" },
-    topTitle: { color: theme.text, fontSize: 22, fontWeight: "700" },
+    saveText: { color: theme.text, fontSize: 14, fontWeight: '600' },
+    topTitle: { ...Typography.title, color: theme.text },
     topBar: {
       alignItems: "center",
       flexDirection: "row",
@@ -458,7 +458,7 @@ function createStyles(theme: AppTheme) {
     walletList: { flexGrow: 1, gap: 14, padding: 20, paddingBottom: 96, position: "relative" },
     balanceSummary: { paddingBottom: 0, paddingTop: 0 },
     summaryLabel: { color: theme.textMuted, fontSize: 14, marginBottom: 4 },
-    summaryValue: { color: theme.text, fontSize: 26, fontWeight: "700" },
+    summaryValue: { color: theme.text, fontSize: 26, fontWeight: '600' },
     walletCard: {
       alignItems: "center",
       backgroundColor: theme.card,
@@ -488,9 +488,9 @@ function createStyles(theme: AppTheme) {
     },
     walletIconText: { color: theme.text, fontSize: 20 },
     walletInfo: { flex: 1 },
-    walletName: { color: theme.text, fontSize: 18, fontWeight: "700" },
+    walletName: { ...Typography.section, color: theme.text },
     walletType: { color: theme.textMuted, fontSize: 14, marginTop: 3 },
-    walletBalance: { color: theme.text, fontSize: 16, fontWeight: "700" },
+    walletBalance: { ...Typography.label, color: theme.text },
     walletRight: { alignItems: "flex-end", gap: 12 },
     moreButton: {
       alignItems: "center",
@@ -549,7 +549,7 @@ function createStyles(theme: AppTheme) {
     },
     floatingAddText: { color: theme.textInverse, fontSize: 32, fontWeight: "300", lineHeight: 36 },
     addOptionsPanel: { backgroundColor: theme.card, marginTop: 322, padding: 16 },
-    addOptionsTitle: { color: theme.text, fontSize: 20, fontWeight: "800", marginBottom: 28 },
+    addOptionsTitle: { color: theme.text, fontSize: 20, fontWeight: '600', marginBottom: 28 },
     addOptionsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 5 },
     addOption: {
       borderRadius: 8,
@@ -559,7 +559,7 @@ function createStyles(theme: AppTheme) {
       padding: 14,
       width: "49%",
     },
-    addOptionTitle: { color: theme.textInverse, fontSize: 19, fontWeight: "800", maxWidth: 120 },
+    addOptionTitle: { color: theme.textInverse, fontSize: 19, fontWeight: '600', maxWidth: 120 },
     addOptionIcon: { alignSelf: "flex-end", color: "#ffffff55", fontSize: 42, lineHeight: 42 },
     formHint: {
       backgroundColor: theme.card,
@@ -569,12 +569,12 @@ function createStyles(theme: AppTheme) {
       marginTop: 10,
       padding: 16,
     },
-    formHintTitle: { color: theme.text, fontSize: 15, fontWeight: "700" },
+    formHintTitle: { color: theme.text, fontSize: 15, fontWeight: '600' },
     formHintText: { color: theme.textMuted, fontSize: 13, marginTop: 5 },
     emptyText: { color: theme.textMuted, fontSize: 16, lineHeight: 23, marginTop: 18, textAlign: "center" },
     form: { gap: 18, paddingTop: 28 },
     field: { gap: 8 },
-    label: { color: theme.text, fontSize: 14, fontWeight: "700" },
+    label: { ...Typography.label, color: theme.text },
     input: {
       backgroundColor: theme.inputBackground,
       borderColor: theme.border,
@@ -599,7 +599,7 @@ function createStyles(theme: AppTheme) {
       paddingHorizontal: 14,
     },
     typeOptionSelected: { backgroundColor: theme.primary, borderColor: theme.primary },
-    typeOptionText: { color: theme.textSoft, fontWeight: "700" },
+    typeOptionText: { color: theme.textSoft, fontWeight: '600' },
     typeOptionTextSelected: { color: theme.textInverse },
     row: { flexDirection: "row", gap: 12 },
     currencyField: { flex: 0.8 },

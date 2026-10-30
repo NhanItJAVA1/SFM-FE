@@ -1,6 +1,8 @@
+import { Typography } from '@/theme/typography';
+import { AppText as Text } from '@/components/app-text';
 import { Eye, EyeOff, TrendingUp, Wallet } from 'lucide-react-native';
 import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 
 import { useAppTheme } from '@/hooks/use-app-theme';
@@ -73,9 +75,9 @@ const s = StyleSheet.create({
   section: { paddingHorizontal: 4, paddingVertical: 12, gap: 8 },
   increaseButton: { height: 44, width: 44, flexShrink: 0, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },
   increaseHint: { position: 'absolute', right: 0, bottom: 50, width: 116, padding: 8, borderWidth: 1, borderRadius: 4 },
-  name: { fontSize: 18, fontWeight: '700' }, muted: { fontSize: 12, lineHeight: 18 },
-  amountRow: { flexDirection: 'row', alignItems: 'center', gap: 10 }, total: { fontSize: 28, fontWeight: '800', flexShrink: 1 },
+  name: { fontSize: 18, fontWeight: '600' }, muted: { fontSize: 12, lineHeight: 18 },
+  amountRow: { flexDirection: 'row', alignItems: 'center', gap: 10 }, total: { fontSize: 28, fontWeight: '600', flexShrink: 1 },
   limitBadge: { alignSelf: 'flex-start', paddingHorizontal: 6, paddingVertical: 3, borderRadius: 3 }, limitText: { fontSize: 11, fontWeight: '600' },
-  statusRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginTop: 14 }, label: { fontSize: 15, fontWeight: '600' }, status: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 4 }, statusText: { fontSize: 11, fontWeight: '600' },
-  remaining: { borderWidth: 1, borderRadius: 8, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 12 }, ring: { height: 48, width: 48, justifyContent: 'center', alignItems: 'center' }, remainingCopy: { flex: 1, gap: 4 }, remainingAmount: { fontSize: 15, fontWeight: '700' }, note: { fontSize: 12, lineHeight: 18 },
+  statusRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginTop: 14 }, label: { ...Typography.label }, status: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 4 }, statusText: { fontSize: 11, fontWeight: '600' },
+  remaining: { borderWidth: 1, borderRadius: 8, padding: 12, flexDirection: 'row', alignItems: 'center', gap: 12 }, ring: { height: 48, width: 48, justifyContent: 'center', alignItems: 'center' }, remainingCopy: { flex: 1, gap: 4 }, remainingAmount: { fontSize: 15, fontWeight: '600' }, note: { fontSize: 12, lineHeight: 18 },
 });

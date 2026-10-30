@@ -1,3 +1,5 @@
+import { Typography } from '@/theme/typography';
+import { AppText as Text, AppTextInput as TextInput, useInterFont } from '@/components/app-text';
 import { router } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import { type ReactNode, useMemo, useRef, useState } from 'react';
@@ -9,8 +11,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
-  TextInput,
+  type TextStyle,
   View,
 } from 'react-native';
 import Markdown from 'react-native-markdown-display';
@@ -42,7 +43,9 @@ function createMessageId() {
 export default function AIChatScreen() {
   const theme = useAppTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
-  const markdownStyles = useMemo(() => createMarkdownStyles(theme), [theme]);
+  const regularFont = useInterFont();
+  const semiboldFont = useInterFont('600');
+  const markdownStyles = useMemo(() => createMarkdownStyles(theme, regularFont, semiboldFont), [theme, regularFont, semiboldFont]);
   const markdownRules = useMemo(() => createMarkdownRules(styles), [styles]);
   const scrollRef = useRef<ScrollView | null>(null);
   const user = getAuthUser();
@@ -298,8 +301,8 @@ function createStyles(theme: AppTheme) {
     },
     headerFallbackIcon: { color: theme.text, fontSize: 30, lineHeight: 32 },
     headerTitleWrap: { flex: 1 },
-    headerTitle: { color: theme.text, fontSize: 18, fontWeight: '900' },
-    headerSubtitle: { color: theme.textMuted, fontSize: 12, fontWeight: '700', marginTop: 2 },
+    headerTitle: { ...Typography.title, color: theme.text },
+    headerSubtitle: { ...Typography.caption, color: theme.textMuted, marginTop: 2 },
     aiMark: {
       alignItems: 'center',
       backgroundColor: theme.primary,
@@ -308,7 +311,7 @@ function createStyles(theme: AppTheme) {
       justifyContent: 'center',
       width: 36,
     },
-    aiMarkText: { color: theme.textInverse, fontSize: 13, fontWeight: '900' },
+    aiMarkText: { color: theme.textInverse, fontSize: 13, fontWeight: '600' },
     messagesContent: { flexGrow: 1, gap: 14, padding: 14, paddingBottom: 18 },
     emptyMessagesContent: { justifyContent: 'center' },
     initialPrompt: {
@@ -321,21 +324,21 @@ function createStyles(theme: AppTheme) {
     initialEyebrow: {
       color: theme.primary,
       fontSize: 12,
-      fontWeight: '900',
+      fontWeight: '600',
       letterSpacing: 0.8,
       marginBottom: 10,
     },
     initialTitle: {
       color: theme.text,
       fontSize: 29,
-      fontWeight: '900',
+      fontWeight: '600',
       lineHeight: 35,
       textAlign: 'center',
     },
     initialSubtitle: {
       color: theme.textMuted,
       fontSize: 15,
-      fontWeight: '700',
+      fontWeight: '600',
       lineHeight: 22,
       marginTop: 8,
       textAlign: 'center',
@@ -355,18 +358,18 @@ function createStyles(theme: AppTheme) {
       paddingHorizontal: 15,
       paddingVertical: 12,
     },
-    quickOptionText: { color: theme.text, fontSize: 14, fontWeight: '800', lineHeight: 20, textAlign: 'center' },
+    quickOptionText: { color: theme.text, fontSize: 14, fontWeight: '600', lineHeight: 20, textAlign: 'center' },
     bubbleRow: { flexDirection: 'row' },
     assistantRow: { justifyContent: 'flex-start' },
     userRow: { justifyContent: 'flex-end' },
     bubble: { borderRadius: 8, maxWidth: '88%', padding: 13 },
     assistantBubble: { backgroundColor: theme.card, borderColor: theme.border, borderWidth: 1, width: '88%' },
     userBubble: { backgroundColor: theme.primary },
-    userMessageText: { color: theme.textInverse, fontSize: 15, fontWeight: '700', lineHeight: 21 },
+    userMessageText: { color: theme.textInverse, fontSize: 15, fontWeight: '600', lineHeight: 21 },
     markdownTableScroll: { marginVertical: 8, maxWidth: '100%' },
     markdownTable: { minWidth: 460 },
     loadingBubble: { alignItems: 'center', flexDirection: 'row', gap: 10 },
-    loadingText: { color: theme.textMuted, fontSize: 13, fontWeight: '800' },
+    loadingText: { color: theme.textMuted, fontSize: 13, fontWeight: '600' },
     footer: {
       backgroundColor: `${theme.screen}e8`,
       borderTopColor: theme.borderOverlay,
@@ -398,7 +401,7 @@ function createStyles(theme: AppTheme) {
       width: 48,
     },
     sendButtonDisabled: { opacity: 0.45 },
-    sendFallbackIcon: { color: theme.textInverse, fontSize: 20, fontWeight: '900' },
+    sendFallbackIcon: { color: theme.textInverse, fontSize: 20, fontWeight: '600' },
   });
 }
 
@@ -418,9 +421,9 @@ function createMarkdownRules(styles: ReturnType<typeof createStyles>) {
   };
 }
 
-function createMarkdownStyles(theme: AppTheme) {
+function createMarkdownStyles(theme: AppTheme, regularFont: TextStyle, semiboldFont: TextStyle) {
   return StyleSheet.create({
-    body: { color: theme.text, fontSize: 14, fontWeight: '600', lineHeight: 21 },
+    body: { ...Typography.body, ...regularFont, color: theme.text },
     bullet_list: { marginVertical: 4 },
     code_inline: {
       backgroundColor: theme.cardAlt,
@@ -438,22 +441,22 @@ function createMarkdownStyles(theme: AppTheme) {
       fontSize: 12,
       padding: 10,
     },
-    heading1: { color: theme.text, fontSize: 20, fontWeight: '900', lineHeight: 27, marginBottom: 8, marginTop: 8 },
-    heading2: { color: theme.text, fontSize: 18, fontWeight: '900', lineHeight: 25, marginBottom: 7, marginTop: 8 },
-    heading3: { color: theme.text, fontSize: 16, fontWeight: '900', lineHeight: 22, marginBottom: 6, marginTop: 7 },
+    heading1: { ...Typography.title, ...semiboldFont, color: theme.text, marginBottom: 8, marginTop: 8 },
+    heading2: { ...Typography.section, ...semiboldFont, color: theme.text, marginBottom: 7, marginTop: 8 },
+    heading3: { ...Typography.bodyLarge, ...semiboldFont, color: theme.text, marginBottom: 6, marginTop: 7 },
     hr: { backgroundColor: theme.border, height: 1, marginVertical: 10 },
     list_item: { color: theme.text, marginVertical: 2 },
     ordered_list: { marginVertical: 4 },
-    paragraph: { color: theme.text, fontSize: 14, fontWeight: '600', lineHeight: 21, marginBottom: 7, marginTop: 0 },
-    strong: { color: theme.text, fontWeight: '900' },
+    paragraph: { ...Typography.body, ...regularFont, color: theme.text, marginBottom: 7, marginTop: 0 },
+    strong: { ...semiboldFont, color: theme.text },
     table: { borderColor: theme.border, borderRadius: 8, borderWidth: 1, marginVertical: 8 },
-    td: { borderColor: theme.border, color: theme.text, fontSize: 12, lineHeight: 17, padding: 6 },
+    td: { ...Typography.caption, ...regularFont, borderColor: theme.border, color: theme.text, padding: 6 },
     th: {
       backgroundColor: theme.cardAlt,
       borderColor: theme.border,
       color: theme.text,
-      fontSize: 12,
-      fontWeight: '900',
+      ...Typography.caption,
+      ...semiboldFont,
       padding: 6,
     },
   });

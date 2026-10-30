@@ -1,3 +1,5 @@
+import { Typography } from '@/theme/typography';
+import { AppText as Text, AppTextInput as TextInput } from '@/components/app-text';
 import { BottomPopup, BottomPopupPressable } from "@/components/bottom-popup";
 import { ScreenGradientBackground } from "@/components/screen-gradient-background";
 import DateTimePicker, { DateTimePickerEvent } from "@react-native-community/datetimepicker";
@@ -9,7 +11,7 @@ import { router, useNavigation } from "expo-router";
 import { SymbolView } from "expo-symbols";
 import * as WebBrowser from "expo-web-browser";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 
 import { authApi } from "@/api/authApi";
 import { FinancialAccount, financialAccountApi } from "@/api/financialAccountApi";
@@ -32,6 +34,8 @@ import {
 import { subscribeUserTabPress } from "@/stores/userTabPress";
 import type { AppTheme } from "@/theme/appTheme";
 import { exportTransactionsFile } from "@/utils/transactionExportFile";
+import { CategoryIcon } from '@/components/category-icon';
+import { isIncomingTransaction } from '@/utils/transactionPresentation';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -1342,6 +1346,9 @@ export default function UserScreen() {
                           ) : (
                             categoryTransactions.map((transaction) => (
                               <View key={transaction.id} style={styles.categoryTransactionRow}>
+                                <View style={{ marginRight: 8 }}>
+                                  <CategoryIcon icon={category.icon} name={category.categoryName} type={transaction.type} size={18} />
+                                </View>
                                 <View style={styles.categoryTransactionCopy}>
                                   <Text numberOfLines={1} style={styles.categoryTransactionDescription}>
                                     {transaction.description || category.categoryName}
@@ -1350,8 +1357,8 @@ export default function UserScreen() {
                                     {formatTransactionDate(transaction.transactionDate)}
                                   </Text>
                                 </View>
-                                <Text style={styles.categoryTransactionAmount}>
-                                  {formatMoney(transaction.amount, "VND")}
+                                <Text style={[styles.categoryTransactionAmount, { color: isIncomingTransaction(transaction.type) ? theme.goodText : theme.dangerText }]}>
+                                  {isIncomingTransaction(transaction.type) ? '+' : '-'}{formatMoney(Math.abs(transaction.amount), "VND")}
                                 </Text>
                               </View>
                             ))
@@ -1490,7 +1497,7 @@ function createStyles(theme: AppTheme) {
     content: { padding: 24, paddingBottom: 96 },
     headerRow: { alignItems: "center", flexDirection: "row", marginBottom: 32, marginTop: 36 },
     headerSide: { flex: 1 },
-    pageTitle: { color: theme.text, flex: 1, fontSize: 24, fontWeight: "700", textAlign: "center" },
+    pageTitle: { ...Typography.title, color: theme.text, flex: 1, textAlign: "center" },
     headerActions: { alignItems: "center", flex: 1, flexDirection: "row", justifyContent: "flex-end" },
     supportText: { color: theme.text, fontSize: 16 },
     themeButton: {
@@ -1503,7 +1510,7 @@ function createStyles(theme: AppTheme) {
       justifyContent: "center",
       width: 34,
     },
-    themeFallbackIcon: { color: theme.text, fontSize: 18, fontWeight: "800" },
+    themeFallbackIcon: { color: theme.text, fontSize: 18, fontWeight: '600' },
     profileCard: { backgroundColor: theme.card, borderRadius: 8, overflow: "hidden", paddingTop: 34 },
     avatar: {
       alignItems: "center",
@@ -1518,25 +1525,25 @@ function createStyles(theme: AppTheme) {
     avatarImage: { borderRadius: 44, height: 88, width: 88 },
     avatarText: { color: theme.textInverse, fontSize: 44, fontWeight: "500" },
     username: { color: theme.text, fontSize: 23, fontWeight: "600", textAlign: "center" },
-    email: { color: theme.textMuted, fontSize: 17, marginTop: 6, textAlign: "center" },
+    email: { ...Typography.body, color: theme.textMuted, marginTop: 6, textAlign: "center" },
     divider: { backgroundColor: theme.border, height: 1, marginTop: 34 },
     manageRow: { alignItems: "center", flexDirection: "row", minHeight: 78, paddingHorizontal: 22 },
     manageIcon: { color: theme.text, fontSize: 30, width: 46 },
     manageTextGroup: { flex: 1 },
-    manageTitle: { color: theme.text, fontSize: 18, fontWeight: "700" },
-    manageSubtitle: { color: theme.textMuted, fontSize: 16, marginTop: 3 },
+    manageTitle: { color: theme.text, fontSize: 18, fontWeight: '600' },
+    manageSubtitle: { ...Typography.body, color: theme.textMuted, marginTop: 3 },
     manageContent: { gap: 18, padding: 20 },
     manageActionCard: { backgroundColor: theme.card, borderRadius: 8, overflow: "hidden" },
     manageDangerRow: { alignItems: "center", flexDirection: "row", minHeight: 78, paddingHorizontal: 18 },
     manageDangerIcon: {
       color: theme.dangerText,
       fontSize: 28,
-      fontWeight: "900",
+      fontWeight: '600',
       marginRight: 14,
       textAlign: "center",
       width: 34,
     },
-    manageDangerTitle: { color: theme.dangerText, fontSize: 18, fontWeight: "800" },
+    manageDangerTitle: { color: theme.dangerText, fontSize: 18, fontWeight: '600' },
     profileMiniCard: {
       alignItems: "center",
       backgroundColor: theme.card,
@@ -1555,7 +1562,7 @@ function createStyles(theme: AppTheme) {
       width: 48,
     },
     smallAvatarImage: { borderRadius: 24, height: 48, width: 48 },
-    smallAvatarText: { color: theme.textInverse, fontSize: 24, fontWeight: "700" },
+    smallAvatarText: { color: theme.textInverse, fontSize: 24, fontWeight: '600' },
     editProfileContent: { gap: 18, padding: 20, paddingBottom: 96 },
     editAvatarButton: {
       alignItems: "center",
@@ -1569,7 +1576,7 @@ function createStyles(theme: AppTheme) {
       width: 116,
     },
     editAvatarImage: { height: 116, width: 116 },
-    editAvatarText: { color: theme.textInverse, fontSize: 52, fontWeight: "700" },
+    editAvatarText: { color: theme.textInverse, fontSize: 52, fontWeight: '600' },
     avatarChangeBadge: {
       alignItems: "center",
       backgroundColor: theme.overlayStrong,
@@ -1580,7 +1587,7 @@ function createStyles(theme: AppTheme) {
       position: "absolute",
       right: 0,
     },
-    avatarChangeText: { color: theme.textInverse, fontSize: 12, fontWeight: "800" },
+    avatarChangeText: { color: theme.textInverse, fontSize: 12, fontWeight: '600' },
     profileInfoBox: {
       backgroundColor: theme.card,
       borderColor: theme.border,
@@ -1589,8 +1596,8 @@ function createStyles(theme: AppTheme) {
       gap: 4,
       padding: 14,
     },
-    profileInfoLabel: { color: theme.textMuted, fontSize: 12, fontWeight: "800" },
-    profileInfoValue: { color: theme.text, fontSize: 16, fontWeight: "800" },
+    profileInfoLabel: { ...Typography.caption, color: theme.textMuted },
+    profileInfoValue: { color: theme.text, fontSize: 16, fontWeight: '600' },
     profileInfoSubValue: { color: theme.textMuted, fontSize: 14, fontWeight: "600" },
     logoutButton: {
       alignItems: "center",
@@ -1599,7 +1606,7 @@ function createStyles(theme: AppTheme) {
       justifyContent: "center",
       minHeight: 52,
     },
-    logoutButtonText: { color: theme.textInverse, fontSize: 16, fontWeight: "700" },
+    logoutButtonText: { color: theme.textInverse, fontSize: 16, fontWeight: '600' },
     resetScreenBody: { flex: 1 },
     resetWarningContent: { gap: 16, padding: 20, paddingBottom: 110 },
     resetWarningHero: {
@@ -1613,11 +1620,11 @@ function createStyles(theme: AppTheme) {
     resetWarningIcon: {
       color: theme.dangerText,
       fontSize: 44,
-      fontWeight: "900",
+      fontWeight: '600',
       lineHeight: 48,
       marginBottom: 10,
     },
-    resetWarningTitle: { color: theme.text, fontSize: 20, fontWeight: "900", lineHeight: 27, textAlign: "center" },
+    resetWarningTitle: { color: theme.text, fontSize: 20, fontWeight: '600', lineHeight: 27, textAlign: "center" },
     resetWarningText: {
       color: theme.textMuted,
       fontSize: 14,
@@ -1641,8 +1648,8 @@ function createStyles(theme: AppTheme) {
       minHeight: 58,
       paddingHorizontal: 16,
     },
-    resetImpactBullet: { color: theme.dangerText, fontSize: 22, fontWeight: "900", marginRight: 12, width: 20 },
-    resetImpactText: { color: theme.text, flex: 1, fontSize: 15, fontWeight: "800", lineHeight: 21 },
+    resetImpactBullet: { color: theme.dangerText, fontSize: 22, fontWeight: '600', marginRight: 12, width: 20 },
+    resetImpactText: { color: theme.text, flex: 1, fontSize: 15, fontWeight: '600', lineHeight: 21 },
     resetFooter: {
       backgroundColor: theme.screen,
       borderTopColor: theme.border,
@@ -1664,11 +1671,11 @@ function createStyles(theme: AppTheme) {
       gap: 18,
       padding: 18,
     },
-    resetConfirmTitle: { color: theme.text, fontSize: 19, fontWeight: "900" },
+    resetConfirmTitle: { color: theme.text, fontSize: 19, fontWeight: '600' },
     resetConfirmText: { color: theme.textMuted, fontSize: 14, fontWeight: "600", lineHeight: 21 },
     resetAuthDividerRow: { alignItems: "center", flexDirection: "row", gap: 10 },
     resetAuthDividerLine: { backgroundColor: theme.border, flex: 1, height: 1 },
-    resetAuthDividerText: { color: theme.textMuted, fontSize: 12, fontWeight: "800", textTransform: "uppercase" },
+    resetAuthDividerText: { color: theme.textMuted, fontSize: 12, fontWeight: '600', textTransform: "uppercase" },
     googleResetButton: {
       alignItems: "center",
       backgroundColor: theme.cardAlt,
@@ -1680,8 +1687,8 @@ function createStyles(theme: AppTheme) {
       justifyContent: "center",
       minHeight: 50,
     },
-    googleResetIcon: { color: theme.primary, fontSize: 18, fontWeight: "900" },
-    googleResetText: { color: theme.text, fontSize: 15, fontWeight: "900" },
+    googleResetIcon: { color: theme.primary, fontSize: 18, fontWeight: '600' },
+    googleResetText: { color: theme.text, fontSize: 15, fontWeight: '600' },
     dangerButton: {
       alignItems: "center",
       backgroundColor: theme.danger,
@@ -1689,7 +1696,7 @@ function createStyles(theme: AppTheme) {
       justifyContent: "center",
       minHeight: 52,
     },
-    dangerButtonText: { color: theme.textInverse, fontSize: 16, fontWeight: "900" },
+    dangerButtonText: { color: theme.textInverse, fontSize: 16, fontWeight: '600' },
     chevron: { color: theme.chevron, fontSize: 40, lineHeight: 42 },
     menuCard: { backgroundColor: theme.card, borderRadius: 8, marginTop: 34, overflow: "hidden" },
     menuRow: { alignItems: "center", flexDirection: "row", minHeight: 76, paddingHorizontal: 22 },
@@ -1705,8 +1712,8 @@ function createStyles(theme: AppTheme) {
       paddingHorizontal: 20,
       paddingTop: 56,
     },
-    backText: { color: theme.primary, fontSize: 17, fontWeight: "700" },
-    topTitle: { color: theme.text, fontSize: 22, fontWeight: "700" },
+    backText: { color: theme.primary, fontSize: 17, fontWeight: '600' },
+    topTitle: { ...Typography.title, color: theme.text },
     statsHeaderSpacer: { width: 82 },
     topBar: {
       alignItems: "center",
@@ -1730,7 +1737,7 @@ function createStyles(theme: AppTheme) {
       backgroundColor: theme.primary,
       borderColor: theme.primary,
     },
-    insightToggleFallback: { color: theme.primary, fontSize: 18, fontWeight: "900" },
+    insightToggleFallback: { color: theme.primary, fontSize: 18, fontWeight: '600' },
     insightToggleFallbackActive: { color: theme.textInverse },
     addWalletButton: {
       alignItems: "center",
@@ -1753,7 +1760,7 @@ function createStyles(theme: AppTheme) {
     exportSectionTitle: {
       color: theme.text,
       fontSize: 16,
-      fontWeight: "900",
+      fontWeight: '600',
       paddingHorizontal: 16,
       paddingTop: 15,
       paddingBottom: 10,
@@ -1777,10 +1784,10 @@ function createStyles(theme: AppTheme) {
       marginRight: 12,
       width: 38,
     },
-    exportOptionIconText: { color: theme.text, fontSize: 18, fontWeight: "900" },
-    exportOptionTitle: { color: theme.text, fontSize: 16, fontWeight: "900" },
-    exportOptionSubtitle: { color: theme.textMuted, fontSize: 13, fontWeight: "700", marginTop: 3 },
-    exportOptionCheck: { color: theme.primary, fontSize: 21, fontWeight: "900", width: 24 },
+    exportOptionIconText: { color: theme.text, fontSize: 18, fontWeight: '600' },
+    exportOptionTitle: { color: theme.text, fontSize: 16, fontWeight: '600' },
+    exportOptionSubtitle: { color: theme.textMuted, fontSize: 13, fontWeight: '600', marginTop: 3 },
+    exportOptionCheck: { color: theme.primary, fontSize: 21, fontWeight: '600', width: 24 },
     exportLoadingRow: {
       alignItems: "center",
       borderTopColor: theme.border,
@@ -1802,8 +1809,8 @@ function createStyles(theme: AppTheme) {
       justifyContent: "center",
       paddingHorizontal: 12,
     },
-    exportDateLabel: { color: theme.textMuted, fontSize: 12, fontWeight: "900", textTransform: "uppercase" },
-    exportDateValue: { color: theme.text, fontSize: 17, fontWeight: "900" },
+    exportDateLabel: { color: theme.textMuted, fontSize: 12, fontWeight: '600', textTransform: "uppercase" },
+    exportDateValue: { color: theme.text, fontSize: 17, fontWeight: '600' },
     bottomSheetOverlay: {
       backgroundColor: theme.overlay,
       flex: 1,
@@ -1822,8 +1829,8 @@ function createStyles(theme: AppTheme) {
       justifyContent: "space-between",
       marginBottom: 8,
     },
-    datePickerTitle: { color: theme.text, flex: 1, fontSize: 17, fontWeight: "900", textAlign: "center" },
-    datePickerAction: { fontSize: 16, fontWeight: "900" },
+    datePickerTitle: { color: theme.text, flex: 1, fontSize: 17, fontWeight: '600', textAlign: "center" },
+    datePickerAction: { fontSize: 16, fontWeight: '600' },
     datePicker: { alignSelf: "stretch" },
     statsContent: { backgroundColor: theme.screen, padding: 14, paddingBottom: 96 },
     statsPanel: { backgroundColor: theme.screen, borderRadius: 8, gap: 12, padding: 4 },
@@ -1832,8 +1839,8 @@ function createStyles(theme: AppTheme) {
     monthButtonDisabled: { opacity: 0.28 },
     monthButtonText: { color: theme.chevron, fontSize: 34, fontWeight: "500", lineHeight: 34 },
     monthTitleWrap: { alignItems: "center", flex: 1 },
-    monthTitle: { color: theme.text, fontSize: 15, fontWeight: "800" },
-    monthSubtitle: { color: theme.textMuted, fontSize: 11, fontWeight: "700", marginTop: 2 },
+    monthTitle: { color: theme.text, fontSize: 15, fontWeight: '600' },
+    monthSubtitle: { color: theme.textMuted, fontSize: 11, fontWeight: '600', marginTop: 2 },
     insightCard: {
       backgroundColor: theme.card,
       borderColor: theme.border,
@@ -1851,13 +1858,13 @@ function createStyles(theme: AppTheme) {
       justifyContent: "center",
       width: 34,
     },
-    insightBadgeText: { color: theme.primary, fontSize: 11, fontWeight: "900" },
-    insightTitle: { color: theme.text, fontSize: 15, fontWeight: "900" },
-    insightSummary: { color: theme.text, fontSize: 14, fontWeight: "700", lineHeight: 20 },
+    insightBadgeText: { color: theme.primary, fontSize: 11, fontWeight: '600' },
+    insightTitle: { color: theme.text, fontSize: 15, fontWeight: '600' },
+    insightSummary: { color: theme.text, fontSize: 14, fontWeight: '600', lineHeight: 20 },
     insightLoadingRow: { alignItems: "center", flexDirection: "row", gap: 10, minHeight: 34 },
     insightErrorRow: { alignItems: "center", flexDirection: "row", gap: 10, justifyContent: "space-between" },
-    insightMutedText: { color: theme.textMuted, flex: 1, fontSize: 13, fontWeight: "700", lineHeight: 19 },
-    insightRetryText: { color: theme.primary, fontSize: 13, fontWeight: "900" },
+    insightMutedText: { color: theme.textMuted, flex: 1, fontSize: 13, fontWeight: '600', lineHeight: 19 },
+    insightRetryText: { color: theme.primary, fontSize: 13, fontWeight: '600' },
     insightItem: { alignItems: "flex-start", flexDirection: "row", gap: 10 },
     insightIcon: {
       alignItems: "center",
@@ -1867,9 +1874,9 @@ function createStyles(theme: AppTheme) {
       justifyContent: "center",
       width: 30,
     },
-    insightIconText: { color: theme.primary, fontSize: 15, fontWeight: "900" },
+    insightIconText: { color: theme.primary, fontSize: 15, fontWeight: '600' },
     insightCopy: { flex: 1, gap: 2 },
-    insightItemTitle: { color: theme.text, fontSize: 13, fontWeight: "900" },
+    insightItemTitle: { color: theme.text, fontSize: 13, fontWeight: '600' },
     insightItemMessage: { color: theme.textMuted, fontSize: 13, fontWeight: "600", lineHeight: 19 },
     statsLoading: { alignItems: "center", minHeight: 260, justifyContent: "center" },
     statsSummaryRow: { flexDirection: "row", gap: 8 },
@@ -1883,8 +1890,8 @@ function createStyles(theme: AppTheme) {
       padding: 10,
     },
     statsSummaryCardActive: { borderColor: theme.accent },
-    statsSummaryLabel: { color: theme.textMuted, fontSize: 12, fontWeight: "800", marginBottom: 7 },
-    statsSummaryValue: { color: theme.text, fontSize: 18, fontWeight: "900" },
+    statsSummaryLabel: { color: theme.textMuted, fontSize: 12, fontWeight: '600', marginBottom: 7 },
+    statsSummaryValue: { color: theme.text, fontSize: 18, fontWeight: '600' },
     statsTrendCard: {
       alignItems: "center",
       borderRadius: 8,
@@ -1897,7 +1904,7 @@ function createStyles(theme: AppTheme) {
     },
     statsTrendCardGood: { backgroundColor: theme.goodBackground },
     statsTrendCardWarn: { backgroundColor: theme.warningBackground },
-    statsTrendText: { flex: 1, fontSize: 13, fontWeight: "800", lineHeight: 18 },
+    statsTrendText: { flex: 1, fontSize: 13, fontWeight: '600', lineHeight: 18 },
     statsTrendTextGood: { color: theme.goodText },
     statsTrendTextWarn: { color: theme.warning },
     chartSection: {
@@ -1907,11 +1914,11 @@ function createStyles(theme: AppTheme) {
       position: "relative",
       zIndex: 24,
     },
-    detailTitle: { color: theme.accent, fontSize: 13, fontWeight: "900", marginTop: 2, textAlign: "center" },
+    detailTitle: { color: theme.accent, fontSize: 13, fontWeight: '600', marginTop: 2, textAlign: "center" },
     statsEmptyText: { color: theme.textMuted, fontSize: 15, lineHeight: 22, paddingVertical: 36, textAlign: "center" },
     balanceSummary: { backgroundColor: theme.card, borderRadius: 8, padding: 18 },
     summaryLabel: { color: theme.textMuted, fontSize: 14, marginBottom: 4 },
-    summaryValue: { color: theme.text, fontSize: 26, fontWeight: "700" },
+    summaryValue: { color: theme.text, fontSize: 26, fontWeight: '600' },
     walletCard: {
       alignItems: "center",
       backgroundColor: theme.card,
@@ -1921,9 +1928,9 @@ function createStyles(theme: AppTheme) {
       padding: 16,
     },
     statControlCard: { backgroundColor: theme.card, borderRadius: 8, gap: 14, padding: 16 },
-    statControlTitle: { color: theme.textMuted, fontSize: 13, fontWeight: "800" },
+    statControlTitle: { color: theme.textMuted, fontSize: 13, fontWeight: '600' },
     periodRow: { alignItems: "center", flexDirection: "row", flexWrap: "wrap", gap: 8 },
-    periodValue: { color: theme.text, fontSize: 15, fontWeight: "800", minWidth: 64, textAlign: "center" },
+    periodValue: { color: theme.text, fontSize: 15, fontWeight: '600', minWidth: 64, textAlign: "center" },
     stepButton: {
       alignItems: "center",
       backgroundColor: theme.cardAlt,
@@ -1932,7 +1939,7 @@ function createStyles(theme: AppTheme) {
       justifyContent: "center",
       width: 34,
     },
-    stepButtonText: { color: theme.text, fontSize: 22, fontWeight: "700", lineHeight: 24 },
+    stepButtonText: { color: theme.text, fontSize: 22, fontWeight: '600', lineHeight: 24 },
     statCard: {
       backgroundColor: theme.card,
       borderColor: theme.border,
@@ -1952,10 +1959,10 @@ function createStyles(theme: AppTheme) {
       marginRight: 14,
       width: 40,
     },
-    statIconText: { color: theme.primary, fontSize: 18, fontWeight: "800" },
-    statCategoryName: { color: theme.text, fontSize: 16, fontWeight: "900" },
-    statCategoryMeta: { color: theme.textMuted, fontSize: 13, fontWeight: "700", marginTop: 3 },
-    statCategoryAmount: { color: theme.text, fontSize: 15, fontWeight: "900" },
+    statIconText: { color: theme.primary, fontSize: 18, fontWeight: '600' },
+    statCategoryName: { color: theme.text, fontSize: 16, fontWeight: '600' },
+    statCategoryMeta: { color: theme.textMuted, fontSize: 13, fontWeight: '600', marginTop: 3 },
+    statCategoryAmount: { color: theme.text, fontSize: 15, fontWeight: '600' },
     categoryDetailButton: {
       alignItems: "center",
       backgroundColor: theme.cardAlt,
@@ -1966,10 +1973,10 @@ function createStyles(theme: AppTheme) {
       width: 32,
     },
     categoryDetailButtonActive: { backgroundColor: theme.primaryPressed },
-    categoryDetailIcon: { color: theme.primary, fontSize: 18, fontWeight: "900", lineHeight: 20 },
+    categoryDetailIcon: { color: theme.primary, fontSize: 18, fontWeight: '600', lineHeight: 20 },
     statCompareText: { color: theme.textMuted, fontSize: 13, lineHeight: 19 },
-    statCompareTextDecrease: { color: theme.goodText, fontWeight: "800" },
-    statCompareTextIncrease: { color: theme.dangerText, fontWeight: "800" },
+    statCompareTextDecrease: { color: theme.goodText, fontWeight: '600' },
+    statCompareTextIncrease: { color: theme.dangerText, fontWeight: '600' },
     categoryTransactionsPanel: { borderTopColor: theme.border, borderTopWidth: 1, gap: 2, paddingTop: 8 },
     categoryTransactionsEmpty: { color: theme.textMuted, fontSize: 12, paddingVertical: 10, textAlign: "center" },
     categoryTransactionRow: {
@@ -1981,11 +1988,11 @@ function createStyles(theme: AppTheme) {
       paddingVertical: 7,
     },
     categoryTransactionCopy: { flex: 1, marginRight: 10 },
-    categoryTransactionDescription: { color: theme.text, fontSize: 13, fontWeight: "800" },
+    categoryTransactionDescription: { color: theme.text, fontSize: 13, fontWeight: '600' },
     categoryTransactionDate: { color: theme.textMuted, fontSize: 11, marginTop: 3 },
-    categoryTransactionAmount: { color: theme.dangerText, fontSize: 12, fontWeight: "900" },
+    categoryTransactionAmount: { color: theme.dangerText, fontSize: 12, fontWeight: '600' },
     categoryTransactionsMoreButton: { alignItems: "center", minHeight: 38, justifyContent: "center" },
-    categoryTransactionsMoreText: { color: theme.primary, fontSize: 13, fontWeight: "900" },
+    categoryTransactionsMoreText: { color: theme.primary, fontSize: 13, fontWeight: '600' },
     walletIcon: {
       alignItems: "center",
       backgroundColor: theme.cardAlt,
@@ -1997,13 +2004,13 @@ function createStyles(theme: AppTheme) {
     },
     walletIconText: { color: theme.text, fontSize: 20 },
     walletInfo: { flex: 1 },
-    walletName: { color: theme.text, fontSize: 18, fontWeight: "700" },
+    walletName: { ...Typography.section, color: theme.text },
     walletType: { color: theme.textMuted, fontSize: 14, marginTop: 3 },
-    walletBalance: { color: theme.text, fontSize: 16, fontWeight: "700" },
+    walletBalance: { ...Typography.label, color: theme.text },
     emptyText: { color: theme.textMuted, fontSize: 16, lineHeight: 23, marginTop: 18, textAlign: "center" },
     form: { gap: 18, paddingTop: 28 },
     field: { gap: 8 },
-    label: { color: theme.text, fontSize: 14, fontWeight: "700" },
+    label: { ...Typography.label, color: theme.text },
     input: {
       backgroundColor: theme.inputBackground,
       borderColor: theme.border,
@@ -2027,7 +2034,7 @@ function createStyles(theme: AppTheme) {
       paddingHorizontal: 14,
     },
     typeOptionSelected: { backgroundColor: theme.primary, borderColor: theme.primary },
-    typeOptionText: { color: theme.textSoft, fontWeight: "700" },
+    typeOptionText: { color: theme.textSoft, fontWeight: '600' },
     typeOptionTextSelected: { color: theme.textInverse },
     row: { flexDirection: "row", gap: 12 },
     currencyField: { flex: 0.8 },
@@ -2040,6 +2047,6 @@ function createStyles(theme: AppTheme) {
       minHeight: 50,
     },
     buttonDisabled: { opacity: 0.7 },
-    primaryButtonText: { color: theme.textInverse, fontSize: 16, fontWeight: "700" },
+    primaryButtonText: { ...Typography.button, color: theme.textInverse },
   });
 }

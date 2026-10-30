@@ -1,5 +1,6 @@
+import { AppText as Text } from '@/components/app-text';
 import { useEffect, useState } from "react";
-import { InputAccessoryView, Keyboard, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { InputAccessoryView, Keyboard, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 
 import { useAppTheme } from "@/hooks/use-app-theme";
 import { getAmountSuggestions } from "@/utils/amountSuggestions";

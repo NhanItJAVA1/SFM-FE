@@ -1,7 +1,8 @@
+import { AppText as Text } from '@/components/app-text';
 import { useFocusEffect } from "expo-router";
 import { ScreenGradientBackground } from "@/components/screen-gradient-background";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Animated, Pressable, RefreshControl, ScrollView, Text, useWindowDimensions, View } from "react-native";
+import { ActivityIndicator, Alert, Animated, Pressable, RefreshControl, ScrollView, useWindowDimensions, View } from "react-native";
 
 import { budgetsApi } from "@/api/budgetsApi";
 import type { Category } from "@/api/categoriesApi";
@@ -361,7 +362,7 @@ export default function BudgetsScreen() {
                     <View style={styles.detailLoadingState}>
                       <Text style={[styles.emptyTransactionText, { flex: 1 }]}>Không tải được giao dịch ngân sách.</Text>
                       <Pressable accessibilityRole="button" onPress={() => void loadSelectedBudgetDetail(selectedBudget.id)} hitSlop={10}>
-                        <Text style={{ color: theme.primary, fontWeight: "700" }}>Thử lại</Text>
+                        <Text style={{ color: theme.primary, fontWeight: '600' }}>Thử lại</Text>
                       </Pressable>
                     </View>
                   ) : null}
