@@ -30,7 +30,6 @@ type RefreshTokenResponse = {
 };
 
 type TokenRefreshHandler = (response: RefreshTokenResponse) => void | Promise<void>;
-type AuthExpiredHandler = () => void | Promise<void>;
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL;
 
@@ -43,7 +42,6 @@ let accessToken: string | null = null;
 let refreshAccessTokenPromise: Promise<boolean> | null = null;
 
 let tokenRefreshHandler: TokenRefreshHandler | null = null;
-let authExpiredHandler: AuthExpiredHandler | null = null;
 
 export function setApiAccessToken(token: string | null) {
   accessToken = token;
@@ -51,10 +49,6 @@ export function setApiAccessToken(token: string | null) {
 
 export function setApiTokenRefreshHandler(handler: TokenRefreshHandler | null) {
   tokenRefreshHandler = handler;
-}
-
-export function setApiAuthExpiredHandler(handler: AuthExpiredHandler | null) {
-  authExpiredHandler = handler;
 }
 
 /**
@@ -200,8 +194,7 @@ async function refreshAccessToken() {
   console.log("🔄 REFRESH TOKEN REQUEST");
 
   if (!refreshToken) {
-    console.warn("🔒 No refresh token is available; returning to sign in");
-    await authExpiredHandler?.();
+    console.warn("🔒 No refresh token is available");
     return false;
   }
 
@@ -267,8 +260,7 @@ async function refreshAccessToken() {
     };
 
     if (status === 401) {
-      console.warn("🔒 Refresh token was rejected; clearing the saved session", failureContext);
-      await authExpiredHandler?.();
+      console.warn("🔒 Refresh token was rejected", failureContext);
     } else {
       console.error("❌ Refresh token request failed", failureContext);
     }

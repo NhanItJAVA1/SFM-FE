@@ -69,7 +69,7 @@ function CreateTabButton({
         lastLongPressAt.current = Date.now();
         animatePressScale(0.98);
         onLongPress?.(event);
-        router.push("/(tabs)/scan-bill");
+        router.push("/scan-bill");
       }}
       onPress={(event) => {
         if (Date.now() - lastLongPressAt.current < 700) {
@@ -146,13 +146,6 @@ export default function TabsLayout() {
           tabBarAccessibilityLabel: 'Tạo giao dịch',
           tabBarButton: (props) => <CreateTabButton {...props} />,
           tabBarLabel: () => null,
-        }}
-      />
-      <Tabs.Screen
-        name="scan-bill"
-        options={{
-          href: null,
-          tabBarStyle: { display: "none" },
         }}
       />
       <Tabs.Screen
