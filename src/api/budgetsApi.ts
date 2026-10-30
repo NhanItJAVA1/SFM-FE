@@ -45,6 +45,7 @@ export type BudgetProgress = {
 };
 
 export type BudgetProgressTransaction = {
+  transferId?: number | null;
   id: number;
   accountId: number;
   categoryId: number | null;

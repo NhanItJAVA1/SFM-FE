@@ -1,4 +1,5 @@
 import { AppText as Text } from '@/components/app-text';
+import { CategoryIconBadge } from '@/components/category-icon';
 import { useCallback, useMemo, useState } from 'react';
 import { Animated, PanResponder, Pressable, View } from 'react-native';
 
@@ -95,9 +96,7 @@ export function BudgetCategoryItem({
           style={[styles.categoryBudgetCard, isSelected && styles.categoryBudgetCardSelected]}
           onPress={onPress}
         >
-          <View style={styles.budgetIcon}>
-            <Text style={styles.budgetIconText}>{categoryName.charAt(0).toUpperCase() || '?'}</Text>
-          </View>
+          <CategoryIconBadge icon={budget.categoryId === null ? 'all' : category?.icon} name={categoryName} type={category?.type} size={40} />
           <View style={styles.budgetInfo}>
             <View style={styles.budgetTopRow}>
               <Text style={styles.budgetName}>{budget.name}</Text>

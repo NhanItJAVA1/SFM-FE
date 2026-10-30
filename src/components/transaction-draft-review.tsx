@@ -1,6 +1,7 @@
 import { Typography } from '@/theme/typography';
 import { AppText as Text, AppTextInput as TextInput } from '@/components/app-text';
 import { BottomPopup, BottomPopupPressable } from "@/components/bottom-popup";
+import { CategoryIcon, CategoryIconBadge, getCategoryIconKey } from '@/components/category-icon';
 import DateTimePicker, { DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import { router } from "expo-router";
 import { SymbolView } from "expo-symbols";
@@ -161,14 +162,6 @@ function mergePickedDate(currentValue: string, pickedDate: Date) {
   return nextDate.toISOString();
 }
 
-function getCategoryIconLabel(category: Category) {
-  if (category.icon?.trim()) {
-    return category.icon.trim().charAt(0).toUpperCase();
-  }
-
-  return category.name.trim().charAt(0).toUpperCase() || "?";
-}
-
 export function TransactionDraftReview({ draft, onRetake }: TransactionDraftReviewProps) {
   const theme = useAppTheme();
   const themeMode = useThemeMode();
@@ -258,7 +251,7 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
     try {
       setIsCreatingCategory(true);
       await categoriesApi.create({
-        icon: trimmedName.charAt(0).toLowerCase() || "tag",
+        icon: getCategoryIconKey({ name: trimmedName, type: categoryType }),
         isDefault: false,
         name: trimmedName,
         type: newCategoryType,
@@ -430,7 +423,7 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
             onPress={() => setIsCategoryPickerVisible(true)}
           >
             <View style={styles.summaryTileLabelRow}>
-              <SymbolView name="list.bullet" size={17} tintColor={theme.textMuted} />
+              <CategoryIcon icon={selectedCategory?.icon} name={selectedCategory?.name} type={categoryType} size={17} />
               <Text style={styles.summaryTileLabel}>Danh mục</Text>
             </View>
             <Text style={styles.summaryTileValue} numberOfLines={1}>
@@ -738,9 +731,7 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
                         setIsCategoryPickerVisible(false);
                       }}
                     >
-                      <View style={styles.categoryIcon}>
-                        <Text style={styles.categoryIconText}>{getCategoryIconLabel(category)}</Text>
-                      </View>
+                      <CategoryIconBadge {...category} />
                       <View style={styles.categoryInfo}>
                         <Text style={styles.categoryName}>{category.name}</Text>
                         <Text style={styles.categoryMeta}>
@@ -1057,15 +1048,6 @@ function createStyles(theme: AppTheme) {
     },
     categoryOptionSelected: { backgroundColor: theme.primaryPressed, borderColor: theme.primary },
     categoryOptionText: { color: theme.text, flex: 1, fontSize: 15, fontWeight: '600' },
-    categoryIcon: {
-      alignItems: "center",
-      backgroundColor: theme.primaryPressed,
-      borderRadius: 19,
-      height: 38,
-      justifyContent: "center",
-      width: 38,
-    },
-    categoryIconText: { color: theme.primary, fontSize: 17, fontWeight: '600' },
     categoryInfo: { flex: 1, gap: 3 },
     categoryName: { color: theme.text, fontSize: 16, fontWeight: '600' },
     categoryMeta: { color: theme.textMuted, fontSize: 13, fontWeight: '600' },

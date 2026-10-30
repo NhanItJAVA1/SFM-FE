@@ -104,6 +104,7 @@ export default function TabsLayout() {
 
   return (
     <Tabs
+      backBehavior="history"
       tabBar={(props) => <UserTabBar {...props} />}
       screenOptions={{
         headerShown: false,
@@ -142,6 +143,7 @@ export default function TabsLayout() {
         }}
         options={{
           tabBarHideOnKeyboard: true,
+          tabBarStyle: { display: 'none' },
           title: "",
           tabBarAccessibilityLabel: 'Tạo giao dịch',
           tabBarButton: (props) => <CreateTabButton {...props} />,

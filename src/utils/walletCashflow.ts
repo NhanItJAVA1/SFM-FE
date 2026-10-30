@@ -1,6 +1,6 @@
 import type { FinancialAccount } from '@/api/financialAccountApi';
 import type { Transaction } from '@/api/transactionsApi';
-import { getTransactionDayKey } from '@/utils/transactionPresentation';
+import { getTransactionDayKey, isTransferTransaction } from '@/utils/transactionPresentation';
 
 export type CashflowGroup = { key: string; currency: string | null; accountName?: string; income: number; expense: number };
 
@@ -27,11 +27,12 @@ export function summarizeWalletCashflow(transactions: Transaction[], accounts: F
   for (const transaction of new Map(transactions.map((row) => [row.id, row])).values()) {
     if ((accountId !== null && transaction.accountId !== accountId)
       || getTransactionDayKey(transaction.transactionDate).slice(0, 7) !== month
-      || transaction.isExcluded || !Number.isFinite(transaction.amount)) continue;
-    if (transaction.type === 'TransferIn' || transaction.type === 'TransferOut') {
+      || !Number.isFinite(transaction.amount)) continue;
+    if (isTransferTransaction(transaction)) {
       hasTransfers = true;
       continue;
     }
+    if (transaction.isExcluded) continue;
     const group = groupFor(transaction.accountId);
     if (transaction.type === 'Income') group.income += Math.abs(transaction.amount);
     if (transaction.type === 'Expense') group.expense += Math.abs(transaction.amount);

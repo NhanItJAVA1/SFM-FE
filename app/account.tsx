@@ -1,7 +1,7 @@
 import { Typography } from '@/theme/typography';
 import { AppText as Text, AppTextInput as TextInput } from '@/components/app-text';
-import { router } from "expo-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { router, useFocusEffect } from "expo-router";
+import { useCallback, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -87,7 +87,7 @@ export default function AccountScreen() {
     }
   }, []);
 
-  useEffect(() => {
+  useFocusEffect(useCallback(() => {
     // Chỉ gọi API khi đang ở màn hình danh sách; các màn hình form không cần tải lại dữ liệu.
     if (view !== "wallets") {
       return undefined;
@@ -96,7 +96,7 @@ export default function AccountScreen() {
     const timeoutId = setTimeout(() => loadAccounts(), 0);
 
     return () => clearTimeout(timeoutId);
-  }, [loadAccounts, view]);
+  }, [loadAccounts, view]));
 
   function handleEditAccount(account: FinancialAccount) {
     // Nạp dữ liệu ví vào form dùng chung cho cả tạo mới và cập nhật.
@@ -396,7 +396,10 @@ export default function AccountScreen() {
                     </Pressable>
                     <Pressable
                       style={({ pressed }) => [styles.accountMenuItem, pressed && styles.accountMenuItemPressed]}
-                      onPress={() => setOpenAccountMenu(null)}
+                      onPress={() => {
+                        setOpenAccountMenu(null);
+                        router.push({ pathname: '/transfer', params: { fromAccountId: String(account.id) } });
+                      }}
                     >
                       <Text style={styles.accountMenuText}>↔ Chuyển tiền đến ví khác</Text>
                     </Pressable>

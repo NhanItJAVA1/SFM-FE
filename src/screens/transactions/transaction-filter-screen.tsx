@@ -4,8 +4,8 @@ import { useMemo, useState } from "react";
 import { ImageBackground, Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
-import { ArrowLeft, ChevronDown, Headset, Home, LayoutGrid } from "lucide-react-native";
-import { getCategoryVisual } from '@/components/category-icon';
+import { ArrowLeft, ChevronDown, Headset, Home } from "lucide-react-native";
+import { CategoryIcon } from '@/components/category-icon';
 
 import type { Category } from "@/api/categoriesApi";
 import type { FinancialAccount } from "@/api/financialAccountApi";
@@ -146,11 +146,10 @@ export function TransactionFilterScreen({
                   onPress={() => setDraft((current) => ({ ...current, categoryId: null }))}
                   style={[styles.serviceTile, draft.categoryId === null && styles.tileSelected]}
                 >
-                  <LayoutGrid size={25} color={theme.primary} />
+                  <CategoryIcon icon="all" size={25} />
                   <Text style={styles.serviceText}>Tất cả</Text>
                 </Pressable>
                 {categories.map((category) => {
-                  const { Icon, color } = getCategoryVisual(category);
                   return (
                     <Pressable
                       key={category.id}
@@ -160,7 +159,7 @@ export function TransactionFilterScreen({
                       onPress={() => setDraft((current) => ({ ...current, categoryId: category.id }))}
                       style={[styles.serviceTile, draft.categoryId === category.id && styles.tileSelected]}
                     >
-                      <Icon size={25} color={color} strokeWidth={2} />
+                      <CategoryIcon {...category} size={25} />
                       <Text numberOfLines={3} style={styles.serviceText}>{category.name}</Text>
                     </Pressable>
                   );

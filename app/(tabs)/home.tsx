@@ -18,9 +18,9 @@ import Svg, { Circle, Defs, Line, LinearGradient, Path, Rect, Stop, Text as SvgT
 
 import type { AIAnalysis } from "@/api/aiApi";
 import { AIRecommendations } from '@/components/ai-recommendations';
-import { CategoryIcon } from '@/components/category-icon';
+import { CategoryIconBadge } from '@/components/category-icon';
 import { TransactionDayHeader } from '@/components/transaction-day-header';
-import { formatTransactionTime, getTransactionDayKey } from '@/utils/transactionPresentation';
+import { formatTransactionTime, getTransactionDayKey, isTransferTransaction } from '@/utils/transactionPresentation';
 import { categoriesApi, Category } from "@/api/categoriesApi";
 import { FinancialAccount, financialAccountApi } from "@/api/financialAccountApi";
 import { CategorySpendingResponse, Transaction, transactionsApi, TransactionType } from "@/api/transactionsApi";
@@ -30,6 +30,7 @@ import { useAIAnalysis } from "@/hooks/use-ai-analysis";
 import { useAppTheme } from "@/hooks/use-app-theme";
 import { useThemeMode } from "@/hooks/use-theme-mode";
 import { getAuthUser } from "@/stores/authSession";
+import { requestSpendingStatsFromHome } from '@/stores/spendingStatsNavigation';
 import type { AppTheme } from "@/theme/appTheme";
 import { getAccountCurrentBalance } from "@/utils/accountBalance";
 
@@ -301,7 +302,7 @@ export default function HomeScreen() {
     () =>
       (transactions ?? [])
         .filter(
-          (transaction) => !transaction.isExcluded && isInRange(transaction.transactionDate, monthStart, monthEnd),
+          (transaction) => !transaction.isExcluded && !isTransferTransaction(transaction) && isInRange(transaction.transactionDate, monthStart, monthEnd),
         )
         .sort((left, right) => new Date(right.transactionDate).getTime() - new Date(left.transactionDate).getTime()),
     [monthEnd, monthStart, transactions],
@@ -474,7 +475,11 @@ export default function HomeScreen() {
                 <SectionHeading
                   title="Chi tiêu nhiều nhất"
                   action="Chi tiết"
-                  onAction={() => router.push("/(tabs)/user")}
+                  onAction={() => {
+                    const period = spendingStats?.currentPeriod;
+                    requestSpendingStatsFromHome(period ? { month: period.month, year: period.year } : undefined);
+                    router.navigate('/(tabs)/user');
+                  }}
                 />
                 <View style={styles.categoryCard}>
                   {topCategories.length === 0 ? (
@@ -1010,14 +1015,10 @@ function CategoryRow({
   index: number;
 }) {
   const styles = useHomeStyles();
-  const colors = ["#3557a4", "#c05b3e", "#1b8f5a", "#7c61d9"];
-  const color = colors[index % colors.length];
 
   return (
     <View style={[styles.categoryRow, index > 0 && styles.rowDivider]}>
-      <View style={[styles.categoryIcon, { backgroundColor: `${color}18` }]}>
-        <Text style={[styles.categoryIconText, { color }]}>{category.icon?.charAt(0).toUpperCase() ?? "?"}</Text>
-      </View>
+      <CategoryIconBadge icon={category.icon} name={category.categoryName} type="Expense" style={styles.categoryIcon} />
       <View style={styles.categoryMain}>
         <Text numberOfLines={1} style={styles.categoryName}>
           {category.categoryName}
@@ -1045,13 +1046,12 @@ function TransactionRow({
 }) {
   const styles = useHomeStyles();
   const positive = isIncome(transaction.type);
-  const title = category?.name ?? getCategoryFallback(transaction.type);
+  const transfer = isTransferTransaction(transaction);
+  const title = transfer ? positive ? 'Chuyển tiền vào ví' : 'Chuyển tiền ra khỏi ví' : category?.name ?? getCategoryFallback(transaction.type);
 
   return (
     <View style={styles.transactionRow}>
-      <View style={[styles.transactionIcon, positive ? styles.incomeIcon : styles.expenseIcon]}>
-        <CategoryIcon icon={category?.icon} name={category?.name || transaction.categoryName} type={transaction.type} />
-      </View>
+      <CategoryIconBadge icon={category?.icon} name={category?.name || transaction.categoryName} type={transaction.type} transferId={transaction.transferId} style={styles.transactionIcon} />
       <View style={styles.transactionMain}>
         <Text numberOfLines={1} style={styles.transactionTitle}>
           {transaction.description || title}
@@ -1339,7 +1339,6 @@ function createStyles(theme: AppTheme) {
       marginRight: 12,
       width: 38,
     },
-    categoryIconText: { fontSize: 17, fontWeight: '600' },
     categoryMain: { flex: 1 },
     categoryName: { color: theme.text, fontSize: 14, fontWeight: '600' },
     categoryMeta: { color: theme.textSubtle, fontSize: 11, fontWeight: '600', marginTop: 3 },
@@ -1367,8 +1366,6 @@ function createStyles(theme: AppTheme) {
       marginRight: 12,
       width: 38,
     },
-    incomeIcon: { backgroundColor: theme.goodBackground },
-    expenseIcon: { backgroundColor: theme.warningBackground },
     transactionMain: { flex: 1 },
     transactionTitle: { ...Typography.label, color: theme.text },
     transactionMeta: { ...Typography.caption, color: theme.textSubtle, marginTop: 4 },

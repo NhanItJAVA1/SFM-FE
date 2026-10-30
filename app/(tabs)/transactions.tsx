@@ -7,16 +7,16 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, FlatList, Keyboard, Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { ScreenGradientBackground } from "@/components/screen-gradient-background";
-import { ArrowUp, ChartNoAxesCombined, Check, ChevronLeft, ChevronRight, Funnel, LayoutGrid, Search, SlidersHorizontal, Sparkles, TriangleAlert, Wallet, X } from "lucide-react-native";
+import { ArrowRightLeft, ArrowUp, ChartNoAxesCombined, Check, ChevronLeft, ChevronRight, Funnel, LayoutGrid, Search, SlidersHorizontal, Sparkles, TriangleAlert, Wallet, X } from "lucide-react-native";
 
 import { FinancialAccount, financialAccountApi } from "@/api/financialAccountApi";
 import { categoriesApi, type Category } from "@/api/categoriesApi";
 import type { AIAnomaly } from "@/api/aiApi";
 import { Transaction } from "@/api/transactionsApi";
 import { WalletCashflowCard } from '@/components/wallet-cashflow-card';
-import { CategoryIcon } from '@/components/category-icon';
+import { CategoryIconBadge } from '@/components/category-icon';
 import { TransactionDayHeader } from '@/components/transaction-day-header';
-import { formatTransactionTime, getCurrentTransactionMonth, getTransactionDayHeading, getTransactionDayKey, isIncomingTransaction } from '@/utils/transactionPresentation';
+import { formatTransactionTime, getCurrentTransactionMonth, getTransactionDayHeading, getTransactionDayKey, isIncomingTransaction, isTransferTransaction } from '@/utils/transactionPresentation';
 import { FocusedScreenTransition } from "@/components/screen-transition";
 import { useAIAnalysis } from "@/hooks/use-ai-analysis";
 import { useAppTheme } from "@/hooks/use-app-theme";
@@ -27,7 +27,7 @@ import { emptyTransactionFilters, getTransactionMonthRange, TransactionFilterScr
 import { calendarDay, getAnomalyWindow } from "@/screens/transactions/anomaly-window";
 type AnomalyDateFilter = string;
 type AnomalyFilters = { category: string; date: AnomalyDateFilter; reason: string };
-type TransactionRowData = Pick<Transaction, 'amount' | 'description' | 'categoryName' | 'transactionDate'> & { type?: Transaction['type'] };
+type TransactionRowData = Pick<Transaction, 'amount' | 'description' | 'categoryName' | 'transactionDate' | 'transferId'> & { type?: Transaction['type'] };
 
 function matchesAnomalyFilters(anomaly: AIAnomaly, filters: AnomalyFilters) {
   const categoryKey = anomaly.categoryId === null ? "uncategorized" : String(anomaly.categoryId);
@@ -410,6 +410,9 @@ export default function TransactionsScreen() {
                 <Pressable accessibilityLabel="Đóng" onPress={() => setIsUtilitiesOpen(false)} style={styles.filterIconButton}><X size={20} color={theme.textMuted} /></Pressable>
               </View>
               <View style={styles.filterSheetContent}>
+                <Pressable style={styles.utilityRow} onPress={() => { setIsUtilitiesOpen(false); router.push('/transfer'); }}>
+                  <ArrowRightLeft color={theme.primary} size={22} /><Text style={styles.utilityLabel}>Chuyển tiền giữa các ví</Text><ChevronRight color={theme.textMuted} size={18} />
+                </Pressable>
                 <Pressable style={styles.utilityRow} onPress={() => { setIsUtilitiesOpen(false); openMonthlyOverview(); }}>
                   <ChartNoAxesCombined color={theme.primary} size={22} /><Text style={styles.utilityLabel}>Tổng quan tháng {overviewMonth}</Text><ChevronRight color={theme.textMuted} size={18} />
                 </Pressable>
@@ -430,6 +433,7 @@ export default function TransactionsScreen() {
             periodLabel={anomalyWindow?.label}
             anomalies={anomalies}
             categories={anomalyCategories}
+            categoryVisuals={categories}
             reasons={anomalyReasons}
             initialFilters={{ category: anomalyCategoryFilter, date: anomalyDateFilter, reason: anomalyReasonFilter }}
             onClose={() => setIsAnomalyFilterOpen(false)}
@@ -452,6 +456,7 @@ function AnomalyFilterSheet({
   periodLabel,
   anomalies,
   categories,
+  categoryVisuals,
   reasons,
   initialFilters,
   onClose,
@@ -462,6 +467,7 @@ function AnomalyFilterSheet({
   periodLabel?: string;
   anomalies: AIAnomaly[];
   categories: [string, string][];
+  categoryVisuals: Category[];
   reasons: string[];
   initialFilters: AnomalyFilters;
   onClose: () => void;
@@ -507,7 +513,9 @@ function AnomalyFilterSheet({
           </View>
           {periodLabel ? <Text style={styles.analysisPeriod}>{periodLabel}</Text> : null}
           <ScrollView style={styles.filterSheetScroll} contentContainerStyle={styles.filterSheetContent}>
-            {activeGroup ? activeGroup.options.map((option) => (
+            {activeGroup ? activeGroup.options.map((option) => {
+              const category = categoryVisuals.find(item => String(item.id) === option.value);
+              return (
               <Pressable
                 key={option.value}
                 accessibilityRole="radio"
@@ -518,10 +526,14 @@ function AnomalyFilterSheet({
                 }}
                 style={styles.filterOptionRow}
               >
+                {activeGroup.key === 'category' ? (
+                  <CategoryIconBadge icon={option.value === 'all' ? 'all' : category?.icon} name={category?.name ?? option.label} type={category?.type} size={32} iconSize={18} style={{ marginRight: 10 }} />
+                ) : null}
                 <Text style={[styles.filterOptionText, draft[activeGroup.key] === option.value && { color: theme.primary }]}>{option.label}</Text>
                 {draft[activeGroup.key] === option.value ? <Check size={20} color={theme.primary} /> : <View style={styles.filterCheckSpace} />}
               </Pressable>
-            )) : groups.map((group) => (
+              );
+            }) : groups.map((group) => (
               <Pressable key={group.key} onPress={() => setSection(group.key)} style={styles.filterOptionRow}>
                 <View style={styles.filterRowCopy}>
                   <Text style={styles.filterRowLabel}>{group.label}</Text>
@@ -590,17 +602,17 @@ function TransactionListItem({
   const styles = useTransactionStyles();
   const date = transaction.transactionDate;
   const positive = transaction.type !== undefined && isIncomingTransaction(transaction.type);
+  const transfer = isTransferTransaction(transaction);
+  const categoryLabel = transfer ? 'Chuyển tiền' : category?.name || transaction.categoryName || 'Chưa phân loại';
 
   return (
     <View style={styles.dayGroup}>
       {showDay ? <TransactionDayHeader date={date} /> : null}
       <View style={styles.transactionRow}>
-        <View style={styles.transactionIcon}>
-          <CategoryIcon icon={category?.icon} name={category?.name || transaction.categoryName} type={transaction.type} size={24} />
-        </View>
+        <CategoryIconBadge icon={category?.icon} name={categoryLabel} type={transaction.type} transferId={transaction.transferId} size={36} iconSize={22} style={{ marginRight: 10 }} />
         <View style={styles.transactionCopy}>
           <View style={styles.transactionTitleRow}>
-            <Text numberOfLines={3} style={styles.transactionTitle}>{transaction.description || transaction.categoryName || (positive ? "Nhận tiền" : "Chi tiêu")}</Text>
+            <Text numberOfLines={3} style={styles.transactionTitle}>{transaction.description || (transfer ? positive ? 'Chuyển tiền vào ví' : 'Chuyển tiền ra khỏi ví' : transaction.categoryName || (positive ? "Nhận tiền" : "Chi tiêu"))}</Text>
             <Text
               adjustsFontSizeToFit
               minimumFontScale={0.75}
@@ -618,7 +630,7 @@ function TransactionListItem({
             <View style={styles.transactionMeta}>
               <View style={styles.transactionCategory}>
                 <Text numberOfLines={1} style={styles.transactionCategoryText}>
-                  {category?.name || transaction.categoryName || 'Chưa phân loại'}
+                  {categoryLabel}
                 </Text>
               </View>
               <Text style={styles.transactionTime}>{timeLabel ?? formatTransactionTime(transaction.transactionDate)}</Text>
@@ -821,16 +833,6 @@ function createStyles(theme: AppTheme) {
       paddingVertical: 12,
       paddingHorizontal: 2,
       minHeight: 72,
-    },
-    transactionIcon: {
-      alignItems: "center",
-      borderRadius: 18,
-      borderWidth: 1,
-      borderColor: theme.border,
-      height: 36,
-      justifyContent: "center",
-      marginRight: 10,
-      width: 36,
     },
     transactionCopy: { flex: 1, minWidth: 0 },
     transactionTitleRow: { alignItems: "flex-start", flexDirection: "row", gap: 8 },

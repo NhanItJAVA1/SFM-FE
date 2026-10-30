@@ -1,7 +1,8 @@
 export type SpendingStatsPeriod = { month: number; year: number };
+export type SpendingStatsReturnPath = '/(tabs)/home' | '/(tabs)/transactions';
 type SpendingStatsRequest = {
   id: number;
-  returnPath: '/(tabs)/transactions';
+  returnPath: SpendingStatsReturnPath;
   period?: SpendingStatsPeriod;
 };
 
@@ -10,16 +11,25 @@ let currentRequestId = 0;
 let pendingRequest: SpendingStatsRequest | null = null;
 let returnPath: SpendingStatsRequest['returnPath'] | null = null;
 
-export function requestSpendingStatsFromTransactions(period?: SpendingStatsPeriod) {
-  returnPath = '/(tabs)/transactions';
-  pendingRequest = {
+function requestSpendingStats(source: SpendingStatsReturnPath, period?: SpendingStatsPeriod) {
+  returnPath = source;
+  const request: SpendingStatsRequest = {
     id: currentRequestId + 1,
     returnPath,
     period,
   };
-  currentRequestId = pendingRequest.id;
+  pendingRequest = request;
+  currentRequestId = request.id;
 
-  listeners.forEach((listener) => listener(pendingRequest as SpendingStatsRequest));
+  listeners.forEach((listener) => listener(request));
+}
+
+export function requestSpendingStatsFromTransactions(period?: SpendingStatsPeriod) {
+  requestSpendingStats('/(tabs)/transactions', period);
+}
+
+export function requestSpendingStatsFromHome(period?: SpendingStatsPeriod) {
+  requestSpendingStats('/(tabs)/home', period);
 }
 
 export function consumePendingSpendingStatsRequest() {
