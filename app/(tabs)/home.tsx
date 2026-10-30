@@ -30,6 +30,7 @@ import { useAIAnalysis } from "@/hooks/use-ai-analysis";
 import { useAppTheme } from "@/hooks/use-app-theme";
 import { useThemeMode } from "@/hooks/use-theme-mode";
 import { getAuthUser } from "@/stores/authSession";
+import { requestSpendingStatsFromHome } from '@/stores/spendingStatsNavigation';
 import type { AppTheme } from "@/theme/appTheme";
 import { getAccountCurrentBalance } from "@/utils/accountBalance";
 
@@ -474,7 +475,11 @@ export default function HomeScreen() {
                 <SectionHeading
                   title="Chi tiêu nhiều nhất"
                   action="Chi tiết"
-                  onAction={() => router.push("/(tabs)/user")}
+                  onAction={() => {
+                    const period = spendingStats?.currentPeriod;
+                    requestSpendingStatsFromHome(period ? { month: period.month, year: period.year } : undefined);
+                    router.navigate('/(tabs)/user');
+                  }}
                 />
                 <View style={styles.categoryCard}>
                   {topCategories.length === 0 ? (
