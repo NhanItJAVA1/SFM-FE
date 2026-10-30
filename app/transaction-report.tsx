@@ -1,5 +1,7 @@
+import { Typography } from '@/theme/typography';
+import { AppText as Text } from '@/components/app-text';
 import { router } from "expo-router";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 
 import { FocusedScreenTransition } from "@/components/screen-transition";
 import { ScreenGradientBackground } from "@/components/screen-gradient-background";
@@ -40,9 +42,9 @@ const styles = StyleSheet.create({
     marginTop: 20,
   },
   back: { color: "#252a33", fontSize: 34 },
-  title: { color: "#171a21", fontSize: 21, fontWeight: "800" },
+  title: { ...Typography.title, color: "#171a21" },
   spacer: { width: 24 },
   card: { backgroundColor: "#fff", borderColor: "#e5e8ed", borderRadius: 14, borderWidth: 1, padding: 18 },
-  cardTitle: { color: "#252a33", fontSize: 18, fontWeight: "800" },
+  cardTitle: { color: "#252a33", fontSize: 18, fontWeight: '600' },
   description: { color: "#737984", fontSize: 14, lineHeight: 21, marginTop: 8 },
 });

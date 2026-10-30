@@ -1,3 +1,5 @@
+import { Typography } from '@/theme/typography';
+import { AppText as Text, useInterFont } from '@/components/app-text';
 import { router, useFocusEffect } from "expo-router";
 import { Sparkles } from "lucide-react-native";
 import { Fragment, useCallback, useMemo, useRef, useState } from "react";
@@ -9,13 +11,16 @@ import {
   RefreshControl,
   ScrollView,
   StyleSheet,
-  Text,
   View,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Circle, Defs, Line, LinearGradient, Path, Rect, Stop, Text as SvgText } from "react-native-svg";
 
 import type { AIAnalysis } from "@/api/aiApi";
+import { AIRecommendations } from '@/components/ai-recommendations';
+import { CategoryIcon } from '@/components/category-icon';
+import { TransactionDayHeader } from '@/components/transaction-day-header';
+import { formatTransactionTime, getTransactionDayKey } from '@/utils/transactionPresentation';
 import { categoriesApi, Category } from "@/api/categoriesApi";
 import { FinancialAccount, financialAccountApi } from "@/api/financialAccountApi";
 import { CategorySpendingResponse, Transaction, transactionsApi, TransactionType } from "@/api/transactionsApi";
@@ -71,10 +76,6 @@ function formatAxisMoney(amount: number) {
   }
 
   return formatPlainMoney(amount);
-}
-
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat("vi-VN", { day: "2-digit", month: "short" }).format(new Date(value));
 }
 
 function getMonthRange(date = new Date()) {
@@ -142,10 +143,6 @@ function isIncome(type: TransactionType) {
   return type === "Income" || type === "TransferIn";
 }
 
-function getSignedAmount(transaction: Transaction) {
-  return isIncome(transaction.type) ? transaction.amount : -transaction.amount;
-}
-
 function getCategoryFallback(type: TransactionType) {
   if (type === "Income") {
     return "Thu nhập";
@@ -198,20 +195,6 @@ function getNiceChartMax(value: number) {
           : 5_000_000;
 
   return Math.ceil(safeValue / step) * step;
-}
-
-function getPriorityRecommendation(analysis: AIAnalysis) {
-  const dashboardRecommendations = (analysis.recommendations ?? []).filter(
-    (recommendation) => !/^\d+$/.test(recommendation.category.trim()),
-  );
-
-  return [...dashboardRecommendations].sort((left, right) => {
-    const priorities = { HIGH: 0, MEDIUM: 1, LOW: 2 };
-    return (
-      (priorities[left.priority as keyof typeof priorities] ?? 3) -
-      (priorities[right.priority as keyof typeof priorities] ?? 3)
-    );
-  })[0];
 }
 
 export default function HomeScreen() {
@@ -520,14 +503,17 @@ export default function HomeScreen() {
                   {recentTransactions.length === 0 ? (
                     <EmptyState title="Chưa có giao dịch" description="Giao dịch mới nhất trong tháng sẽ hiện ở đây." />
                   ) : (
-                    recentTransactions.map((transaction) => (
-                      <TransactionRow
-                        key={transaction.id}
-                        account={accountMap.get(transaction.accountId)}
-                        category={transaction.categoryId ? categoryMap.get(transaction.categoryId) : undefined}
-                        currency={currency}
-                        transaction={transaction}
-                      />
+                    recentTransactions.map((transaction, index) => (
+                      <Fragment key={transaction.id}>
+                        {index === 0 || getTransactionDayKey(transaction.transactionDate) !== getTransactionDayKey(recentTransactions[index - 1].transactionDate)
+                          ? <TransactionDayHeader date={transaction.transactionDate} /> : null}
+                        <TransactionRow
+                          account={accountMap.get(transaction.accountId)}
+                          category={transaction.categoryId === null ? undefined : categoryMap.get(transaction.categoryId)}
+                          currency={currency}
+                          transaction={transaction}
+                        />
+                      </Fragment>
                     ))
                   )}
                 </View>
@@ -590,7 +576,6 @@ function AIWidget({
     return null;
   }
 
-  const recommendation = getPriorityRecommendation(analysis);
   const normalizedHealthStatus = analysis.health_status.toLowerCase();
   const isCritical = normalizedHealthStatus === "critical" || normalizedHealthStatus === "risk";
   const isHealthy = normalizedHealthStatus === "healthy";
@@ -629,14 +614,7 @@ function AIWidget({
           <Text style={styles.aiLabel}>Tỷ lệ tiết kiệm</Text>
           <Text style={styles.aiRate}>{Math.round(analysis.features.savings_rate * 100)}%</Text>
         </View>
-        {recommendation ? (
-          <View style={styles.aiRecommendation}>
-            <Text style={styles.aiRecommendationTitle}>{recommendation.title}</Text>
-            <Text numberOfLines={2} style={styles.aiRecommendationText}>
-              {recommendation.message}
-            </Text>
-          </View>
-        ) : null}
+        <AIRecommendations key={JSON.stringify(analysis.recommendations)} recommendations={analysis.recommendations ?? []} />
       </View>
     </View>
   );
@@ -693,6 +671,7 @@ function SpendingForecastChart({
   styles: ReturnType<typeof createStyles>;
   theme: AppTheme;
 }) {
+  const chartFont = useInterFont('500');
   const forecast = analysis?.forecast;
   const forecastAsOf = forecast?.asOf;
   const forecastEndDate = forecast?.forecastEndDate;
@@ -832,7 +811,8 @@ function SpendingForecastChart({
                 <SvgText
                   fill={theme.textSubtle}
                   fontSize={9}
-                  fontWeight="700"
+                  fontFamily={chartFont.fontFamily}
+                  fontWeight={chartFont.fontWeight === 'normal' ? 'normal' : '500'}
                   textAnchor="end"
                   x={forecastChart.width - 4}
                   y={y + 3}
@@ -897,7 +877,8 @@ function SpendingForecastChart({
             <SvgText
               fill={theme.dangerText}
               fontSize={9}
-              fontWeight="900"
+              fontFamily={chartFont.fontFamily}
+                  fontWeight={chartFont.fontWeight === 'normal' ? 'normal' : '500'}
               textAnchor={actualLabelAnchor}
               x={actualLabelX}
               y={actualEndY + 3}
@@ -922,7 +903,8 @@ function SpendingForecastChart({
             <SvgText
               fill={theme.primary}
               fontSize={9}
-              fontWeight="900"
+              fontFamily={chartFont.fontFamily}
+                  fontWeight={chartFont.fontWeight === 'normal' ? 'normal' : '500'}
               textAnchor={forecastEndLabelAnchor}
               x={forecastEndLabelX}
               y={Math.max(endY - 8, forecastChart.top + 10)}
@@ -957,7 +939,8 @@ function SpendingForecastChart({
                 key={day}
                 fill={theme.textSubtle}
                 fontSize={9}
-                fontWeight="700"
+                fontFamily={chartFont.fontFamily}
+                  fontWeight={chartFont.fontWeight === 'normal' ? 'normal' : '500'}
                 textAnchor="middle"
                 x={x}
                 y={forecastChart.bottom + 18}
@@ -969,7 +952,8 @@ function SpendingForecastChart({
           <SvgText
             fill={theme.textMuted}
             fontSize={9}
-            fontWeight="800"
+            fontFamily={chartFont.fontFamily}
+                  fontWeight={chartFont.fontWeight === 'normal' ? 'normal' : '500'}
             textAnchor="middle"
             x={asOfX}
             y={forecastChart.top - 7}
@@ -1061,27 +1045,24 @@ function TransactionRow({
 }) {
   const styles = useHomeStyles();
   const positive = isIncome(transaction.type);
-  const signedAmount = getSignedAmount(transaction);
   const title = category?.name ?? getCategoryFallback(transaction.type);
 
   return (
     <View style={styles.transactionRow}>
       <View style={[styles.transactionIcon, positive ? styles.incomeIcon : styles.expenseIcon]}>
-        <Text style={[styles.transactionIconText, positive ? styles.positiveText : styles.negativeText]}>
-          {positive ? "↗" : "↘"}
-        </Text>
+        <CategoryIcon icon={category?.icon} name={category?.name || transaction.categoryName} type={transaction.type} />
       </View>
       <View style={styles.transactionMain}>
         <Text numberOfLines={1} style={styles.transactionTitle}>
           {transaction.description || title}
         </Text>
         <Text numberOfLines={1} style={styles.transactionMeta}>
-          {formatDate(transaction.transactionDate)} · {account?.name ?? "Không rõ ví"}
+          {formatTransactionTime(transaction.transactionDate)} · {account?.name ?? "Không rõ ví"}
         </Text>
       </View>
       <Text style={[styles.transactionAmount, positive ? styles.positiveText : styles.negativeText]}>
-        {signedAmount > 0 ? "+" : "-"}
-        {formatMoney(Math.abs(signedAmount), account?.currency ?? currency)}
+        {positive ? "+" : "-"}
+        {formatMoney(Math.abs(transaction.amount), account?.currency ?? currency)}
       </Text>
     </View>
   );
@@ -1152,7 +1133,7 @@ function createStyles(theme: AppTheme) {
     headerCopy: { flex: 1, paddingRight: 12 },
     aiChatPlaceholder: { height: 40, width: 40 },
     aiChatOverlay: { position: "absolute", right: 32 },
-    userName: { color: theme.textInverse, fontSize: 24, fontWeight: "900" },
+    userName: { color: theme.textInverse, fontSize: 24, fontWeight: '600' },
     aiChatButton: {
       alignItems: "center",
       backgroundColor: "rgba(255,255,255,0.22)",
@@ -1161,8 +1142,8 @@ function createStyles(theme: AppTheme) {
       justifyContent: "center",
       width: 40,
     },
-    heroLabel: { color: theme.textInverse, fontSize: 14, fontWeight: "800", opacity: 0.82 },
-    heroBalance: { color: theme.textInverse, fontSize: 34, fontWeight: "900", letterSpacing: 0, marginTop: 6 },
+    heroLabel: { color: theme.textInverse, fontSize: 14, fontWeight: '600', opacity: 0.82 },
+    heroBalance: { color: theme.textInverse, fontSize: 34, fontWeight: '600', letterSpacing: 0, marginTop: 6 },
     heroStats: { flexDirection: "row", gap: 10, marginBottom: 14, marginTop: -32 },
     metricPill: {
       borderRadius: 8,
@@ -1179,8 +1160,8 @@ function createStyles(theme: AppTheme) {
     metricGood: { backgroundColor: theme.goodBackground },
     metricNeutral: { backgroundColor: theme.cardAlt },
     metricWarn: { backgroundColor: theme.warningBackground },
-    metricLabel: { color: theme.textMuted, fontSize: 11, fontWeight: "800" },
-    metricValue: { color: theme.text, fontSize: 13, fontWeight: "900", marginTop: 6 },
+    metricLabel: { color: theme.textMuted, fontSize: 11, fontWeight: '600' },
+    metricValue: { color: theme.text, fontSize: 13, fontWeight: '600', marginTop: 6 },
     errorCard: {
       backgroundColor: theme.warningBackground,
       borderColor: theme.warning,
@@ -1189,7 +1170,7 @@ function createStyles(theme: AppTheme) {
       marginTop: 14,
       padding: 14,
     },
-    errorTitle: { color: theme.warning, fontSize: 14, fontWeight: "900" },
+    errorTitle: { color: theme.warning, fontSize: 14, fontWeight: '600' },
     errorText: { color: theme.textMuted, fontSize: 13, lineHeight: 18, marginTop: 4 },
     loadingCard: {
       alignItems: "center",
@@ -1199,7 +1180,7 @@ function createStyles(theme: AppTheme) {
       marginTop: 16,
       padding: 28,
     },
-    loadingText: { color: theme.textMuted, fontSize: 13, fontWeight: "700" },
+    loadingText: { color: theme.textMuted, fontSize: 13, fontWeight: '600' },
     aiCard: {
       backgroundColor: theme.card,
       borderColor: theme.border,
@@ -1210,7 +1191,7 @@ function createStyles(theme: AppTheme) {
     },
     aiHeader: { alignItems: "center", flexDirection: "row", justifyContent: "space-between" },
     aiHeaderActions: { alignItems: "center", flexDirection: "row", gap: 8 },
-    aiEyebrow: { color: theme.textMuted, fontSize: 10, fontWeight: "900", letterSpacing: 0.5 },
+    aiEyebrow: { color: theme.text, fontSize: 11, fontWeight: '700', letterSpacing: 0.5 },
     aiAnalyzeButton: {
       alignItems: "center",
       backgroundColor: theme.primaryPressed,
@@ -1222,18 +1203,15 @@ function createStyles(theme: AppTheme) {
       paddingVertical: 6,
     },
     aiAnalyzeButtonDisabled: { opacity: 0.68 },
-    aiAnalyzeText: { color: theme.primary, fontSize: 11, fontWeight: "900" },
+    aiAnalyzeText: { color: theme.primary, fontSize: 11, fontWeight: '600' },
     aiBadge: { borderRadius: 12, paddingHorizontal: 9, paddingVertical: 5 },
     aiBadgeHealthy: { backgroundColor: theme.goodBackground },
     aiBadgeWarning: { backgroundColor: theme.warningBackground },
     aiBadgeCritical: { backgroundColor: `${theme.danger}22` },
-    aiBadgeText: { color: theme.text, fontSize: 11, fontWeight: "900" },
+    aiBadgeText: { color: theme.text, fontSize: 11, fontWeight: '600' },
     aiStatsRow: { flexDirection: "row", gap: 16, marginTop: 12 },
-    aiLabel: { color: theme.textMuted, fontSize: 11, fontWeight: "700" },
-    aiRate: { color: theme.primary, fontSize: 24, fontWeight: "900", marginTop: 3 },
-    aiRecommendation: { borderLeftColor: theme.primary, borderLeftWidth: 2, flex: 1, paddingLeft: 12 },
-    aiRecommendationTitle: { color: theme.text, fontSize: 12, fontWeight: "900" },
-    aiRecommendationText: { color: theme.textMuted, fontSize: 12, lineHeight: 17, marginTop: 3 },
+    aiLabel: { color: theme.textMuted, fontSize: 11, fontWeight: '600' },
+    aiRate: { color: theme.primary, fontSize: 24, fontWeight: '600', marginTop: 3 },
     aiSkeletonTitle: { backgroundColor: theme.cardAlt, borderRadius: 4, height: 12, width: "32%" },
     aiSkeletonLine: { backgroundColor: theme.cardAlt, borderRadius: 4, height: 24, marginTop: 12, width: "22%" },
     aiSkeletonLineShort: { backgroundColor: theme.cardAlt, borderRadius: 4, height: 10, marginTop: 8, width: "68%" },
@@ -1244,8 +1222,8 @@ function createStyles(theme: AppTheme) {
       marginBottom: 10,
       marginTop: 22,
     },
-    sectionTitle: { color: theme.text, fontSize: 17, fontWeight: "900" },
-    sectionAction: { color: theme.primary, fontSize: 13, fontWeight: "900" },
+    sectionTitle: { ...Typography.section, color: theme.text },
+    sectionAction: { color: theme.primary, fontSize: 13, fontWeight: '600' },
     heroAccountsList: {
       marginTop: 4,
     },
@@ -1258,12 +1236,12 @@ function createStyles(theme: AppTheme) {
     heroAccountsTitle: {
       color: theme.text,
       fontSize: 13,
-      fontWeight: "800",
+      fontWeight: '600',
     },
     heroAccountsAction: {
       color: theme.textMuted,
       fontSize: 12,
-      fontWeight: "700",
+      fontWeight: '600',
     },
     heroAccountsGrid: {
       gap: 8,
@@ -1286,19 +1264,19 @@ function createStyles(theme: AppTheme) {
     },
     heroAccountIconText: {
       fontSize: 15,
-      fontWeight: "900",
+      fontWeight: '600',
     },
     heroAccountName: {
       color: theme.text,
       fontSize: 14,
-      fontWeight: "700",
+      fontWeight: '600',
       flex: 1,
       marginRight: 8,
     },
     heroAccountBalance: {
       color: theme.text,
       fontSize: 14,
-      fontWeight: "800",
+      fontWeight: '600',
     },
     reportCard: {
       backgroundColor: theme.card,
@@ -1309,7 +1287,7 @@ function createStyles(theme: AppTheme) {
       paddingBottom: 14,
       paddingTop: 10,
     },
-    reportLabel: { color: theme.textMuted, fontSize: 12, fontWeight: "800" },
+    reportLabel: { color: theme.textMuted, fontSize: 12, fontWeight: '600' },
     chartEmptyState: {
       alignItems: "center",
       backgroundColor: theme.cardAlt,
@@ -1319,7 +1297,7 @@ function createStyles(theme: AppTheme) {
       marginTop: 16,
       padding: 18,
     },
-    chartEmptyText: { color: theme.textSubtle, fontSize: 12, fontWeight: "700" },
+    chartEmptyText: { color: theme.textSubtle, fontSize: 12, fontWeight: '600' },
     forecastChartBlock: { marginTop: 0 },
     forecastChartCanvas: { marginTop: 8 },
     forecastDivider: { flexDirection: "row", gap: 6, marginTop: 10 },
@@ -1329,11 +1307,11 @@ function createStyles(theme: AppTheme) {
     forecastLegendDot: { borderRadius: 4, height: 8, width: 8 },
     forecastLegendItem: { alignItems: "center", flexDirection: "row", gap: 6 },
     forecastLegendRow: { flexDirection: "row", gap: 14, marginTop: 8 },
-    forecastLegendText: { color: theme.textSubtle, fontSize: 11, fontWeight: "800" },
-    forecastNote: { color: theme.textSubtle, fontSize: 11, fontWeight: "700", lineHeight: 16, marginTop: 8 },
+    forecastLegendText: { color: theme.textSubtle, fontSize: 11, fontWeight: '600' },
+    forecastNote: { color: theme.textSubtle, fontSize: 11, fontWeight: '600', lineHeight: 16, marginTop: 8 },
     forecastSummaryRight: { alignItems: "flex-end", flex: 1 },
     forecastSummaryRow: { alignItems: "flex-start", flexDirection: "row", justifyContent: "space-between", gap: 12 },
-    forecastSummaryValue: { color: theme.text, fontSize: 16, fontWeight: "900", marginTop: 4 },
+    forecastSummaryValue: { color: theme.text, fontSize: 16, fontWeight: '600', marginTop: 4 },
     reportSummaryRow: {
       borderTopColor: theme.border,
       borderTopWidth: 1,
@@ -1342,8 +1320,8 @@ function createStyles(theme: AppTheme) {
       paddingTop: 14,
     },
     reportSummaryItem: { flex: 1 },
-    reportSummaryLabel: { color: theme.textSubtle, fontSize: 11, fontWeight: "800" },
-    reportSummaryValue: { fontSize: 15, fontWeight: "900", marginTop: 5 },
+    reportSummaryLabel: { color: theme.textSubtle, fontSize: 11, fontWeight: '600' },
+    reportSummaryValue: { fontSize: 15, fontWeight: '600', marginTop: 5 },
     categoryCard: {
       backgroundColor: theme.card,
       borderColor: theme.border,
@@ -1361,11 +1339,11 @@ function createStyles(theme: AppTheme) {
       marginRight: 12,
       width: 38,
     },
-    categoryIconText: { fontSize: 17, fontWeight: "900" },
+    categoryIconText: { fontSize: 17, fontWeight: '600' },
     categoryMain: { flex: 1 },
-    categoryName: { color: theme.text, fontSize: 14, fontWeight: "900" },
-    categoryMeta: { color: theme.textSubtle, fontSize: 11, fontWeight: "700", marginTop: 3 },
-    categoryAmount: { color: theme.text, fontSize: 13, fontWeight: "900", marginLeft: 10 },
+    categoryName: { color: theme.text, fontSize: 14, fontWeight: '600' },
+    categoryMeta: { color: theme.textSubtle, fontSize: 11, fontWeight: '600', marginTop: 3 },
+    categoryAmount: { color: theme.text, fontSize: 13, fontWeight: '600', marginLeft: 10 },
     transactionCard: {
       backgroundColor: theme.card,
       borderColor: theme.border,
@@ -1391,15 +1369,14 @@ function createStyles(theme: AppTheme) {
     },
     incomeIcon: { backgroundColor: theme.goodBackground },
     expenseIcon: { backgroundColor: theme.warningBackground },
-    transactionIconText: { fontSize: 18, fontWeight: "900" },
     transactionMain: { flex: 1 },
-    transactionTitle: { color: theme.text, fontSize: 14, fontWeight: "900" },
-    transactionMeta: { color: theme.textSubtle, fontSize: 11, fontWeight: "700", marginTop: 4 },
-    transactionAmount: { fontSize: 13, fontWeight: "900", marginLeft: 10 },
+    transactionTitle: { ...Typography.label, color: theme.text },
+    transactionMeta: { ...Typography.caption, color: theme.textSubtle, marginTop: 4 },
+    transactionAmount: { ...Typography.label, marginLeft: 10, fontWeight: '600' },
     positiveText: { color: theme.goodText },
     negativeText: { color: theme.dangerText },
     emptyState: { alignItems: "center", flex: 1, padding: 22 },
-    emptyTitle: { color: theme.text, fontSize: 15, fontWeight: "900", textAlign: "center" },
+    emptyTitle: { color: theme.text, fontSize: 15, fontWeight: '600', textAlign: "center" },
     emptyText: { color: theme.textSubtle, fontSize: 12, lineHeight: 18, marginTop: 5, textAlign: "center" },
   });
 }

@@ -1,3 +1,5 @@
+import { Typography } from '@/theme/typography';
+import { AppText as Text, AppTextInput as TextInput } from '@/components/app-text';
 import * as Google from "expo-auth-session/providers/google";
 import { Link, router } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
@@ -11,8 +13,6 @@ import {
   Platform,
   Pressable,
   StyleSheet,
-  Text,
-  TextInput,
   View,
 } from "react-native";
 import Svg, { Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
@@ -268,7 +268,7 @@ const styles = StyleSheet.create({
   inputDismissArea: { height: 14, marginVertical: -14 },
   button: { backgroundColor: "#1f6feb", borderRadius: 10, padding: 15, alignItems: "center" },
   buttonDisabled: { opacity: 0.7 },
-  buttonText: { color: "#fff", fontWeight: "700" },
+  buttonText: { ...Typography.button, color: "#fff" },
   secondaryActions: { flexDirection: "row", gap: 10 },
   googleButton: {
     flex: 1,
@@ -281,7 +281,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
   },
   googleButtonContent: { alignItems: "center", flexDirection: "row", gap: 8, justifyContent: "center" },
-  googleButtonText: { color: "#1f2328", fontWeight: "700" },
+  googleButtonText: { color: "#1f2328", fontWeight: '600' },
   signupButton: {
     alignItems: "center",
     backgroundColor: "#fff",
@@ -292,7 +292,7 @@ const styles = StyleSheet.create({
     minWidth: 92,
     paddingHorizontal: 14,
   },
-  signupButtonText: { color: "#1f6feb", fontWeight: "700" },
+  signupButtonText: { color: "#1f6feb", fontWeight: '600' },
   forgotPasswordButton: { alignItems: "center", paddingVertical: 6 },
   forgotPasswordText: { color: "rgba(255, 255, 255, 0.8)", fontWeight: "600" },
 });

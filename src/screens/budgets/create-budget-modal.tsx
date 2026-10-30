@@ -1,3 +1,4 @@
+import { AppText as Text, AppTextInput as TextInput } from '@/components/app-text';
 import { BottomPopup, BottomPopupPressable } from "@/components/bottom-popup";
 import { ScreenGradientBackground } from "@/components/screen-gradient-background";
 import DateTimePicker, { DateTimePickerEvent } from "@react-native-community/datetimepicker";
@@ -12,8 +13,6 @@ import {
   Pressable,
   ScrollView,
   Switch,
-  Text,
-  TextInput,
   View,
 } from "react-native";
 

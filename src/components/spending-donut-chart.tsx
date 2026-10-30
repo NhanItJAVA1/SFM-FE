@@ -1,5 +1,6 @@
+import { AppText as Text } from '@/components/app-text';
 import { useMemo } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 import Svg, { Circle, G, Path } from "react-native-svg";
 
 export type SpendingDonutSegment = {
@@ -260,12 +261,12 @@ const styles = StyleSheet.create({
   legendPercent: {
     color: "#f4f6f8",
     fontSize: 12,
-    fontWeight: "800",
+    fontWeight: '600',
   },
   legendLabel: {
     color: "#9698a1",
     fontSize: 11,
-    fontWeight: "700",
+    fontWeight: '600',
     marginTop: 2,
   },
 });

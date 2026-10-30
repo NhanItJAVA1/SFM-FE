@@ -1,3 +1,5 @@
+import { Typography } from '@/theme/typography';
+import { AppText as Text, AppTextInput as TextInput } from '@/components/app-text';
 import { BottomPopup, BottomPopupPressable } from "@/components/bottom-popup";
 import DateTimePicker, { DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import { router } from "expo-router";
@@ -13,8 +15,6 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
-  TextInput,
   View,
 } from "react-native";
 
@@ -955,8 +955,8 @@ function createStyles(theme: AppTheme) {
       paddingTop: 56,
       paddingBottom: 14,
     },
-    headerAction: { color: theme.primary, fontSize: 17, fontWeight: "800" },
-    headerTitle: { color: theme.text, fontSize: 20, fontWeight: "800" },
+    headerAction: { color: theme.primary, fontSize: 17, fontWeight: '600' },
+    headerTitle: { ...Typography.title, color: theme.text },
     editIconButton: {
       alignItems: "center",
       backgroundColor: theme.card,
@@ -965,7 +965,7 @@ function createStyles(theme: AppTheme) {
       justifyContent: "center",
       width: 36,
     },
-    editIconFallback: { color: theme.text, fontSize: 20, fontWeight: "900" },
+    editIconFallback: { color: theme.text, fontSize: 20, fontWeight: '600' },
     headerSpacer: { width: 58 },
     content: { gap: 14, padding: 20, paddingBottom: 130 },
     summaryGrid: { flexDirection: "row", gap: 12 },
@@ -980,11 +980,11 @@ function createStyles(theme: AppTheme) {
     },
     summaryWalletTile: { flex: 1.35 },
     summaryCategoryTile: { flex: 0.85 },
-    summaryTileLabel: { color: theme.textMuted, fontSize: 13, fontWeight: "800" },
+    summaryTileLabel: { color: theme.textMuted, fontSize: 13, fontWeight: '600' },
     summaryTileLabelRow: { alignItems: "center", flexDirection: "row", gap: 6, marginBottom: 10 },
-    summaryTileValue: { color: theme.text, fontSize: 17, fontWeight: "900" },
-    summaryTileMeta: { color: theme.primary, fontSize: 13, fontWeight: "800", marginTop: 8 },
-    walletBalanceText: { color: theme.primary, fontSize: 17, fontWeight: "900", marginTop: 10 },
+    summaryTileValue: { color: theme.text, fontSize: 17, fontWeight: '600' },
+    summaryTileMeta: { color: theme.primary, fontSize: 13, fontWeight: '600', marginTop: 8 },
+    walletBalanceText: { color: theme.primary, fontSize: 17, fontWeight: '600', marginTop: 10 },
     card: { backgroundColor: theme.card, borderRadius: 8, overflow: "hidden" },
     inlineGrid: { flexDirection: "row", gap: 1 },
     inlineTile: {
@@ -997,8 +997,8 @@ function createStyles(theme: AppTheme) {
       paddingVertical: 14,
     },
     inlineTileLabelRow: { alignItems: "center", flexDirection: "row", gap: 6 },
-    inlineTileLabel: { color: theme.textMuted, fontSize: 13, fontWeight: "800" },
-    inlineTileValue: { color: theme.text, fontSize: 16, fontWeight: "900", lineHeight: 21 },
+    inlineTileLabel: { color: theme.textMuted, fontSize: 13, fontWeight: '600' },
+    inlineTileValue: { color: theme.text, fontSize: 16, fontWeight: '600', lineHeight: 21 },
     fieldRow: {
       borderBottomColor: theme.border,
       borderBottomWidth: 1,
@@ -1006,10 +1006,10 @@ function createStyles(theme: AppTheme) {
       paddingHorizontal: 16,
       paddingVertical: 14,
     },
-    fieldLabel: { color: theme.textMuted, fontSize: 13, fontWeight: "700" },
-    fieldValue: { color: theme.text, fontSize: 16, fontWeight: "700" },
+    fieldLabel: { ...Typography.label, color: theme.textMuted },
+    fieldValue: { color: theme.text, fontSize: 16, fontWeight: '600' },
     categoryHeaderRow: { alignItems: "center", flexDirection: "row", justifyContent: "space-between" },
-    aiHint: { color: theme.primary, fontSize: 12, fontWeight: "800" },
+    aiHint: { color: theme.primary, fontSize: 12, fontWeight: '600' },
     categoryGrid: { gap: 10, paddingTop: 8 },
     categoryInput: {
       backgroundColor: theme.inputBackground,
@@ -1033,7 +1033,7 @@ function createStyles(theme: AppTheme) {
       justifyContent: "center",
     },
     categoryTypeOptionSelected: { backgroundColor: theme.primaryPressed, borderColor: theme.primary },
-    categoryTypeOptionText: { color: theme.textMuted, fontSize: 14, fontWeight: "800" },
+    categoryTypeOptionText: { color: theme.textMuted, fontSize: 14, fontWeight: '600' },
     categoryTypeOptionTextSelected: { color: theme.text },
     createCategoryButton: {
       alignItems: "center",
@@ -1043,7 +1043,7 @@ function createStyles(theme: AppTheme) {
       minHeight: 46,
       justifyContent: "center",
     },
-    createCategoryButtonText: { color: theme.textInverse, fontSize: 15, fontWeight: "900" },
+    createCategoryButtonText: { color: theme.textInverse, fontSize: 15, fontWeight: '600' },
     categoryOption: {
       alignItems: "center",
       borderColor: theme.border,
@@ -1056,7 +1056,7 @@ function createStyles(theme: AppTheme) {
       paddingVertical: 10,
     },
     categoryOptionSelected: { backgroundColor: theme.primaryPressed, borderColor: theme.primary },
-    categoryOptionText: { color: theme.text, flex: 1, fontSize: 15, fontWeight: "800" },
+    categoryOptionText: { color: theme.text, flex: 1, fontSize: 15, fontWeight: '600' },
     categoryIcon: {
       alignItems: "center",
       backgroundColor: theme.primaryPressed,
@@ -1065,11 +1065,11 @@ function createStyles(theme: AppTheme) {
       justifyContent: "center",
       width: 38,
     },
-    categoryIconText: { color: theme.primary, fontSize: 17, fontWeight: "900" },
+    categoryIconText: { color: theme.primary, fontSize: 17, fontWeight: '600' },
     categoryInfo: { flex: 1, gap: 3 },
-    categoryName: { color: theme.text, fontSize: 16, fontWeight: "800" },
-    categoryMeta: { color: theme.textMuted, fontSize: 13, fontWeight: "700" },
-    rawTitle: { color: theme.text, fontSize: 16, fontWeight: "800", paddingHorizontal: 16, paddingTop: 16 },
+    categoryName: { color: theme.text, fontSize: 16, fontWeight: '600' },
+    categoryMeta: { color: theme.textMuted, fontSize: 13, fontWeight: '600' },
+    rawTitle: { color: theme.text, fontSize: 16, fontWeight: '600', paddingHorizontal: 16, paddingTop: 16 },
     rawText: { color: theme.textSoft, fontSize: 14, lineHeight: 21, padding: 16 },
     emptyAccountText: { color: theme.textMuted, fontSize: 14, lineHeight: 20, padding: 16, textAlign: "center" },
     accountRow: {
@@ -1093,7 +1093,7 @@ function createStyles(theme: AppTheme) {
     },
     accountDotInner: { backgroundColor: theme.primary, borderRadius: 6, height: 12, width: 12 },
     accountInfo: { flex: 1, gap: 4 },
-    accountName: { color: theme.text, fontSize: 15, fontWeight: "800" },
+    accountName: { color: theme.text, fontSize: 15, fontWeight: '600' },
     accountMeta: { color: theme.textMuted, fontSize: 13 },
     itemsHeader: {
       alignItems: "center",
@@ -1103,8 +1103,8 @@ function createStyles(theme: AppTheme) {
       justifyContent: "space-between",
       padding: 16,
     },
-    itemsTitle: { color: theme.text, fontSize: 16, fontWeight: "800" },
-    itemsCount: { color: theme.textMuted, fontSize: 13, fontWeight: "700" },
+    itemsTitle: { color: theme.text, fontSize: 16, fontWeight: '600' },
+    itemsCount: { color: theme.textMuted, fontSize: 13, fontWeight: '600' },
     itemRow: {
       alignItems: "center",
       borderBottomColor: theme.border,
@@ -1115,9 +1115,9 @@ function createStyles(theme: AppTheme) {
       paddingVertical: 13,
     },
     itemInfo: { flex: 1, gap: 4 },
-    itemName: { color: theme.text, fontSize: 15, fontWeight: "700" },
+    itemName: { color: theme.text, fontSize: 15, fontWeight: '600' },
     itemMeta: { color: theme.textMuted, fontSize: 13 },
-    itemAmount: { color: theme.text, fontSize: 15, fontWeight: "800" },
+    itemAmount: { color: theme.text, fontSize: 15, fontWeight: '600' },
     totalRow: {
       alignItems: "center",
       flexDirection: "row",
@@ -1125,8 +1125,8 @@ function createStyles(theme: AppTheme) {
       paddingHorizontal: 16,
       paddingVertical: 12,
     },
-    totalLabel: { color: theme.textMuted, fontSize: 14, fontWeight: "700" },
-    totalValue: { color: theme.text, fontSize: 15, fontWeight: "800" },
+    totalLabel: { color: theme.textMuted, fontSize: 14, fontWeight: '600' },
+    totalValue: { color: theme.text, fontSize: 15, fontWeight: '600' },
     note: { color: theme.textSubtle, fontSize: 13, lineHeight: 19, textAlign: "center" },
     modalOverlay: {
       backgroundColor: theme.overlay,
@@ -1163,7 +1163,7 @@ function createStyles(theme: AppTheme) {
       justifyContent: "space-between",
     },
     datePickerTitle: { flex: 1, marginHorizontal: 12, textAlign: "center" },
-    datePickerAction: { fontSize: 16, fontWeight: "800" },
+    datePickerAction: { fontSize: 16, fontWeight: '600' },
     datePicker: { alignSelf: "stretch" },
     sheetHeader: {
       alignItems: "center",
@@ -1174,10 +1174,10 @@ function createStyles(theme: AppTheme) {
       minHeight: 58,
       paddingHorizontal: 18,
     },
-    sheetTitle: { color: theme.text, fontSize: 18, fontWeight: "900" },
+    sheetTitle: { ...Typography.section, color: theme.text },
     sheetActions: { alignItems: "center", flexDirection: "row", gap: 18 },
     sheetAdd: { color: theme.primary, fontSize: 32, fontWeight: "600", lineHeight: 34 },
-    sheetClose: { color: theme.primary, fontSize: 15, fontWeight: "900" },
+    sheetClose: { color: theme.primary, fontSize: 15, fontWeight: '600' },
     sheetList: { maxHeight: 460 },
     sheetListContent: { gap: 10, padding: 16 },
     sheetLoading: { alignItems: "center", minHeight: 180, justifyContent: "center" },
@@ -1219,7 +1219,7 @@ function createStyles(theme: AppTheme) {
       padding: 18,
       width: "100%",
     },
-    createCategoryTitle: { color: theme.text, fontSize: 18, fontWeight: "900" },
+    createCategoryTitle: { ...Typography.section, color: theme.text },
     createCategoryActions: { flexDirection: "row", gap: 10 },
     cancelCategoryButton: {
       alignItems: "center",
@@ -1229,11 +1229,11 @@ function createStyles(theme: AppTheme) {
       justifyContent: "center",
       minHeight: 46,
     },
-    cancelCategoryButtonText: { color: theme.text, fontSize: 15, fontWeight: "900" },
+    cancelCategoryButtonText: { color: theme.text, fontSize: 15, fontWeight: '600' },
     editorScreen: { backgroundColor: theme.screen, flex: 1 },
     editorContent: { gap: 14, padding: 20, paddingBottom: 36 },
     editorCard: { backgroundColor: theme.card, borderRadius: 8, gap: 12, padding: 14 },
-    editorSectionTitle: { color: theme.text, fontSize: 16, fontWeight: "900" },
+    editorSectionTitle: { color: theme.text, fontSize: 16, fontWeight: '600' },
     editItemBox: { borderColor: theme.border, borderRadius: 8, borderWidth: 1, gap: 10, padding: 12 },
     itemEditGrid: { gap: 8 },
     footer: {
@@ -1256,7 +1256,7 @@ function createStyles(theme: AppTheme) {
       justifyContent: "center",
       minHeight: 52,
     },
-    secondaryButtonText: { color: theme.text, fontSize: 16, fontWeight: "800" },
+    secondaryButtonText: { ...Typography.button, color: theme.text },
     primaryButton: {
       alignItems: "center",
       backgroundColor: theme.primary,
@@ -1265,7 +1265,7 @@ function createStyles(theme: AppTheme) {
       justifyContent: "center",
       minHeight: 52,
     },
-    primaryButtonText: { color: theme.textInverse, fontSize: 16, fontWeight: "800" },
+    primaryButtonText: { ...Typography.button, color: theme.textInverse },
     buttonDisabled: { opacity: 0.65 },
   });
 }

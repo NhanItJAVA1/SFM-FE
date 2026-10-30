@@ -1,5 +1,6 @@
+import { AppText as Text } from '@/components/app-text';
 import { useCallback, useMemo, useState } from 'react';
-import { Animated, PanResponder, Pressable, Text, View } from 'react-native';
+import { Animated, PanResponder, Pressable, View } from 'react-native';
 
 import type { Category } from '@/api/categoriesApi';
 import type { AIRecommendation } from '@/api/aiApi';

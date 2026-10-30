@@ -1,12 +1,28 @@
-import { BottomPopup, BottomPopupSheet, BottomPopupPressable } from "@/components/bottom-popup";
-import { ScreenGradientBackground } from "@/components/screen-gradient-background";
 import { AmountSuggestions } from "@/components/amount-suggestions";
+import { AppText as Text, AppTextInput as TextInput } from "@/components/app-text";
+import { BottomPopup, BottomPopupPressable, BottomPopupSheet } from "@/components/bottom-popup";
+import { ScreenGradientBackground } from "@/components/screen-gradient-background";
+import { Typography } from "@/theme/typography";
 import DateTimePicker, { DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import { router, useFocusEffect } from "expo-router";
+import { useBottomTabBarHeight } from "expo-router/js-tabs";
 import * as SecureStore from "expo-secure-store";
 import { SymbolView } from "expo-symbols";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Alert, AppState, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from "react-native";
+import type { TextInputInstance } from "react-native";
+import {
+  ActivityIndicator,
+  Alert,
+  AppState,
+  Image,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  View,
+} from "react-native";
 
 import { categoriesApi, Category, CategoryType } from "@/api/categoriesApi";
 import { FinancialAccount, financialAccountApi } from "@/api/financialAccountApi";
@@ -100,6 +116,7 @@ function formatDate(date: Date) {
 
 export default function CreateScreen() {
   const theme = useAppTheme();
+  const tabBarHeight = useBottomTabBarHeight();
   const themeMode = useThemeMode();
   const [accounts, setAccounts] = useState<FinancialAccount[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -108,7 +125,7 @@ export default function CreateScreen() {
   const [amount, setAmount] = useState<string>("");
   const [amountSuggestionInput, setAmountSuggestionInput] = useState("");
   const [isAmountFocused, setIsAmountFocused] = useState(false);
-  const amountInputRef = useRef<TextInput>(null);
+  const amountInputRef = useRef<TextInputInstance>(null);
   const [description, setDescription] = useState<string>("");
   const [location, setLocation] = useState<string>("");
   const [type, setType] = useState<TransactionType>("Expense");
@@ -210,10 +227,15 @@ export default function CreateScreen() {
     return clearPaymentAutoSaveTimers;
   }, [clearPaymentAutoSaveTimers]);
 
-  useFocusEffect(useCallback(() => () => {
-    setIsAmountFocused(false);
-    amountInputRef.current?.blur();
-  }, []));
+  useFocusEffect(
+    useCallback(
+      () => () => {
+        setIsAmountFocused(false);
+        amountInputRef.current?.blur();
+      },
+      [],
+    ),
+  );
 
   async function handleCreateCategory() {
     const trimmedName = newCategoryName.trim();
@@ -536,10 +558,7 @@ export default function CreateScreen() {
   return (
     <FocusedScreenTransition style={[styles.container, { backgroundColor: theme.screen }]}>
       <ScreenGradientBackground />
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        style={styles.keyboardView}
-      >
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.keyboardView}>
         <View style={styles.header}>
           <Text style={[styles.headerTitle, { color: theme.text }]}>Tạo giao dịch</Text>
           <Pressable
@@ -555,7 +574,10 @@ export default function CreateScreen() {
           </Pressable>
         </View>
 
-        <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+        <ScrollView
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: tabBarHeight + 16 }]}
+          keyboardShouldPersistTaps="handled"
+        >
           <View style={[styles.card, { backgroundColor: theme.card }]}>
             <View style={styles.inputGroup}>
               <Text style={[styles.inputLabel, { color: theme.textSubtle }]}>Số tiền</Text>
@@ -564,7 +586,10 @@ export default function CreateScreen() {
                 accessibilityLabel="Số tiền"
                 style={[styles.amountInput, { color: theme.primary }]}
                 value={amount}
-                onChangeText={(value) => { setAmount(value); setAmountSuggestionInput(value); }}
+                onChangeText={(value) => {
+                  setAmount(value);
+                  setAmountSuggestionInput(value);
+                }}
                 onFocus={() => setIsAmountFocused(true)}
                 onBlur={() => setIsAmountFocused(false)}
                 inputAccessoryViewID={Platform.OS === "ios" ? AMOUNT_ACCESSORY_ID : undefined}
@@ -728,8 +753,18 @@ export default function CreateScreen() {
           nativeID={AMOUNT_ACCESSORY_ID}
           input={amountSuggestionInput}
           selectedAmount={amount}
-          focused={isAmountFocused && !isAccountPickerVisible && !isCategoryPickerVisible && !isTypePickerVisible && !isDatePickerVisible && !isPaymentBankPickerVisible}
-          onSelect={(value) => { setAmount(String(value)); amountInputRef.current?.focus(); }}
+          focused={
+            isAmountFocused &&
+            !isAccountPickerVisible &&
+            !isCategoryPickerVisible &&
+            !isTypePickerVisible &&
+            !isDatePickerVisible &&
+            !isPaymentBankPickerVisible
+          }
+          onSelect={(value) => {
+            setAmount(String(value));
+            amountInputRef.current?.focus();
+          }}
         />
       </KeyboardAvoidingView>
 
@@ -993,7 +1028,7 @@ const styles = StyleSheet.create({
     paddingTop: 60,
     paddingBottom: 20,
   },
-  headerTitle: { fontSize: 24, fontWeight: "bold" },
+  headerTitle: { ...Typography.title },
   scanButton: {
     flexDirection: "row",
     alignItems: "center",
@@ -1006,8 +1041,8 @@ const styles = StyleSheet.create({
   scrollContent: { padding: 20, paddingBottom: 40 },
   card: { borderRadius: 16, overflow: "hidden", padding: 4 },
   inputGroup: { padding: 16 },
-  inputLabel: { fontSize: 14, fontWeight: "600", marginBottom: 8 },
-  amountInput: { fontSize: 32, fontWeight: "bold", paddingVertical: 4 },
+  inputLabel: { ...Typography.label, marginBottom: 8 },
+  amountInput: { fontSize: 32, fontWeight: "600", paddingVertical: 4 },
   textInput: { fontSize: 16, paddingVertical: 8, minHeight: 40 },
   row: {
     flexDirection: "row",
@@ -1053,7 +1088,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  saveButtonText: { fontSize: 18, fontWeight: "bold" },
+  saveButtonText: { ...Typography.button },
   modalOverlay: {
     flex: 1,
     justifyContent: "flex-end",
@@ -1064,19 +1099,36 @@ const styles = StyleSheet.create({
     padding: 24,
     maxHeight: "80%",
   },
-  modalTitle: { fontSize: 20, fontWeight: "bold", marginBottom: 20, textAlign: "center" },
-  categoryPickerHeader: { alignItems: "center", flexDirection: "row", justifyContent: "space-between", marginBottom: 16 },
+  modalTitle: { ...Typography.section, marginBottom: 20, textAlign: "center" },
+  categoryPickerHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 16,
+  },
   categoryPickerTitle: { fontSize: 20, fontWeight: "bold" },
   addCategoryButton: { alignItems: "center", borderRadius: 18, height: 36, justifyContent: "center", width: 36 },
   addCategoryButtonText: { fontSize: 26, fontWeight: "600", lineHeight: 30, marginTop: -2 },
-  categoryCreateHeader: { alignItems: "center", flexDirection: "row", justifyContent: "space-between", marginBottom: 12 },
+  categoryCreateHeader: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 12,
+  },
   categoryCreateBack: { fontSize: 14, fontWeight: "700", minWidth: 64 },
   categoryCreateTitle: { fontSize: 18, fontWeight: "bold" },
   categoryCreateHeaderSpacer: { width: 64 },
   categoryCreateType: { fontSize: 13, marginBottom: 10 },
   categoryCreateInput: { borderRadius: 12, borderWidth: 1, fontSize: 16, minHeight: 50, paddingHorizontal: 14 },
   categoryCreateActions: { flexDirection: "row", gap: 10, marginTop: 18 },
-  categoryCreateAction: { alignItems: "center", borderRadius: 10, borderWidth: 1, flex: 1, justifyContent: "center", minHeight: 48 },
+  categoryCreateAction: {
+    alignItems: "center",
+    borderRadius: 10,
+    borderWidth: 1,
+    flex: 1,
+    justifyContent: "center",
+    minHeight: 48,
+  },
   categoryCreateCancelText: { fontSize: 15, fontWeight: "700" },
   categoryCreateSubmitText: { fontSize: 15, fontWeight: "800" },
   categoryCreateDisabled: { opacity: 0.6 },
@@ -1093,7 +1145,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   datePickerTitle: { marginBottom: 0 },
-  datePickerAction: { fontSize: 16, fontWeight: "700" },
+  datePickerAction: { fontSize: 16, fontWeight: "600" },
   datePicker: { alignSelf: "stretch" },
   pickerItem: {
     paddingVertical: 16,

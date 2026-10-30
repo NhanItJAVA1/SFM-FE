@@ -7,6 +7,7 @@ import '@/global.css';
 
 import { Platform } from 'react-native';
 import { appThemes } from '@/theme/appTheme';
+import { FontFamily } from '@/theme/typography';
 
 // Compatibility names for template components; palette lives in appTheme.
 export const Colors = {
@@ -30,25 +31,23 @@ export type ThemeColor = keyof typeof Colors.light & keyof typeof Colors.dark;
 
 export const Fonts = Platform.select({
   ios: {
-    /** iOS `UIFontDescriptorSystemDesignDefault` */
-    sans: 'system-ui',
+    sans: FontFamily.regular,
     /** iOS `UIFontDescriptorSystemDesignSerif` */
     serif: 'ui-serif',
-    /** iOS `UIFontDescriptorSystemDesignRounded` */
-    rounded: 'ui-rounded',
+    rounded: FontFamily.regular,
     /** iOS `UIFontDescriptorSystemDesignMonospaced` */
     mono: 'ui-monospace',
   },
   default: {
-    sans: 'normal',
+    sans: FontFamily.regular,
     serif: 'serif',
-    rounded: 'normal',
+    rounded: FontFamily.regular,
     mono: 'monospace',
   },
   web: {
-    sans: 'var(--font-display)',
+    sans: FontFamily.regular,
     serif: 'var(--font-serif)',
-    rounded: 'var(--font-rounded)',
+    rounded: FontFamily.regular,
     mono: 'var(--font-mono)',
   },
 });

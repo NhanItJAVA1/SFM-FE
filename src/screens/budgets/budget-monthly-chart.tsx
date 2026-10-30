@@ -1,5 +1,6 @@
+import { AppText as Text } from '@/components/app-text';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
 
 import { transactionsApi } from '@/api/transactionsApi';
 import { useAppTheme } from '@/hooks/use-app-theme';

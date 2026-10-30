@@ -1,3 +1,4 @@
+import { Typography } from '@/theme/typography';
 import { useMemo } from "react";
 import { StyleSheet } from "react-native";
 
@@ -20,7 +21,7 @@ function createBudgetStyles(theme: AppTheme) {
       paddingHorizontal: 18,
       paddingTop: 54,
     },
-    title: { color: theme.text, fontSize: 18, fontWeight: "800" },
+    title: { ...Typography.title, color: theme.text },
     headerAddButton: {
       alignItems: "center",
       backgroundColor: theme.primary,
@@ -44,7 +45,7 @@ function createBudgetStyles(theme: AppTheme) {
       borderBottomWidth: 2,
       color: theme.text,
       fontSize: 14,
-      fontWeight: "800",
+      fontWeight: '600',
       paddingBottom: 12,
       paddingHorizontal: 18,
       minWidth: 120,
@@ -53,7 +54,7 @@ function createBudgetStyles(theme: AppTheme) {
     periodTab: {
       color: theme.textSubtle,
       fontSize: 14,
-      fontWeight: "800",
+      fontWeight: '600',
       minWidth: 108,
       paddingBottom: 12,
       paddingHorizontal: 18,
@@ -85,7 +86,7 @@ function createBudgetStyles(theme: AppTheme) {
       minWidth: 142,
       paddingHorizontal: 20,
     },
-    createButtonText: { color: theme.textInverse, fontSize: 14, fontWeight: "900" },
+    createButtonText: { color: theme.textInverse, fontSize: 14, fontWeight: '600' },
     categoryBudgetCard: {
       alignItems: "center",
       backgroundColor: theme.card,
@@ -113,7 +114,7 @@ function createBudgetStyles(theme: AppTheme) {
       top: 0,
       width: "100%",
     },
-    swipeDeleteIcon: { color: theme.textInverse, fontSize: 28, fontWeight: "900", lineHeight: 36, position: "absolute", left: 16, top: "50%", marginTop: -18 },
+    swipeDeleteIcon: { color: theme.textInverse, fontSize: 28, fontWeight: '600', lineHeight: 36, position: "absolute", left: 16, top: "50%", marginTop: -18 },
     budgetIcon: {
       alignItems: "center",
       backgroundColor: theme.iconBubble,
@@ -122,22 +123,22 @@ function createBudgetStyles(theme: AppTheme) {
       justifyContent: "center",
       width: 40,
     },
-    budgetIconText: { color: theme.textInverse, fontSize: 17, fontWeight: "900" },
+    budgetIconText: { color: theme.textInverse, fontSize: 17, fontWeight: '600' },
     budgetInfo: { flex: 1, gap: 7 },
     budgetTopRow: { alignItems: "center", flexDirection: "row", gap: 10, justifyContent: "space-between" },
-    budgetName: { color: theme.text, flex: 1, fontSize: 15, fontWeight: "900" },
-    budgetCategory: { color: theme.textMuted, flex: 1, fontSize: 12, fontWeight: "700" },
-    budgetRemaining: { color: theme.textSoft, fontSize: 12, fontWeight: "700" },
+    budgetName: { color: theme.text, flex: 1, fontSize: 15, fontWeight: '600' },
+    budgetCategory: { color: theme.textMuted, flex: 1, fontSize: 12, fontWeight: '600' },
+    budgetRemaining: { color: theme.textSoft, fontSize: 12, fontWeight: '600' },
     progressTrack: { backgroundColor: theme.progressTrack, borderRadius: 3, height: 6, overflow: "hidden" },
     progressFill: { backgroundColor: theme.budget.positive, borderRadius: 3, height: "100%" },
     progressFillWarning: { backgroundColor: theme.budget.warning },
     progressFillCritical: { backgroundColor: theme.budget.progressCritical },
-    progressMeta: { color: theme.textSubtle, fontSize: 11, fontWeight: "700", textAlign: "right" },
-    budgetWarning: { color: theme.budget.warning, fontSize: 11, fontWeight: "700", lineHeight: 16 },
-    budgetStatus: { fontSize: 12, fontWeight: "900" },
+    progressMeta: { color: theme.textSubtle, fontSize: 11, fontWeight: '600', textAlign: "right" },
+    budgetWarning: { color: theme.budget.warning, fontSize: 11, fontWeight: '600', lineHeight: 16 },
+    budgetStatus: { fontSize: 12, fontWeight: '600' },
     budgetStatusActive: { color: theme.budget.positive },
     budgetStatusExpired: { color: theme.textSubtle },
-    emptyTransactionText: { color: theme.textSubtle, fontSize: 12, fontWeight: "700", lineHeight: 18 },
+    emptyTransactionText: { color: theme.textSubtle, fontSize: 12, fontWeight: '600', lineHeight: 18 },
     bottomSheetOverlay: {
       backgroundColor: theme.overlay,
       flex: 1,
@@ -152,8 +153,8 @@ function createBudgetStyles(theme: AppTheme) {
       paddingTop: 54,
     },
     formClose: { color: theme.text, fontSize: 34, fontWeight: "300", lineHeight: 36 },
-    formTitle: { color: theme.text, fontSize: 20, fontWeight: "900" },
-    formSave: { color: theme.primary, fontSize: 14, fontWeight: "900", textTransform: "uppercase" },
+    formTitle: { ...Typography.section, color: theme.text },
+    formSave: { color: theme.primary, fontSize: 14, fontWeight: '600', textTransform: "uppercase" },
     disabledText: { opacity: 0.5 },
     formScroll: { flex: 1 },
     formFooter: {
@@ -178,7 +179,7 @@ function createBudgetStyles(theme: AppTheme) {
     aiSkeletonLine: { backgroundColor: theme.cardAlt, borderRadius: 4, height: 10, width: "72%" },
     formContent: { gap: 18, padding: 18, paddingBottom: 56 },
     field: { gap: 8 },
-    label: { color: theme.text, fontSize: 13, fontWeight: "800" },
+    label: { ...Typography.label, color: theme.text },
     input: {
       backgroundColor: theme.inputBackground,
       borderColor: theme.border,
@@ -221,7 +222,7 @@ function createBudgetStyles(theme: AppTheme) {
     categoryGridText: {
       color: theme.text,
       fontSize: 14,
-      fontWeight: "800",
+      fontWeight: '600',
       includeFontPadding: false,
       lineHeight: 18,
       textAlign: "center",
@@ -259,8 +260,8 @@ function createBudgetStyles(theme: AppTheme) {
       marginHorizontal: -2,
       width: 68,
     },
-    dateCapsuleLabel: { color: theme.textSubtle, fontSize: 11, fontWeight: "900", textTransform: "uppercase" },
-    dateCapsuleValue: { color: theme.text, fontSize: 15, fontWeight: "900" },
+    dateCapsuleLabel: { color: theme.textSubtle, fontSize: 11, fontWeight: '600', textTransform: "uppercase" },
+    dateCapsuleValue: { color: theme.text, fontSize: 15, fontWeight: '600' },
     compactBudgetControls: { flexDirection: "row", gap: 10 },
     alertMiniControl: {
       backgroundColor: theme.card,
@@ -276,13 +277,13 @@ function createBudgetStyles(theme: AppTheme) {
     alertMiniInput: {
       color: theme.text,
       fontSize: 18,
-      fontWeight: "900",
+      fontWeight: '600',
       minHeight: 24,
       padding: 0,
       textAlign: "right",
     },
     alertPercentRow: { alignItems: "center", flexDirection: "row" },
-    alertPercentText: { color: theme.text, fontSize: 18, fontWeight: "900", marginLeft: 2 },
+    alertPercentText: { color: theme.text, fontSize: 18, fontWeight: '600', marginLeft: 2 },
     recurringMiniControl: {
       alignItems: "center",
       backgroundColor: theme.card,
@@ -311,7 +312,7 @@ function createBudgetStyles(theme: AppTheme) {
       minWidth: 52,
     },
     recurringCopy: { flex: 1 },
-    helperText: { color: theme.textSubtle, fontSize: 11, fontWeight: "700", marginTop: 4 },
+    helperText: { color: theme.textSubtle, fontSize: 11, fontWeight: '600', marginTop: 4 },
     budgetDatePickerSheet: {
       backgroundColor: theme.sheet,
       borderTopLeftRadius: 8,
@@ -325,8 +326,8 @@ function createBudgetStyles(theme: AppTheme) {
       justifyContent: "space-between",
       marginBottom: 8,
     },
-    datePickerTitle: { color: theme.text, flex: 1, fontSize: 17, fontWeight: "900", textAlign: "center" },
-    datePickerAction: { fontSize: 16, fontWeight: "900" },
+    datePickerTitle: { color: theme.text, flex: 1, fontSize: 17, fontWeight: '600', textAlign: "center" },
+    datePickerAction: { fontSize: 16, fontWeight: '600' },
     datePicker: { alignSelf: "stretch" },
     fullCreateButton: {
       alignItems: "center",
