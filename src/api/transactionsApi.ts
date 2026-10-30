@@ -148,6 +148,7 @@ export type Transaction = {
   userId: number;
   accountId: number;
   categoryId: number | null;
+  transferId?: number | null;
   categoryName: string;
   type: TransactionType;
   amount: number;

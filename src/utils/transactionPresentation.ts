@@ -2,6 +2,10 @@ export function isIncomingTransaction(type: string) {
   return type === 'Income' || type === 'TransferIn';
 }
 
+export function isTransferTransaction(transaction: { type?: string; transferId?: number | null }) {
+  return transaction.transferId != null || transaction.type === 'TransferIn' || transaction.type === 'TransferOut';
+}
+
 function transactionDate(value: string) {
   // Date-only values describe a local calendar day, rather than midnight UTC.
   const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
