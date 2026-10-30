@@ -10,7 +10,7 @@ import { TransactionDraftReview } from "@/components/transaction-draft-review";
 import { useAppTheme } from "@/hooks/use-app-theme";
 import type { AppTheme } from "@/theme/appTheme";
 
-const loadingGif = require("../../assets/loading.gif");
+const loadingGif = require("../assets/loading.gif");
 
 type BillPhoto = Pick<CameraCapturedPicture, "uri"> & { name?: string | null; type?: string | null; file?: Blob | null };
 

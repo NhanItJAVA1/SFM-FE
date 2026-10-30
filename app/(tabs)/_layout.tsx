@@ -72,7 +72,7 @@ function CreateTabButton({
         lastLongPressAt.current = Date.now();
         animatePressScale(1.24);
         onLongPress?.(event);
-        router.push("/(tabs)/scan-bill");
+        router.push("/scan-bill");
       }}
       onPress={(event) => {
         if (Date.now() - lastLongPressAt.current < 700) {
@@ -147,13 +147,6 @@ export default function TabsLayout() {
           tabBarButton: (props) => <CreateTabButton {...props} />,
           tabBarIcon: ({ focused }) => <TabIcon name="plus" focused={focused} theme={theme} />,
           tabBarLabel: () => null,
-        }}
-      />
-      <Tabs.Screen
-        name="scan-bill"
-        options={{
-          href: null,
-          tabBarStyle: { display: "none" },
         }}
       />
       <Tabs.Screen

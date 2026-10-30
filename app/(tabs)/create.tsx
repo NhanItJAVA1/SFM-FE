@@ -124,6 +124,9 @@ export default function CreateScreen() {
 
   const [isAccountPickerVisible, setIsAccountPickerVisible] = useState(false);
   const [isCategoryPickerVisible, setIsCategoryPickerVisible] = useState(false);
+  const [isCreateCategoryVisible, setIsCreateCategoryVisible] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [isCreatingCategory, setIsCreatingCategory] = useState(false);
   const [isTypePickerVisible, setIsTypePickerVisible] = useState(false);
   const [isDatePickerVisible, setIsDatePickerVisible] = useState(false);
   const [isPaymentBankPickerVisible, setIsPaymentBankPickerVisible] = useState(false);
@@ -211,6 +214,48 @@ export default function CreateScreen() {
     setIsAmountFocused(false);
     amountInputRef.current?.blur();
   }, []));
+
+  async function handleCreateCategory() {
+    const trimmedName = newCategoryName.trim();
+
+    if (!trimmedName) {
+      Alert.alert("Thiếu tên danh mục", "Vui lòng nhập tên danh mục.");
+      return;
+    }
+
+    try {
+      setIsCreatingCategory(true);
+      await categoriesApi.create({
+        icon: trimmedName.charAt(0).toLowerCase() || "tag",
+        isDefault: false,
+        name: trimmedName,
+        type: categoryType,
+      });
+
+      const response = await categoriesApi.list();
+      const nextCategories = Array.isArray(response.data) ? response.data : [];
+      setCategories(nextCategories);
+
+      const createdCategory = [...nextCategories]
+        .reverse()
+        .find(
+          (category) =>
+            category.name.trim().toLowerCase() === trimmedName.toLowerCase() && category.type === categoryType,
+        );
+
+      if (createdCategory) {
+        setSelectedCategoryId(createdCategory.id);
+      }
+
+      setNewCategoryName("");
+      setIsCreateCategoryVisible(false);
+      setIsCategoryPickerVisible(false);
+    } catch (error) {
+      Alert.alert("Tạo danh mục thất bại", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
+    } finally {
+      setIsCreatingCategory(false);
+    }
+  }
 
   const buildTransactionPayload = useCallback((): CreateTransactionPayload | null => {
     if (!amount || isNaN(Number(amount))) {
@@ -499,7 +544,7 @@ export default function CreateScreen() {
           <Text style={[styles.headerTitle, { color: theme.text }]}>Tạo giao dịch</Text>
           <Pressable
             style={[styles.scanButton, { backgroundColor: theme.primaryPressed }]}
-            onPress={() => router.push("/(tabs)/scan-bill")}
+            onPress={() => router.push("/scan-bill")}
           >
             <SymbolView
               name={{ ios: "camera.fill", android: "camera", web: "camera" }}
@@ -720,34 +765,118 @@ export default function CreateScreen() {
         </Pressable>
       </BottomPopup>
 
-      <BottomPopup visible={isCategoryPickerVisible} transparent animationType="fade">
+      <BottomPopup
+        visible={isCategoryPickerVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          setIsCategoryPickerVisible(false);
+          setIsCreateCategoryVisible(false);
+        }}
+      >
         <Pressable
           style={[styles.modalOverlay, { backgroundColor: theme.overlay }]}
-          onPress={() => setIsCategoryPickerVisible(false)}
+          onPress={() => {
+            setIsCategoryPickerVisible(false);
+            setIsCreateCategoryVisible(false);
+          }}
         >
-          <BottomPopupSheet style={[styles.modalContent, { backgroundColor: theme.sheet }]}>
-            <Text style={[styles.modalTitle, { color: theme.text }]}>Chọn danh mục</Text>
-            <ScrollView>
-              {availableCategories.map((category) => (
-                <Pressable
-                  key={category.id}
+          <BottomPopupPressable style={[styles.modalContent, { backgroundColor: theme.sheet }]}>
+            {isCreateCategoryVisible ? (
+              <KeyboardAvoidingView behavior={Platform.select({ ios: "padding", android: "height" })}>
+                <View style={styles.categoryCreateHeader}>
+                  <Pressable
+                    onPress={() => setIsCreateCategoryVisible(false)}
+                    disabled={isCreatingCategory}
+                    hitSlop={10}
+                  >
+                    <Text style={[styles.categoryCreateBack, { color: theme.primary }]}>‹ Quay lại</Text>
+                  </Pressable>
+                  <Text style={[styles.categoryCreateTitle, { color: theme.text }]}>Thêm danh mục</Text>
+                  <View style={styles.categoryCreateHeaderSpacer} />
+                </View>
+                <Text style={[styles.categoryCreateType, { color: theme.textSubtle }]}>
+                  Loại: {categoryType === "Expense" ? "Chi tiêu" : "Thu nhập"}
+                </Text>
+                <TextInput
+                  accessibilityLabel="Tên danh mục mới"
+                  autoCapitalize="sentences"
+                  maxLength={50}
+                  onChangeText={setNewCategoryName}
+                  placeholder="Nhập tên danh mục"
+                  placeholderTextColor={theme.textSubtle}
+                  returnKeyType="done"
                   style={[
-                    styles.pickerItem,
-                    selectedCategoryId === category.id && { backgroundColor: theme.primaryPressed },
+                    styles.categoryCreateInput,
+                    { backgroundColor: theme.inputBackground, borderColor: theme.border, color: theme.text },
                   ]}
-                  onPress={() => {
-                    setSelectedCategoryId(category.id);
-                    setIsCategoryPickerVisible(false);
-                  }}
-                >
-                  <Text style={[styles.pickerItemText, { color: theme.text }]}>{category.name}</Text>
-                  <Text style={[styles.pickerItemSubtext, { color: theme.textSubtle }]}>
-                    {category.type === "Expense" ? "Chi tiêu" : "Thu nhập"}
-                  </Text>
-                </Pressable>
-              ))}
-            </ScrollView>
-          </BottomPopupSheet>
+                  value={newCategoryName}
+                />
+                <View style={styles.categoryCreateActions}>
+                  <Pressable
+                    disabled={isCreatingCategory}
+                    onPress={() => setIsCreateCategoryVisible(false)}
+                    style={[styles.categoryCreateAction, { borderColor: theme.border }]}
+                  >
+                    <Text style={[styles.categoryCreateCancelText, { color: theme.textMuted }]}>Hủy</Text>
+                  </Pressable>
+                  <Pressable
+                    disabled={isCreatingCategory || !newCategoryName.trim()}
+                    onPress={handleCreateCategory}
+                    style={[
+                      styles.categoryCreateAction,
+                      { backgroundColor: theme.primary },
+                      (isCreatingCategory || !newCategoryName.trim()) && styles.categoryCreateDisabled,
+                    ]}
+                  >
+                    {isCreatingCategory ? (
+                      <ActivityIndicator color={theme.textInverse} />
+                    ) : (
+                      <Text style={[styles.categoryCreateSubmitText, { color: theme.textInverse }]}>Tạo</Text>
+                    )}
+                  </Pressable>
+                </View>
+              </KeyboardAvoidingView>
+            ) : (
+              <>
+                <View style={styles.categoryPickerHeader}>
+                  <Text style={[styles.categoryPickerTitle, { color: theme.text }]}>Chọn danh mục</Text>
+                  <Pressable
+                    accessibilityLabel="Tạo danh mục mới"
+                    accessibilityRole="button"
+                    hitSlop={10}
+                    onPress={() => {
+                      setNewCategoryName("");
+                      setIsCreateCategoryVisible(true);
+                    }}
+                    style={[styles.addCategoryButton, { backgroundColor: theme.primaryPressed }]}
+                  >
+                    <Text style={[styles.addCategoryButtonText, { color: theme.primary }]}>+</Text>
+                  </Pressable>
+                </View>
+                <ScrollView>
+                  {availableCategories.map((category) => (
+                    <Pressable
+                      key={category.id}
+                      style={[
+                        styles.pickerItem,
+                        selectedCategoryId === category.id && { backgroundColor: theme.primaryPressed },
+                      ]}
+                      onPress={() => {
+                        setSelectedCategoryId(category.id);
+                        setIsCategoryPickerVisible(false);
+                      }}
+                    >
+                      <Text style={[styles.pickerItemText, { color: theme.text }]}>{category.name}</Text>
+                      <Text style={[styles.pickerItemSubtext, { color: theme.textSubtle }]}>
+                        {category.type === "Expense" ? "Chi tiêu" : "Thu nhập"}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              </>
+            )}
+          </BottomPopupPressable>
         </Pressable>
       </BottomPopup>
 
@@ -936,6 +1065,21 @@ const styles = StyleSheet.create({
     maxHeight: "80%",
   },
   modalTitle: { fontSize: 20, fontWeight: "bold", marginBottom: 20, textAlign: "center" },
+  categoryPickerHeader: { alignItems: "center", flexDirection: "row", justifyContent: "space-between", marginBottom: 16 },
+  categoryPickerTitle: { fontSize: 20, fontWeight: "bold" },
+  addCategoryButton: { alignItems: "center", borderRadius: 18, height: 36, justifyContent: "center", width: 36 },
+  addCategoryButtonText: { fontSize: 26, fontWeight: "600", lineHeight: 30, marginTop: -2 },
+  categoryCreateHeader: { alignItems: "center", flexDirection: "row", justifyContent: "space-between", marginBottom: 12 },
+  categoryCreateBack: { fontSize: 14, fontWeight: "700", minWidth: 64 },
+  categoryCreateTitle: { fontSize: 18, fontWeight: "bold" },
+  categoryCreateHeaderSpacer: { width: 64 },
+  categoryCreateType: { fontSize: 13, marginBottom: 10 },
+  categoryCreateInput: { borderRadius: 12, borderWidth: 1, fontSize: 16, minHeight: 50, paddingHorizontal: 14 },
+  categoryCreateActions: { flexDirection: "row", gap: 10, marginTop: 18 },
+  categoryCreateAction: { alignItems: "center", borderRadius: 10, borderWidth: 1, flex: 1, justifyContent: "center", minHeight: 48 },
+  categoryCreateCancelText: { fontSize: 15, fontWeight: "700" },
+  categoryCreateSubmitText: { fontSize: 15, fontWeight: "800" },
+  categoryCreateDisabled: { opacity: 0.6 },
   datePickerContent: {
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
