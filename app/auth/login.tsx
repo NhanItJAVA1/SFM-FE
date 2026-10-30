@@ -19,9 +19,8 @@ import Svg, { Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
 
 import { authApi } from "@/api/authApi";
 import { FocusedScreenTransition } from "@/components/screen-transition";
-import { getAuthAccessToken, getAuthUser } from "@/stores/authSession";
+import { getAuthAccessToken } from "@/stores/authSession";
 import { saveAuthSession } from "@/stores/persistedAuthSession";
-import { isAdminUser } from "@/utils/authRole";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -55,10 +54,6 @@ function decodeJwtPayload(token: string) {
   } catch {
     return null;
   }
-}
-
-function getPostLoginRoute(user: Parameters<typeof isAdminUser>[0]) {
-  return (isAdminUser(user) ? "/admin" : "/(tabs)/home") as never;
 }
 
 function LoginBackground() {
@@ -114,7 +109,7 @@ export default function LoginScreen() {
 
   useEffect(() => {
     if (getAuthAccessToken()) {
-      router.replace(getPostLoginRoute(getAuthUser()));
+      router.replace("/(tabs)/home");
     }
   }, []);
 
@@ -126,7 +121,7 @@ export default function LoginScreen() {
           token,
         });
         await saveAuthSession(response.data);
-        router.replace(getPostLoginRoute(response.data.user));
+        router.replace("/(tabs)/home");
       } catch (error) {
         Alert.alert("Google sign in failed", error instanceof Error ? error.message : "Unable to sign in with Google.");
       } finally {
@@ -163,7 +158,7 @@ export default function LoginScreen() {
       setIsSubmitting(true);
       const response = await authApi.login({ username: username.trim(), password });
       await saveAuthSession(response.data);
-      router.replace(getPostLoginRoute(response.data.user));
+      router.replace("/(tabs)/home");
     } catch (error) {
       Alert.alert("Sign in failed", error instanceof Error ? error.message : "Unable to connect to the server.");
     } finally {

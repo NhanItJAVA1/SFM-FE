@@ -1,12 +1,11 @@
 import { Redirect } from 'expo-router';
 
-import { getAuthAccessToken, getAuthUser } from '@/stores/authSession';
-import { isAdminUser } from '@/utils/authRole';
+import { getAuthAccessToken } from '@/stores/authSession';
 
 export default function Index() {
   if (!getAuthAccessToken()) {
     return <Redirect href="/auth/login" />;
   }
 
-  return <Redirect href={(isAdminUser(getAuthUser()) ? '/admin' : '/(tabs)/home') as never} />;
+  return <Redirect href="/(tabs)/home" />;
 }
