@@ -7,12 +7,13 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, FlatList, Keyboard, Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { ScreenGradientBackground } from "@/components/screen-gradient-background";
-import { ArrowDown, ArrowRight, ArrowUp, ChartNoAxesCombined, Check, ChevronLeft, ChevronRight, Funnel, LayoutGrid, Search, SlidersHorizontal, Sparkles, TriangleAlert, Wallet, X } from "lucide-react-native";
+import { ArrowUp, ChartNoAxesCombined, Check, ChevronLeft, ChevronRight, Funnel, LayoutGrid, Search, SlidersHorizontal, Sparkles, TriangleAlert, Wallet, X } from "lucide-react-native";
 
 import { FinancialAccount, financialAccountApi } from "@/api/financialAccountApi";
 import { categoriesApi, type Category } from "@/api/categoriesApi";
 import type { AIAnomaly } from "@/api/aiApi";
-import { CategorySpendingResponse, Transaction, transactionsApi } from "@/api/transactionsApi";
+import { Transaction } from "@/api/transactionsApi";
+import { WalletCashflowCard } from '@/components/wallet-cashflow-card';
 import { CategoryIcon } from '@/components/category-icon';
 import { TransactionDayHeader } from '@/components/transaction-day-header';
 import { formatTransactionTime, getCurrentTransactionMonth, getTransactionDayHeading, getTransactionDayKey, isIncomingTransaction } from '@/utils/transactionPresentation';
@@ -72,7 +73,7 @@ export default function TransactionsScreen() {
   const [isAccountPickerOpen, setIsAccountPickerOpen] = useState(false);
   const [isUtilitiesOpen, setIsUtilitiesOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [monthlySpending, setMonthlySpending] = useState<CategorySpendingResponse | null>(null);
+  const [cashflowRefreshKey, setCashflowRefreshKey] = useState(0);
   const [showAnomaliesOnly, setShowAnomaliesOnly] = useState(false);
   const [anomalyCategoryFilter, setAnomalyCategoryFilter] = useState("all");
   const [anomalyDateFilter, setAnomalyDateFilter] = useState<AnomalyDateFilter>("all");
@@ -81,15 +82,6 @@ export default function TransactionsScreen() {
   const [isAnomalyFilterOpen, setIsAnomalyFilterOpen] = useState(false);
   const { analysis, isLoading: isAnalysisLoading, error: analysisError, refresh: refreshAI } = useAIAnalysis();
   const anomalyWindow = useMemo(() => getAnomalyWindow(analysis?.metadata.asOf, analysis?.metadata.periodDays), [analysis]);
-
-  const loadMonthlySpending = useCallback(async () => {
-    try {
-      const response = await transactionsApi.categorySpending();
-      setMonthlySpending(response.data);
-    } catch (error) {
-      console.warn("Không tải được tổng quan chi tiêu tháng", error);
-    }
-  }, []);
 
   const loadFilterCategories = useCallback(async () => {
     try {
@@ -118,9 +110,8 @@ export default function TransactionsScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      void loadMonthlySpending();
       void loadFilterCategories();
-    }, [loadFilterCategories, loadMonthlySpending]),
+    }, [loadFilterCategories]),
   );
 
   const anomalies = useMemo(
@@ -186,14 +177,13 @@ export default function TransactionsScreen() {
 
   const selectedAccount = (accounts ?? []).find((account) => account.id === selectedAccountId);
   const currency = selectedAccount?.currency ?? (accounts ?? [])[0]?.currency ?? "VND";
-  const currentMonth = new Date().getMonth() + 1;
-  const overviewMonth = monthlySpending?.currentPeriod.month ?? currentMonth;
-  const spendingDifference = monthlySpending ? monthlySpending.totalAmount - monthlySpending.compareTotalAmount : null;
+  const overviewPeriod = filters.month ?? getCurrentTransactionMonth();
+  const [overviewYear, overviewMonth] = overviewPeriod.split('-').map(Number);
   const listFilterCount = Number(filters.month !== getCurrentTransactionMonth()) + Number(filters.accountId !== null) + Number(filters.categoryId !== null);
   const categoryMap = useMemo(() => new Map(categories.map((category) => [category.id, category])), [categories]);
   const transactionMap = useMemo(() => new Map(transactions.map((transaction) => [transaction.id, transaction])), [transactions]);
   const openMonthlyOverview = () => {
-    requestSpendingStatsFromTransactions();
+    requestSpendingStatsFromTransactions({ month: overviewMonth, year: overviewYear });
     router.navigate("/(tabs)/user");
   };
   const visibleAnomalyCount = anomalies.length;
@@ -239,7 +229,7 @@ export default function TransactionsScreen() {
               onRefresh={() => {
                 void reload({ refresh: true });
                 void loadAccounts();
-                void loadMonthlySpending();
+                setCashflowRefreshKey((key) => key + 1);
                 void loadFilterCategories();
                 void refreshAI();
               }}
@@ -281,39 +271,17 @@ export default function TransactionsScreen() {
                 <LayoutGrid size={21} color={theme.text} />
               </Pressable>
             </View>
-            <View style={styles.monthOverview}>
-              <Pressable accessibilityRole="button" onPress={openMonthlyOverview} style={styles.overviewHeading}>
-                <Text style={styles.overviewTitle}>Tổng quan tháng {overviewMonth}</Text>
-                <View style={styles.overviewArrow}><ChevronRight size={20} color={theme.primary} /></View>
-              </Pressable>
-              <View style={styles.overviewMetrics}>
-                <Pressable onPress={openMonthlyOverview} style={styles.overviewMetric}>
-                  <Text style={styles.overviewMetricLabel}>Tổng chi</Text>
-                  <View style={styles.overviewAmountRow}>
-                    <Text adjustsFontSizeToFit numberOfLines={1} minimumFontScale={0.7} style={styles.overviewMetricValue}>
-                      {monthlySpending ? formatMoney(monthlySpending.totalAmount) : "--"}
-                    </Text>
-                    <ChevronRight size={14} color={theme.textMuted} />
-                  </View>
-                </Pressable>
-                <Pressable onPress={openMonthlyOverview} style={styles.overviewMetric}>
-                  <Text style={styles.overviewMetricLabel}>So với cùng kỳ</Text>
-                  <View style={styles.overviewAmountRow}>
-                    {spendingDifference !== null ? (
-                      spendingDifference > 0 ? <ArrowUp size={16} color={theme.warning} /> : spendingDifference < 0 ? <ArrowDown size={16} color={theme.goodText} /> : null
-                    ) : null}
-                    <Text adjustsFontSizeToFit numberOfLines={1} minimumFontScale={0.7} style={[styles.overviewMetricValue, { color: spendingDifference !== null && spendingDifference > 0 ? theme.warning : theme.goodText }]}>
-                      {spendingDifference !== null ? formatMoney(Math.abs(spendingDifference)) : "--"}
-                    </Text>
-                    <ChevronRight size={14} color={theme.textMuted} />
-                  </View>
-                </Pressable>
-              </View>
-              <Pressable accessibilityRole="button" accessibilityLabel="Mở ngân sách" onPress={() => router.navigate("/(tabs)/budgets")} style={styles.budgetPrompt}>
-                <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85} style={styles.budgetPromptText}>Bạn muốn tiết kiệm tiền hơn?</Text>
-                <ArrowRight size={18} color={theme.primary} strokeWidth={2} />
-              </Pressable>
-            </View>
+            <WalletCashflowCard
+              accounts={accounts}
+              accountId={selectedAccountId}
+              month={overviewPeriod}
+              refreshKey={cashflowRefreshKey}
+              onOpenOverview={openMonthlyOverview}
+              onSelectAccount={(accountId) => {
+                listRef.current?.scrollToOffset({ offset: 0, animated: false });
+                setFilters((current) => ({ ...current, accountId }));
+              }}
+            />
           </View>
 
           <View accessibilityRole="tablist" style={styles.ledgerTabs}>
@@ -725,17 +693,17 @@ function createStyles(theme: AppTheme) {
     toolbarButton: { alignItems: "center", justifyContent: "center", height: 44, width: 44, borderRadius: 22, backgroundColor: theme.card, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.border },
     toolbarBadge: { position: "absolute", right: -2, top: -2, minWidth: 16, height: 16, borderRadius: 8, alignItems: "center", justifyContent: "center", backgroundColor: theme.primary },
     toolbarBadgeText: { color: theme.textInverse, fontSize: 10, fontWeight: '600' },
-    monthOverview: { backgroundColor: theme.card, borderRadius: 8, marginHorizontal: 12, padding: 12 },
-    overviewHeading: { alignItems: "center", flexDirection: "row", gap: 12, marginBottom: 8 },
-    overviewTitle: { color: theme.text, fontSize: 18, fontWeight: '600', flex: 1 },
-    overviewArrow: { alignItems: "center", justifyContent: "center", width: 28, height: 28, backgroundColor: theme.primaryPressed, borderRadius: 14 },
-    overviewMetrics: { flexDirection: "row", gap: 8 },
-    overviewMetric: { flex: 1, minWidth: 0, borderRadius: 8, borderColor: theme.border, borderWidth: 1, padding: 10, minHeight: 64, justifyContent: "center" },
-    overviewMetricLabel: { color: theme.textMuted, fontSize: 13, marginBottom: 6 },
-    overviewAmountRow: { alignItems: "center", flexDirection: "row", gap: 3 },
-    overviewMetricValue: { color: theme.text, fontSize: 15, fontWeight: '600', flexShrink: 1 },
-    budgetPrompt: { alignItems: "center", flexDirection: "row", justifyContent: "space-between", gap: 8, backgroundColor: theme.primaryPressed, paddingVertical: 8, paddingHorizontal: 12, marginTop: 8, borderRadius: 8 },
-    budgetPromptText: { color: theme.textSoft, fontSize: 12, lineHeight: 18, flex: 1, minWidth: 0 },
+
+
+
+
+
+
+
+
+
+
+
     utilityRow: { alignItems: "center", flexDirection: "row", minHeight: 64, gap: 12, borderBottomColor: theme.border, borderBottomWidth: StyleSheet.hairlineWidth },
     utilityLabel: { color: theme.text, fontSize: 14, flex: 1 },
     sheetBottomSpace: { height: 32 },

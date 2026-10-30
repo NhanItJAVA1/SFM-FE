@@ -28,5 +28,3 @@ For example, `title: { ...Typography.title, color: theme.text }` can be passed t
 to get a font family and weight that also respect the loading fallback.
 Code snippets retain their monospace font.
 Use `fontWeight: '700'` for explicit bold emphasis, such as the AI analysis label.
-
-Run the typography checks with `node --test scripts/test-typography.cjs`.

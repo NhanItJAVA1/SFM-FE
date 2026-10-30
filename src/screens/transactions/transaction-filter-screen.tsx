@@ -23,13 +23,7 @@ export type TransactionFilters = {
 export const emptyTransactionFilters: TransactionFilters = { month: null, accountId: null, categoryId: null };
 const background = require("../../../assets/expo.icon/Assets/Serene Blue Abstract Gradient Wallpaper.png");
 
-export function getTransactionMonthRange(month: string | null) {
-  if (!month) return null;
-  const [year, monthNumber] = month.split("-").map(Number);
-  if (!Number.isInteger(year) || !Number.isInteger(monthNumber) || monthNumber < 1 || monthNumber > 12) return null;
-  const days = new Date(year, monthNumber, 0).getDate();
-  return { fromDate: `${month}-01`, toDate: `${month}-${String(days).padStart(2, "0")}` };
-}
+export { getTransactionMonthRange } from '@/utils/transactionPresentation';
 
 export function TransactionFilterScreen({
   visible, initialFilters, accounts, categories, onClose, onApply, onHome, onSupport,

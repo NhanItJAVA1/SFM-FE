@@ -18,6 +18,14 @@ export function getCurrentTransactionMonth(now = new Date()) {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 }
 
+export function getTransactionMonthRange(month: string | null) {
+  if (!month || !/^\d{4}-\d{2}$/.test(month)) return null;
+  const [year, monthNumber] = month.split('-').map(Number);
+  if (monthNumber < 1 || monthNumber > 12) return null;
+  const days = new Date(year, monthNumber, 0).getDate();
+  return { fromDate: `${month}-01`, toDate: `${month}-${String(days).padStart(2, '0')}` };
+}
+
 export function getTransactionDayHeading(value: string, now = new Date()) {
   const date = transactionDate(value);
   if (Number.isNaN(date.getTime())) return { label: 'Không rõ ngày', date: '' };

@@ -30,6 +30,7 @@ import {
   consumePendingSpendingStatsRequest,
   getSpendingStatsReturnPath,
   subscribeSpendingStatsRequest,
+  type SpendingStatsPeriod,
 } from "@/stores/spendingStatsNavigation";
 import { subscribeUserTabPress } from "@/stores/userTabPress";
 import type { AppTheme } from "@/theme/appTheme";
@@ -216,14 +217,11 @@ export default function UserScreen() {
   const defaultExportRange = useMemo(() => getCurrentMonthExportRange(), []);
   const [exportFromDate, setExportFromDate] = useState(defaultExportRange.fromDate);
   const [exportToDate, setExportToDate] = useState(defaultExportRange.toDate);
-  const initialStatsReturnPath = useMemo(() => {
-    const pendingRequest = consumePendingSpendingStatsRequest();
-
-    return pendingRequest ? (getSpendingStatsReturnPath() ?? "/(tabs)/transactions") : null;
-  }, []);
+  const initialStatsRequest = useMemo(() => consumePendingSpendingStatsRequest(), []);
+  const initialStatsReturnPath = initialStatsRequest?.returnPath ?? null;
   const [view, setView] = useState<UserView>(initialStatsReturnPath ? "spendingStats" : "menu");
-  const [statsMonth, setStatsMonth] = useState(defaultMonth);
-  const [statsYear, setStatsYear] = useState(defaultYear);
+  const [statsMonth, setStatsMonth] = useState(initialStatsRequest?.period?.month ?? defaultMonth);
+  const [statsYear, setStatsYear] = useState(initialStatsRequest?.period?.year ?? defaultYear);
   const [spendingStats, setSpendingStats] = useState<CategorySpendingResponse | null>(null);
   const [isLoadingStats, setIsLoadingStats] = useState(false);
   const [financialInsights, setFinancialInsights] = useState<FinancialInsightsResponse | null>(null);
@@ -271,18 +269,18 @@ export default function UserScreen() {
     });
   }, []);
 
-  const openSpendingStatsFromTransactions = useCallback(() => {
+  const openSpendingStatsFromTransactions = useCallback((period?: SpendingStatsPeriod) => {
     setStatsReturnPath(getSpendingStatsReturnPath() ?? "/(tabs)/transactions");
-    setStatsMonth(defaultMonth);
-    setStatsYear(defaultYear);
+    setStatsMonth(period?.month ?? defaultMonth);
+    setStatsYear(period?.year ?? defaultYear);
     setIsFinancialInsightsVisible(false);
     setView("spendingStats");
   }, [defaultMonth, defaultYear]);
 
   useEffect(() => {
-    const unsubscribe = subscribeSpendingStatsRequest(() => {
+    const unsubscribe = subscribeSpendingStatsRequest((request) => {
       consumePendingSpendingStatsRequest();
-      openSpendingStatsFromTransactions();
+      openSpendingStatsFromTransactions(request.period);
     });
 
     return () => {
