@@ -7,6 +7,7 @@ export type TransactionDraftItem = {
   quantity?: number | null;
   unitPrice?: number | null;
   amount?: number | null;
+  confidence?: number | null;
 };
 
 export type TransactionDraft = {

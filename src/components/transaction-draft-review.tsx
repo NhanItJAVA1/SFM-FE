@@ -52,6 +52,8 @@ type EditableBillDraft = {
   difference: number | null;
 };
 
+type EditableTextField = "location" | "description";
+
 const transactionTypes = [
   { label: "Chi tiêu", value: "Expense" },
   { label: "Thu nhập", value: "Income" },
@@ -99,17 +101,6 @@ function formatText(value: unknown) {
   }
 
   return "Chưa nhận diện";
-}
-
-function FieldRow({ label, value }: { label: string; value: unknown }) {
-  const styles = useDraftReviewStyles();
-
-  return (
-    <View style={styles.fieldRow}>
-      <Text style={styles.fieldLabel}>{label}</Text>
-      <Text style={styles.fieldValue}>{formatText(value)}</Text>
-    </View>
-  );
 }
 
 function useDraftReviewStyles() {
@@ -171,9 +162,7 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
   const [editableDraft, setEditableDraft] = useState<EditableBillDraft>(() => getInitialEditableDraft(draft));
   const [billEditDraft, setBillEditDraft] = useState<EditableBillDraft>(() => getInitialEditableDraft(draft));
   const [amountInput, setAmountInput] = useState(String(draft.amount ?? ""));
-  const [selectedAccountId, setSelectedAccountId] = useState<number | null>(
-    typeof draft.accountId === "number" ? draft.accountId : null,
-  );
+  const [selectedAccountId, setSelectedAccountId] = useState<number | null>(typeof draft.accountId === "number" ? draft.accountId : null);
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(
     typeof draft.categoryId === "number" ? draft.categoryId : null,
   );
@@ -184,6 +173,10 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
   const [isTypePickerVisible, setIsTypePickerVisible] = useState(false);
   const [isDatePickerVisible, setIsDatePickerVisible] = useState(false);
   const [isBillEditorVisible, setIsBillEditorVisible] = useState(false);
+  const [activeTextFieldEditor, setActiveTextFieldEditor] = useState<EditableTextField | null>(null);
+  const [textFieldInput, setTextFieldInput] = useState("");
+  const [isReviewInfoExpanded, setIsReviewInfoExpanded] = useState(false);
+  const [isTransactionInfoExpanded, setIsTransactionInfoExpanded] = useState(false);
   const [isLoadingAccounts, setIsLoadingAccounts] = useState(false);
   const [isLoadingCategories, setIsLoadingCategories] = useState(false);
   const [isCreatingCategory, setIsCreatingCategory] = useState(false);
@@ -191,6 +184,10 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
   const [newCategoryType, setNewCategoryType] = useState<CategoryType>("Expense");
   const [isSaving, setIsSaving] = useState(false);
   const items = editableDraft.items ?? [];
+  const editorSubtotal = billEditDraft.items.reduce((sum, item) => sum + (item.amount ?? 0), 0);
+  const editorDifference = billEditDraft.amount === null ? null : billEditDraft.amount - editorSubtotal;
+  const displayedItemsTotal = editableDraft.itemsTotal ?? items.reduce((sum, item) => sum + (item.amount ?? 0), 0);
+  const displayedDifference = editableDraft.difference ?? (editableDraft.amount === null ? null : editableDraft.amount - displayedItemsTotal);
   const categoryType: CategoryType = editableDraft.type === "Income" ? "Income" : "Expense";
   const categoryOptions = (categories ?? []).filter((category) => category.type === categoryType);
   const selectedAccount = (accounts ?? []).find((account) => account.id === selectedAccountId) ?? null;
@@ -284,6 +281,17 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
     setIsAmountEditorVisible(true);
   }
 
+  function openTextFieldEditor(field: EditableTextField) {
+    setTextFieldInput(editableDraft[field]);
+    setActiveTextFieldEditor(field);
+  }
+
+  function saveTextFieldEditor() {
+    if (!activeTextFieldEditor) return;
+    setEditableDraft((currentDraft) => ({ ...currentDraft, [activeTextFieldEditor]: textFieldInput }));
+    setActiveTextFieldEditor(null);
+  }
+
   function handleSaveAmount() {
     const nextAmount = parseOptionalNumber(amountInput);
 
@@ -305,10 +313,11 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
       return;
     }
 
-    setEditableDraft((currentDraft) => ({
-      ...currentDraft,
-      transactionDate: mergePickedDate(currentDraft.transactionDate, pickedDate),
-    }));
+    if (isBillEditorVisible) {
+      setBillEditDraft((currentDraft) => ({ ...currentDraft, transactionDate: mergePickedDate(currentDraft.transactionDate, pickedDate) }));
+    } else {
+      setEditableDraft((currentDraft) => ({ ...currentDraft, transactionDate: mergePickedDate(currentDraft.transactionDate, pickedDate) }));
+    }
   }
 
   function openBillEditor() {
@@ -322,16 +331,51 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
   function updateBillItem(index: number, patch: TransactionDraftItem) {
     setBillEditDraft((currentDraft) => ({
       ...currentDraft,
-      items: (currentDraft.items ?? []).map((item, itemIndex) => (itemIndex === index ? { ...item, ...patch } : item)),
+      items: (currentDraft.items ?? []).map((item, itemIndex) => {
+        if (itemIndex !== index) return item;
+        const updated = { ...item, ...patch };
+        if ("quantity" in patch || "unitPrice" in patch) {
+          updated.amount = (updated.quantity ?? 0) * (updated.unitPrice ?? 0);
+        }
+        return updated;
+      }),
     }));
   }
 
+  function addBillEditItem() {
+    setBillEditDraft((currentDraft) => ({ ...currentDraft, items: [...currentDraft.items, { name: "", quantity: 1, unitPrice: 0, amount: 0 }] }));
+  }
+
+  function removeBillEditItem(index: number) {
+    setBillEditDraft((currentDraft) => ({ ...currentDraft, items: currentDraft.items.filter((_, itemIndex) => itemIndex !== index) }));
+  }
+
   function handleSaveBillEdit() {
+    const itemsTotal = billEditDraft.items.reduce((sum, item) => sum + (item.amount ?? 0), 0);
     setEditableDraft({
       ...billEditDraft,
       items: (billEditDraft.items ?? []).map((item) => ({ ...item })),
+      itemsTotal,
+      difference: billEditDraft.amount === null ? null : billEditDraft.amount - itemsTotal,
     });
     setIsBillEditorVisible(false);
+  }
+
+  function addBillItem() {
+    const nextItems = [...items.map((item) => ({ ...item })), { name: "", quantity: 1, unitPrice: null, amount: null }];
+    setBillEditDraft({ ...editableDraft, items: nextItems });
+    setIsBillEditorVisible(true);
+  }
+
+  function removeBillItem(index: number) {
+    Alert.alert("Xóa sản phẩm?", "Sản phẩm này sẽ bị xóa khỏi chi tiết hóa đơn.", [
+      { text: "Hủy", style: "cancel" },
+      { text: "Xóa", style: "destructive", onPress: () => setEditableDraft((currentDraft) => {
+        const nextItems = currentDraft.items.filter((_, itemIndex) => itemIndex !== index);
+        const nextTotal = nextItems.reduce((sum, item) => sum + (item.amount ?? 0), 0);
+        return { ...currentDraft, items: nextItems, itemsTotal: nextTotal, difference: (currentDraft.amount ?? 0) - nextTotal };
+      }) },
+    ]);
   }
 
   async function handleSave() {
@@ -433,6 +477,15 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
         </View>
 
         <View style={styles.card}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ expanded: isReviewInfoExpanded }}
+            onPress={() => setIsReviewInfoExpanded((expanded) => !expanded)}
+            style={styles.reviewInfoToggle}
+          >
+            <Text style={styles.editorSectionTitle}>Thông tin giao dịch</Text>
+            <SymbolView name={isReviewInfoExpanded ? "chevron.up" : "chevron.down"} size={17} tintColor={theme.textMuted} />
+          </Pressable>
           <View style={styles.inlineGrid}>
             <Pressable style={styles.inlineTile} onPress={openAmountEditor}>
               <View style={styles.inlineTileLabelRow}>
@@ -443,26 +496,6 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
                 {formatAmount(editableDraft.amount)}
               </Text>
             </Pressable>
-            <Pressable style={styles.inlineTile} onPress={() => setIsTypePickerVisible(true)}>
-              <View style={styles.inlineTileLabelRow}>
-                <SymbolView name="tag" size={17} tintColor={theme.textMuted} />
-                <Text style={styles.inlineTileLabel}>Loại giao dịch</Text>
-              </View>
-              <Text style={styles.inlineTileValue} numberOfLines={1}>
-                {getTransactionTypeLabel(editableDraft.type)}
-              </Text>
-            </Pressable>
-          </View>
-          <View style={styles.inlineGrid}>
-            <View style={styles.inlineTile}>
-              <View style={styles.inlineTileLabelRow}>
-                <SymbolView name="mappin.and.ellipse" size={17} tintColor={theme.textMuted} />
-                <Text style={styles.inlineTileLabel}>Địa điểm</Text>
-              </View>
-              <Text style={styles.inlineTileValue} numberOfLines={2}>
-                {formatText(editableDraft.location)}
-              </Text>
-            </View>
             <Pressable style={styles.inlineTile} onPress={() => setIsDatePickerVisible(true)}>
               <View style={styles.inlineTileLabelRow}>
                 <SymbolView name="calendar" size={17} tintColor={theme.textMuted} />
@@ -473,38 +506,69 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
               </Text>
             </Pressable>
           </View>
-          <FieldRow label="Mô tả" value={editableDraft.description} />
+          {isReviewInfoExpanded ? <>
+            <View style={styles.inlineGrid}>
+              <Pressable style={styles.inlineTile} onPress={() => setIsTypePickerVisible(true)}>
+                <View style={styles.inlineTileLabelRow}>
+                  <SymbolView name="tag" size={17} tintColor={theme.textMuted} />
+                  <Text style={styles.inlineTileLabel}>Loại giao dịch</Text>
+                </View>
+                <Text style={styles.inlineTileValue} numberOfLines={1}>{getTransactionTypeLabel(editableDraft.type)}</Text>
+              </Pressable>
+              <Pressable style={styles.inlineTile} onPress={() => openTextFieldEditor("location")}>
+                <View style={styles.inlineTileLabelRow}>
+                  <SymbolView name="mappin.and.ellipse" size={17} tintColor={theme.textMuted} />
+                  <Text style={styles.inlineTileLabel}>Địa điểm</Text>
+                </View>
+                <Text style={styles.inlineTileValue} numberOfLines={2}>{formatText(editableDraft.location)}</Text>
+              </Pressable>
+            </View>
+            <Pressable style={styles.fieldRow} onPress={() => openTextFieldEditor("description")}>
+              <Text style={styles.fieldLabel}>Mô tả</Text>
+              <Text style={styles.fieldValue}>{formatText(editableDraft.description)}</Text>
+            </Pressable>
+          </> : null}
         </View>
 
-        {items.length > 0 ? (
+        {
           <View style={styles.card}>
             <View style={styles.itemsHeader}>
-              <Text style={styles.itemsTitle}>Chi tiết hóa đơn</Text>
-              <Text style={styles.itemsCount}>{items.length} món</Text>
+              <View>
+                <Text style={styles.itemsTitle}>Chi tiết hóa đơn</Text>
+                <Text style={styles.itemsCount}>{items.length} sản phẩm</Text>
+              </View>
+              <Pressable style={styles.addItemButton} onPress={addBillItem}>
+                <Text style={styles.addItemButtonText}>＋ Thêm sản phẩm</Text>
+              </Pressable>
             </View>
 
+            {items.length === 0 ? <Text style={styles.emptyItemsText}>Chưa nhận diện được sản phẩm. Bạn có thể thêm thủ công.</Text> : null}
             {items.map((item, index) => (
               <View key={`${item.name ?? "item"}-${index}`} style={styles.itemRow}>
                 <View style={styles.itemInfo}>
-                  <Text style={styles.itemName}>{formatText(item.name)}</Text>
-                  <Text style={styles.itemMeta}>
-                    {formatText(item.quantity)} × {formatAmount(item.unitPrice)}
-                  </Text>
+                  <Text style={styles.itemName} numberOfLines={2}>{formatText(item.name)}</Text>
+                  <Text style={styles.itemMeta}>{formatAmount(item.unitPrice)}  ·  {formatText(item.quantity)} sản phẩm</Text>
                 </View>
                 <Text style={styles.itemAmount}>{formatAmount(item.amount)}</Text>
+                <Pressable accessibilityRole="button" accessibilityLabel={`Xóa ${item.name ?? "sản phẩm"}`} style={[styles.itemActionButton, styles.deleteItemButton]} onPress={() => removeBillItem(index)}>
+                  <SymbolView name={{ ios: "trash", android: "delete", web: "delete" }} size={18} tintColor={theme.dangerText} fallback={<Text>⌫</Text>} />
+                </Pressable>
               </View>
             ))}
-
-            <View style={styles.totalRow}>
-              <Text style={styles.totalLabel}>Tổng món</Text>
-              <Text style={styles.totalValue}>{formatAmount(editableDraft.itemsTotal)}</Text>
-            </View>
-            <View style={styles.totalRow}>
-              <Text style={styles.totalLabel}>Chênh lệch</Text>
-              <Text style={styles.totalValue}>{formatAmount(editableDraft.difference)}</Text>
-            </View>
           </View>
-        ) : null}
+        }
+
+        {items.length > 0 ? <View style={styles.card}>
+          <View style={styles.totalRow}><Text style={styles.totalLabel}>Tạm tính ({items.length} sản phẩm)</Text><Text style={styles.totalValue}>{formatAmount(displayedItemsTotal)}</Text></View>
+          <View style={styles.totalRow}><Text style={styles.totalLabel}>Giảm giá</Text><Text style={styles.totalValue}>0 ₫</Text></View>
+          <View style={styles.totalRow}><Text style={styles.totalLabel}>Thuế / Phí (nếu có)</Text><Text style={styles.totalValue}>0 ₫</Text></View>
+          <View style={styles.grandTotalRow}><Text style={styles.grandTotalLabel}>Tổng cộng</Text><Text style={styles.grandTotalValue}>{formatAmount(editableDraft.amount)}</Text></View>
+        </View> : null}
+        {items.length > 0 ? <View style={styles.differenceCard}>
+          <Text style={styles.differenceTitle}>Chênh lệch so với hóa đơn</Text>
+          <Text style={[styles.differenceValue, displayedDifference !== 0 && styles.differenceWarning]}>{formatAmount(displayedDifference)}</Text>
+          <Text style={styles.differenceHint}>{displayedDifference === 0 ? "Tổng tiền khớp với hóa đơn" : "Vui lòng kiểm tra lại chi tiết hóa đơn"}</Text>
+        </View> : null}
 
         {draft.rawText ? (
           <View style={styles.card}>
@@ -513,6 +577,37 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
           </View>
         ) : null}
       </ScrollView>
+
+      <BottomPopup
+        animationType="fade"
+        transparent
+        visible={activeTextFieldEditor !== null}
+        onRequestClose={() => setActiveTextFieldEditor(null)}
+      >
+        <KeyboardAvoidingView behavior={Platform.select({ ios: "padding", default: undefined })} style={styles.keyboardModalOverlay}>
+          <Pressable style={styles.amountModalDismissArea} onPress={() => setActiveTextFieldEditor(null)}>
+            <BottomPopupPressable style={styles.smallBottomSheet} onPress={(event) => event.stopPropagation()}>
+              <View style={styles.sheetHeader}>
+                <Text style={styles.sheetTitle}>{activeTextFieldEditor === "location" ? "Sửa địa điểm" : "Sửa mô tả"}</Text>
+                <Pressable onPress={() => setActiveTextFieldEditor(null)} hitSlop={12}><Text style={styles.sheetClose}>Đóng</Text></Pressable>
+              </View>
+              <TextInput
+                autoFocus
+                multiline
+                placeholder={activeTextFieldEditor === "location" ? "Nhập địa điểm" : "Nhập mô tả"}
+                placeholderTextColor={theme.inputPlaceholder}
+                style={styles.textFieldEditorInput}
+                value={textFieldInput}
+                onChangeText={setTextFieldInput}
+              />
+              <View style={styles.createCategoryActions}>
+                <Pressable style={styles.cancelCategoryButton} onPress={() => setActiveTextFieldEditor(null)}><Text style={styles.cancelCategoryButtonText}>Hủy</Text></Pressable>
+                <Pressable style={styles.createCategoryButton} onPress={saveTextFieldEditor}><Text style={styles.createCategoryButtonText}>Lưu</Text></Pressable>
+              </View>
+            </BottomPopupPressable>
+          </Pressable>
+        </KeyboardAvoidingView>
+      </BottomPopup>
 
       <BottomPopup
         animationType="fade"
@@ -567,7 +662,7 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
         <DateTimePicker
           mode="date"
           display="default"
-          value={getDatePickerValue(editableDraft.transactionDate)}
+          value={getDatePickerValue(isBillEditorVisible ? billEditDraft.transactionDate : editableDraft.transactionDate)}
           onChange={handlePickDate}
         />
       ) : null}
@@ -592,7 +687,7 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
             <DateTimePicker
               mode="date"
               display={Platform.OS === "ios" ? "spinner" : "default"}
-              value={getDatePickerValue(editableDraft.transactionDate)}
+              value={getDatePickerValue(isBillEditorVisible ? billEditDraft.transactionDate : editableDraft.transactionDate)}
               onChange={handlePickDate}
               accentColor={theme.primary}
               textColor={theme.text}
@@ -659,7 +754,7 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
             </View>
             <View style={styles.sheetListContent}>
               {transactionTypes.map((transactionType) => {
-                const isSelected = editableDraft.type === transactionType.value;
+                const isSelected = (isBillEditorVisible ? billEditDraft.type : editableDraft.type) === transactionType.value;
 
                 return (
                   <Pressable
@@ -667,6 +762,7 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
                     style={[styles.pickerRow, isSelected && styles.pickerRowSelected]}
                     onPress={() => {
                       setEditableDraft((currentDraft) => ({ ...currentDraft, type: transactionType.value }));
+                      setBillEditDraft((currentDraft) => ({ ...currentDraft, type: transactionType.value }));
                       setSelectedCategoryId(null);
                       setIsTypePickerVisible(false);
                     }}
@@ -828,86 +924,92 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
 
           <ScrollView contentContainerStyle={styles.editorContent} keyboardShouldPersistTaps="handled">
             <View style={styles.editorCard}>
-              <Text style={styles.editorSectionTitle}>Thông tin</Text>
-              <TextInput
-                keyboardType="decimal-pad"
-                placeholder="Tổng tiền"
-                placeholderTextColor={theme.inputPlaceholder}
-                style={styles.categoryInput}
-                value={String(billEditDraft.amount ?? "")}
-                onChangeText={(value) =>
-                  setBillEditDraft((currentDraft) => ({ ...currentDraft, amount: parseOptionalNumber(value) }))
-                }
-              />
-              <TextInput
-                placeholder="Mô tả"
-                placeholderTextColor={theme.inputPlaceholder}
-                style={styles.categoryInput}
-                value={billEditDraft.description}
-                onChangeText={(value) => setBillEditDraft((currentDraft) => ({ ...currentDraft, description: value }))}
-              />
-              <TextInput
-                placeholder="Ngày giao dịch"
-                placeholderTextColor={theme.inputPlaceholder}
-                style={styles.categoryInput}
-                value={billEditDraft.transactionDate}
-                onChangeText={(value) =>
-                  setBillEditDraft((currentDraft) => ({ ...currentDraft, transactionDate: value }))
-                }
-              />
-              <TextInput
-                placeholder="Địa điểm"
-                placeholderTextColor={theme.inputPlaceholder}
-                style={styles.categoryInput}
-                value={billEditDraft.location}
-                onChangeText={(value) => setBillEditDraft((currentDraft) => ({ ...currentDraft, location: value }))}
-              />
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ expanded: isTransactionInfoExpanded }}
+                onPress={() => setIsTransactionInfoExpanded((expanded) => !expanded)}
+                style={styles.collapseSectionHeader}
+              >
+                <Text style={styles.editorSectionTitle}>Thông tin giao dịch</Text>
+                <SymbolView name={isTransactionInfoExpanded ? "chevron.up" : "chevron.down"} size={17} tintColor={theme.textMuted} />
+              </Pressable>
+              {isTransactionInfoExpanded ? <View style={styles.editorGrid}>
+                <View style={styles.editorField}>
+                  <Text style={styles.editorLabel}>Tổng tiền</Text>
+                  <TextInput keyboardType="decimal-pad" placeholder="Tổng tiền" placeholderTextColor={theme.inputPlaceholder} style={[styles.categoryInput, styles.editorCompactInput]} value={String(billEditDraft.amount ?? "")} onChangeText={(value) => setBillEditDraft((currentDraft) => ({ ...currentDraft, amount: parseOptionalNumber(value) }))} />
+                </View>
+                <View style={styles.editorField}>
+                  <Text style={styles.editorLabel}>Loại giao dịch</Text>
+                  <Pressable style={styles.editorSelect} onPress={() => setIsTypePickerVisible(true)}><Text style={styles.editorSelectText}>{getTransactionTypeLabel(billEditDraft.type)}</Text><Text style={styles.editorChevron}>⌄</Text></Pressable>
+                </View>
+                <View style={styles.editorField}>
+                  <Text style={styles.editorLabel}>Ví</Text>
+                  <Pressable style={styles.editorSelect} onPress={() => setIsAccountPickerVisible(true)}><Text numberOfLines={1} style={styles.editorSelectText}>{selectedAccount?.name ?? "Chọn ví"}</Text><Text style={styles.editorChevron}>⌄</Text></Pressable>
+                </View>
+                <View style={styles.editorField}>
+                  <Text style={styles.editorLabel}>Danh mục</Text>
+                  <Pressable style={styles.editorSelect} onPress={() => setIsCategoryPickerVisible(true)}><Text numberOfLines={1} style={styles.editorSelectText}>{selectedCategory?.name ?? "Chọn danh mục"}</Text><Text style={styles.editorChevron}>⌄</Text></Pressable>
+                </View>
+                <View style={[styles.editorField, styles.editorWideField]}>
+                  <Text style={styles.editorLabel}>Ngày giao dịch</Text>
+                  <Pressable style={styles.editorDateInput} onPress={() => setIsDatePickerVisible(true)}>
+                    <Text numberOfLines={2} style={styles.editorDateText}>{formatDate(billEditDraft.transactionDate)}</Text>
+                    <SymbolView name="calendar" size={18} tintColor={theme.textMuted} />
+                  </Pressable>
+                </View>
+                <View style={[styles.editorField, styles.editorWideField]}>
+                  <Text style={styles.editorLabel}>Địa điểm</Text>
+                  <TextInput multiline placeholder="Địa điểm" placeholderTextColor={theme.inputPlaceholder} style={[styles.categoryInput, styles.editorLocationInput]} value={billEditDraft.location} onChangeText={(value) => setBillEditDraft((currentDraft) => ({ ...currentDraft, location: value }))} />
+                </View>
+                <View style={[styles.editorField, styles.editorDescriptionField]}>
+                  <Text style={styles.editorLabel}>Mô tả</Text>
+                  <TextInput multiline placeholder="Mô tả" placeholderTextColor={theme.inputPlaceholder} style={[styles.categoryInput, styles.editorDescriptionInput]} value={billEditDraft.description} onChangeText={(value) => setBillEditDraft((currentDraft) => ({ ...currentDraft, description: value }))} />
+                </View>
+              </View> : null}
             </View>
 
             <View style={styles.editorCard}>
-              <Text style={styles.editorSectionTitle}>Chi tiết hóa đơn</Text>
+              <View style={styles.editorSectionHeader}>
+                <Text style={styles.editorSectionTitle}>Danh sách sản phẩm ({billEditDraft.items.length})</Text>
+                <Pressable style={styles.addItemButton} onPress={addBillEditItem}><Text style={styles.addItemButtonText}>＋ Thêm sản phẩm</Text></Pressable>
+              </View>
               {billEditDraft.items.length === 0 ? (
                 <Text style={styles.emptyAccountText}>Không có chi tiết hóa đơn.</Text>
               ) : (
                 (billEditDraft.items ?? []).map((item, index) => (
-                  <View key={`${item.name ?? "item"}-${index}`} style={styles.editItemBox}>
-                    <TextInput
-                      placeholder="Tên món"
-                      placeholderTextColor={theme.inputPlaceholder}
-                      style={styles.categoryInput}
-                      value={item.name ?? ""}
-                      onChangeText={(value) => updateBillItem(index, { name: value })}
-                    />
-                    <View style={styles.itemEditGrid}>
-                      <TextInput
-                        keyboardType="decimal-pad"
-                        placeholder="SL"
-                        placeholderTextColor={theme.inputPlaceholder}
-                        style={styles.categoryInput}
-                        value={item.quantity === null || item.quantity === undefined ? "" : String(item.quantity)}
-                        onChangeText={(value) => updateBillItem(index, { quantity: parseOptionalNumber(value) })}
-                      />
-                      <TextInput
-                        keyboardType="decimal-pad"
-                        placeholder="Đơn giá"
-                        placeholderTextColor={theme.inputPlaceholder}
-                        style={styles.categoryInput}
-                        value={item.unitPrice === null || item.unitPrice === undefined ? "" : String(item.unitPrice)}
-                        onChangeText={(value) => updateBillItem(index, { unitPrice: parseOptionalNumber(value) })}
-                      />
-                      <TextInput
-                        keyboardType="decimal-pad"
-                        placeholder="Thành tiền"
-                        placeholderTextColor={theme.inputPlaceholder}
-                        style={styles.categoryInput}
-                        value={item.amount === null || item.amount === undefined ? "" : String(item.amount)}
-                        onChangeText={(value) => updateBillItem(index, { amount: parseOptionalNumber(value) })}
-                      />
+                  <View key={`${item.name ?? "item"}-${index}`} style={styles.productEditCard}>
+                    <Text style={styles.editorLabel}>Sản phẩm</Text>
+                    <TextInput multiline placeholder="Tên sản phẩm" placeholderTextColor={theme.inputPlaceholder} style={[styles.categoryInput, styles.productNameInput]} value={item.name ?? ""} onChangeText={(value) => updateBillItem(index, { name: value })} />
+                    <View style={styles.productFieldsRow}>
+                      <View style={styles.productField}>
+                        <Text style={styles.editorLabel}>Số lượng</Text>
+                        <View style={styles.quantityStepper}>
+                          <Pressable style={styles.stepperButton} onPress={() => updateBillItem(index, { quantity: Math.max(0, (item.quantity ?? 0) - 1) })}><Text style={styles.stepperText}>−</Text></Pressable>
+                          <TextInput keyboardType="number-pad" style={styles.quantityInput} value={item.quantity == null ? "" : String(item.quantity)} onChangeText={(value) => updateBillItem(index, { quantity: parseOptionalNumber(value) })} />
+                          <Pressable style={styles.stepperButton} onPress={() => updateBillItem(index, { quantity: (item.quantity ?? 0) + 1 })}><Text style={styles.stepperText}>＋</Text></Pressable>
+                        </View>
+                      </View>
+                      <View style={styles.productField}>
+                        <Text style={styles.editorLabel}>Đơn giá (₫)</Text>
+                        <TextInput keyboardType="decimal-pad" placeholder="Đơn giá" placeholderTextColor={theme.inputPlaceholder} style={styles.categoryInput} value={item.unitPrice == null ? "" : String(item.unitPrice)} onChangeText={(value) => updateBillItem(index, { unitPrice: parseOptionalNumber(value) })} />
+                      </View>
+                    </View>
+                    <View style={styles.productAmountRow}>
+                      <View style={styles.productAmountInfo}><Text style={styles.editorLabel}>Thành tiền</Text><Text style={styles.productAmountValue}>{formatAmount(item.amount)}</Text></View>
+                      <Pressable accessibilityRole="button" accessibilityLabel="Xóa sản phẩm" style={[styles.itemActionButton, styles.deleteItemButton]} onPress={() => removeBillEditItem(index)}><SymbolView name={{ ios: "trash", android: "delete", web: "delete" }} size={18} tintColor={theme.dangerText} /></Pressable>
                     </View>
                   </View>
                 ))
               )}
             </View>
+            <View style={styles.editorCard}>
+              <Text style={styles.editorSectionTitle}>Tổng kết</Text>
+              <View style={styles.totalRow}><Text style={styles.totalLabel}>Tạm tính ({billEditDraft.items.length} sản phẩm)</Text><Text style={styles.totalValue}>{formatAmount(editorSubtotal)}</Text></View>
+              <View style={styles.editorSummaryField}><Text style={styles.totalLabel}>Giảm giá</Text><Text style={styles.summaryAmountValue}>0 ₫</Text></View>
+              <View style={styles.editorSummaryField}><Text style={styles.totalLabel}>Thuế / Phí (nếu có)</Text><Text style={styles.summaryAmountValue}>0 ₫</Text></View>
+              <View style={styles.grandTotalRow}><Text style={styles.grandTotalLabel}>Tổng cộng</Text><Text style={styles.grandTotalValue}>{formatAmount(billEditDraft.amount)}</Text></View>
+            </View>
+            <View style={styles.differenceCard}><Text style={styles.differenceTitle}>Chênh lệch so với hóa đơn</Text><Text style={styles.differenceValue}>{formatAmount(editorDifference)}</Text><Text style={styles.differenceHint}>{editorDifference === 0 ? "Tổng tiền khớp với hóa đơn" : "Vui lòng kiểm tra lại chi tiết hóa đơn"}</Text></View>
           </ScrollView>
         </KeyboardAvoidingView>
       </Modal>
@@ -977,6 +1079,7 @@ function createStyles(theme: AppTheme) {
     summaryTileMeta: { color: theme.primary, fontSize: 13, fontWeight: '600', marginTop: 8 },
     walletBalanceText: { color: theme.primary, fontSize: 17, fontWeight: '600', marginTop: 10 },
     card: { backgroundColor: theme.card, borderRadius: 8, overflow: "hidden" },
+    reviewInfoToggle: { alignItems: "center", borderBottomColor: theme.border, borderBottomWidth: StyleSheet.hairlineWidth, flexDirection: "row", justifyContent: "space-between", minHeight: 44, paddingHorizontal: 16 },
     inlineGrid: { flexDirection: "row", gap: 1 },
     inlineTile: {
       borderBottomColor: theme.border,
@@ -1087,19 +1190,24 @@ function createStyles(theme: AppTheme) {
     },
     itemsTitle: { color: theme.text, fontSize: 16, fontWeight: '600' },
     itemsCount: { color: theme.textMuted, fontSize: 13, fontWeight: '600' },
+    emptyItemsText: { color: theme.textMuted, fontSize: 14, padding: 16 },
+    addItemButton: { borderColor: theme.primary, borderRadius: 6, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 8 },
+    addItemButtonText: { color: theme.primary, fontSize: 13, fontWeight: '600' },
     itemRow: {
       alignItems: "center",
       borderBottomColor: theme.border,
       borderBottomWidth: 1,
       flexDirection: "row",
-      gap: 12,
+      gap: 8,
       paddingHorizontal: 16,
       paddingVertical: 13,
     },
-    itemInfo: { flex: 1, gap: 4 },
+    itemInfo: { flex: 1, gap: 7 },
     itemName: { color: theme.text, fontSize: 15, fontWeight: '600' },
     itemMeta: { color: theme.textMuted, fontSize: 13 },
     itemAmount: { color: theme.text, fontSize: 15, fontWeight: '600' },
+    itemActionButton: { alignItems: "center", backgroundColor: theme.cardAlt, borderRadius: 5, height: 40, justifyContent: "center", width: 40 },
+    deleteItemButton: { backgroundColor: theme.warningBackground },
     totalRow: {
       alignItems: "center",
       flexDirection: "row",
@@ -1109,6 +1217,15 @@ function createStyles(theme: AppTheme) {
     },
     totalLabel: { color: theme.textMuted, fontSize: 14, fontWeight: '600' },
     totalValue: { color: theme.text, fontSize: 15, fontWeight: '600' },
+    grandTotalRow: { alignItems: "center", borderTopColor: theme.border, borderTopWidth: 1, flexDirection: "row", justifyContent: "space-between", marginHorizontal: 16, paddingVertical: 16 },
+    grandTotalLabel: { color: theme.text, fontSize: 16, fontWeight: '700' },
+    grandTotalValue: { color: theme.text, fontSize: 19, fontWeight: '700' },
+    differenceCard: { backgroundColor: theme.card, borderRadius: 8, flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", padding: 16 },
+    differenceTitle: { color: theme.text, fontSize: 15, fontWeight: '600' },
+    differenceValue: { color: theme.goodText, fontSize: 16, fontWeight: '700' },
+    differenceWarning: { color: theme.dangerText },
+    differenceHint: { color: theme.textMuted, fontSize: 13, marginTop: 8, width: "100%" },
+    textFieldEditorInput: { backgroundColor: theme.inputBackground, borderColor: theme.border, borderRadius: 8, borderWidth: 1, color: theme.text, fontSize: 16, minHeight: 104, padding: 12, textAlignVertical: "top" },
     note: { color: theme.textSubtle, fontSize: 13, lineHeight: 19, textAlign: "center" },
     modalOverlay: {
       backgroundColor: theme.overlay,
@@ -1213,11 +1330,37 @@ function createStyles(theme: AppTheme) {
     },
     cancelCategoryButtonText: { color: theme.text, fontSize: 15, fontWeight: '600' },
     editorScreen: { backgroundColor: theme.screen, flex: 1 },
-    editorContent: { gap: 14, padding: 20, paddingBottom: 36 },
-    editorCard: { backgroundColor: theme.card, borderRadius: 8, gap: 12, padding: 14 },
-    editorSectionTitle: { color: theme.text, fontSize: 16, fontWeight: '600' },
-    editItemBox: { borderColor: theme.border, borderRadius: 8, borderWidth: 1, gap: 10, padding: 12 },
-    itemEditGrid: { gap: 8 },
+    editorContent: { gap: 10, paddingHorizontal: 14, paddingTop: 12, paddingBottom: 30 },
+    editorCard: { backgroundColor: theme.card, borderRadius: 8, gap: 9, padding: 12 },
+    editorSectionTitle: { color: theme.text, fontSize: 15, fontWeight: '600' },
+    collapseSectionHeader: { alignItems: "center", flexDirection: "row", justifyContent: "space-between", minHeight: 32 },
+    editorGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+    editorField: { gap: 4, width: "48%" },
+    editorWideField: { width: "100%" },
+    editorDescriptionField: { width: "100%" },
+    editorLabel: { color: theme.textMuted, fontSize: 12 },
+    editorCompactInput: { minHeight: 42, paddingVertical: 8 },
+    editorSelect: { alignItems: "center", backgroundColor: theme.inputBackground, borderColor: theme.border, borderRadius: 7, borderWidth: 1, flexDirection: "row", justifyContent: "space-between", minHeight: 42, paddingHorizontal: 10 },
+    editorSelectText: { color: theme.text, flex: 1, fontSize: 14 },
+    editorChevron: { color: theme.textMuted, fontSize: 18, marginLeft: 8 },
+    editorDateInput: { alignItems: "center", backgroundColor: theme.inputBackground, borderColor: theme.border, borderRadius: 7, borderWidth: 1, flexDirection: "row", gap: 10, justifyContent: "space-between", minHeight: 44, paddingHorizontal: 10, paddingVertical: 7 },
+    editorDateText: { color: theme.text, flex: 1, fontSize: 14, lineHeight: 19 },
+    editorLocationInput: { minHeight: 54, paddingTop: 9, textAlignVertical: "top" },
+    editorDescriptionInput: { minHeight: 58, paddingTop: 9, textAlignVertical: "top" },
+    editorSectionHeader: { alignItems: "center", flexDirection: "row", justifyContent: "space-between" },
+    productEditCard: { borderBottomColor: theme.borderStrong, borderBottomWidth: 1, gap: 7, paddingBottom: 14, paddingTop: 8 },
+    productNameInput: { minHeight: 48, paddingTop: 10, textAlignVertical: "top", width: "100%" },
+    productFieldsRow: { flexDirection: "row", gap: 10 },
+    productField: { flex: 1, gap: 6, minWidth: 0 },
+    quantityStepper: { alignItems: "center", backgroundColor: theme.cardAlt, borderColor: theme.border, borderRadius: 8, borderWidth: 1, flexDirection: "row", height: 46, width: "100%" },
+    stepperButton: { alignItems: "center", height: 42, justifyContent: "center", width: 40 },
+    stepperText: { color: theme.text, fontSize: 22, lineHeight: 26 },
+    quantityInput: { backgroundColor: theme.inputBackground, color: theme.text, flex: 1, height: 42, textAlign: "center" },
+    productAmountRow: { alignItems: "center", flexDirection: "row", justifyContent: "space-between", paddingTop: 3 },
+    productAmountInfo: { gap: 3 },
+    productAmountValue: { color: theme.text, fontSize: 15, fontWeight: '600' },
+    editorSummaryField: { alignItems: "center", flexDirection: "row", gap: 14, justifyContent: "space-between", paddingHorizontal: 16 },
+    summaryAmountValue: { color: theme.text, fontSize: 15, minWidth: 120, paddingHorizontal: 12, textAlign: "right" },
     footer: {
       backgroundColor: theme.screen,
       borderTopColor: theme.tabBorder,
