@@ -134,12 +134,6 @@ function getDaysInMonthFromDate(value?: string | null, fallback = 31) {
   return new Date(year, month, 0).getDate();
 }
 
-function isInRange(dateValue: string, start: Date, end: Date) {
-  const date = new Date(dateValue);
-
-  return date >= start && date < end;
-}
-
 function isIncome(type: TransactionType) {
   return type === "Income" || type === "TransferIn";
 }
@@ -235,11 +229,12 @@ export default function HomeScreen() {
         const now = new Date();
         const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
         const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+        const previousMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
 
         const transactionRequest = transactionsApi
           .dateRange({
             fromDate: formatApiDate(firstDayOfMonth),
-            toDate: formatApiDate(lastDayOfMonth),
+            toDate: `${formatApiDate(lastDayOfMonth)}T23:59:59.999`,
           })
           .catch((error) => {
             console.warn("Không tải được giao dịch theo khoảng ngày", error);
@@ -251,7 +246,12 @@ export default function HomeScreen() {
           financialAccountApi.list(),
           transactionRequest,
           categoriesApi.list(),
-          transactionsApi.categorySpending(),
+          transactionsApi.categorySpending({
+            month: now.getMonth() + 1,
+            year: now.getFullYear(),
+            compareMonth: previousMonth.getMonth() + 1,
+            compareYear: previousMonth.getFullYear(),
+          }),
         ]);
 
         setAccounts(Array.isArray(accountResponse.data) ? accountResponse.data : []);
@@ -290,7 +290,7 @@ export default function HomeScreen() {
     () => new Map((categories ?? []).map((category) => [category.id, category])),
     [categories],
   );
-  const { end: monthEnd, start: monthStart } = useMemo(() => getMonthRange(), []);
+  const { end: monthEnd } = useMemo(() => getMonthRange(), []);
 
   const activeAccounts = useMemo(() => (accounts ?? []).filter((account) => account.isActive), [accounts]);
   const totalBalance = useMemo(
@@ -300,12 +300,9 @@ export default function HomeScreen() {
 
   const monthTransactions = useMemo(
     () =>
-      (transactions ?? [])
-        .filter(
-          (transaction) => !transaction.isExcluded && !isTransferTransaction(transaction) && isInRange(transaction.transactionDate, monthStart, monthEnd),
-        )
-        .sort((left, right) => new Date(right.transactionDate).getTime() - new Date(left.transactionDate).getTime()),
-    [monthEnd, monthStart, transactions],
+      [...(transactions ?? [])]
+        .sort((left, right) => new Date(right.transactionDate).getTime() - new Date(left.transactionDate).getTime() || right.id - left.id),
+    [transactions],
   );
 
   const monthlyIncome = useMemo(
@@ -323,7 +320,10 @@ export default function HomeScreen() {
     [monthTransactions],
   );
   const monthlyExpense = spendingStats?.totalAmount ?? fallbackExpense;
-  const recentTransactions = monthTransactions.slice(0, 5);
+  const recentTransactions = useMemo(
+    () => [...(transactions ?? [])].sort((left, right) => new Date(right.transactionDate).getTime() - new Date(left.transactionDate).getTime() || right.id - left.id),
+    [transactions],
+  );
   const topCategories = useMemo(
     () =>
       (spendingStats?.categories ?? [])

@@ -27,7 +27,7 @@ export function getTransactionMonthRange(month: string | null) {
   const [year, monthNumber] = month.split('-').map(Number);
   if (monthNumber < 1 || monthNumber > 12) return null;
   const days = new Date(year, monthNumber, 0).getDate();
-  return { fromDate: `${month}-01`, toDate: `${month}-${String(days).padStart(2, '0')}` };
+  return { fromDate: `${month}-01`, toDate: `${month}-${String(days).padStart(2, '0')}T23:59:59.999` };
 }
 
 export function getTransactionDayHeading(value: string, now = new Date()) {

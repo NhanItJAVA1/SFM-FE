@@ -297,9 +297,13 @@ export default function UserScreen() {
   const loadSpendingStats = useCallback(async () => {
     try {
       setIsLoadingStats(true);
-      const response = await transactionsApi.categorySpending(
-        statsMonth === defaultMonth && statsYear === defaultYear ? {} : { month: statsMonth, year: statsYear },
-      );
+      const comparePeriod = getPreviousMonth(statsMonth, statsYear);
+      const response = await transactionsApi.categorySpending({
+        month: statsMonth,
+        year: statsYear,
+        compareMonth: comparePeriod.month,
+        compareYear: comparePeriod.year,
+      });
       setSpendingStats(
         response.data
           ? { ...response.data, categories: Array.isArray(response.data.categories) ? response.data.categories : [] }
@@ -315,7 +319,7 @@ export default function UserScreen() {
     } finally {
       setIsLoadingStats(false);
     }
-  }, [defaultMonth, defaultYear, statsMonth, statsYear]);
+  }, [statsMonth, statsYear]);
 
   const loadFinancialInsights = useCallback(async () => {
     try {
@@ -337,17 +341,17 @@ export default function UserScreen() {
     }
   }, [statsMonth, statsYear]);
 
-  useEffect(() => {
-    if (view === "spendingStats") {
-      const timeoutId = setTimeout(() => {
-        loadSpendingStats();
-      }, 0);
-
-      return () => clearTimeout(timeoutId);
+  useFocusEffect(useCallback(() => {
+    if (view !== "spendingStats") {
+      return undefined;
     }
 
-    return undefined;
-  }, [loadSpendingStats, view]);
+    const timeoutId = setTimeout(() => {
+      void loadSpendingStats();
+    }, 0);
+
+    return () => clearTimeout(timeoutId);
+  }, [loadSpendingStats, view]));
 
   useEffect(() => {
     if (view !== "spendingStats" || !isFinancialInsightsVisible) {
