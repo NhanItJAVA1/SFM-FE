@@ -5,7 +5,7 @@ import { CategoryIcon, CategoryIconBadge, getCategoryIconKey } from '@/component
 import DateTimePicker, { DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import { router } from "expo-router";
 import { SymbolView } from "expo-symbols";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -19,7 +19,7 @@ import {
   View,
 } from "react-native";
 
-import { categoriesApi, Category, CategoryType } from "@/api/categoriesApi";
+import { categoriesApi, Category, CategoryType, getCategoryCreateErrorMessage, hasCategoryName, normalizeCategoryName } from "@/api/categoriesApi";
 import { FinancialAccount, financialAccountApi } from "@/api/financialAccountApi";
 import {
   buildCreateTransactionFromScanPayload,
@@ -180,7 +180,10 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
   const [isLoadingAccounts, setIsLoadingAccounts] = useState(false);
   const [isLoadingCategories, setIsLoadingCategories] = useState(false);
   const [isCreatingCategory, setIsCreatingCategory] = useState(false);
+  const isCreatingCategoryRef = useRef(false);
+  const [deletingCategoryId, setDeletingCategoryId] = useState<number | null>(null);
   const [newCategoryName, setNewCategoryName] = useState("");
+  const [categoryNameError, setCategoryNameError] = useState("");
   const [newCategoryType, setNewCategoryType] = useState<CategoryType>("Expense");
   const [isSaving, setIsSaving] = useState(false);
   const items = editableDraft.items ?? [];
@@ -238,15 +241,29 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
   }, [loadCategories]);
 
   async function handleCreateCategory() {
-    const trimmedName = newCategoryName.trim();
+    if (isCreatingCategoryRef.current) return;
+    const trimmedName = normalizeCategoryName(newCategoryName);
 
     if (!trimmedName) {
-      Alert.alert("Thiếu tên danh mục", "Vui lòng nhập tên danh mục.");
+      setCategoryNameError("Vui lòng nhập tên danh mục.");
       return;
     }
 
+    isCreatingCategoryRef.current = true;
+    setIsCreatingCategory(true);
     try {
-      setIsCreatingCategory(true);
+      let categoriesForCheck = categories;
+      try {
+        categoriesForCheck = await loadCategories(false);
+      } catch {
+        // The backend remains the source of truth if a preflight list refresh fails.
+      }
+
+      if (hasCategoryName(categoriesForCheck, trimmedName)) {
+        setCategoryNameError("Tên danh mục đã tồn tại.");
+        return;
+      }
+      setCategoryNameError("");
       await categoriesApi.create({
         icon: getCategoryIconKey({ name: trimmedName, type: categoryType }),
         isDefault: false,
@@ -269,11 +286,37 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
       setNewCategoryType("Expense");
       setIsCreateCategoryVisible(false);
     } catch (error) {
-      Alert.alert("Tạo danh mục thất bại", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
+      setCategoryNameError(getCategoryCreateErrorMessage(error));
     } finally {
+      isCreatingCategoryRef.current = false;
       setIsCreatingCategory(false);
       setIsLoadingCategories(false);
     }
+  }
+
+  function confirmDeleteCategory(category: Category) {
+    if (category.isDefault || category.userId === null || deletingCategoryId !== null) return;
+    Alert.alert("Xóa danh mục?", `Danh mục “${category.name}” sẽ bị xóa.`, [
+      { text: "Hủy", style: "cancel" },
+      {
+        text: "Xóa",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            setDeletingCategoryId(category.id);
+            await categoriesApi.delete(category.id);
+            const nextCategories = await loadCategories(false);
+            if (!nextCategories.some((item) => item.id === category.id) && selectedCategoryId === category.id) {
+              setSelectedCategoryId(null);
+            }
+          } catch {
+            Alert.alert("Xóa danh mục thất bại", "Vui lòng thử lại sau.");
+          } finally {
+            setDeletingCategoryId(null);
+          }
+        },
+      },
+    ]);
   }
 
   function openAmountEditor() {
@@ -790,6 +833,10 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
             }
           }}
         >
+          <KeyboardAvoidingView
+            behavior={Platform.select({ ios: "padding", android: "height" })}
+            style={styles.modalOverlay}
+          >
           <BottomPopupPressable style={styles.bottomSheet}>
             <View style={styles.sheetHeader}>
               <Text style={styles.sheetTitle}>Chọn category</Text>
@@ -821,6 +868,7 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
                   return (
                     <Pressable
                       key={category.id}
+                      onLongPress={() => confirmDeleteCategory(category)}
                       style={[styles.pickerRow, isSelected && styles.pickerRowSelected]}
                       onPress={() => {
                         setSelectedCategoryId(category.id);
@@ -832,7 +880,7 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
                         <Text style={styles.categoryName}>{category.name}</Text>
                         <Text style={styles.categoryMeta}>
                           {category.type === "Expense" ? "Chi tiêu" : "Thu nhập"} ·{" "}
-                          {category.isDefault ? "Mặc định" : "Của bạn"}
+                          {category.isDefault ? "Mặc định" : "Nhấn giữ để xóa"}
                         </Text>
                       </View>
                     </Pressable>
@@ -842,10 +890,7 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
             )}
 
             {isCreateCategoryVisible ? (
-              <KeyboardAvoidingView
-                behavior={Platform.select({ ios: "padding", android: "height" })}
-                style={styles.inlineCreateOverlay}
-              >
+              <View style={styles.inlineCreateOverlay}>
                 <Pressable style={styles.inlineCreateDismissArea} onPress={Keyboard.dismiss}>
                   <Pressable style={styles.createCategoryModal} onPress={(event) => event.stopPropagation()}>
                     <Text style={styles.createCategoryTitle}>Thêm danh mục</Text>
@@ -854,8 +899,9 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
                       placeholderTextColor={theme.inputPlaceholder}
                       style={styles.categoryInput}
                       value={newCategoryName}
-                      onChangeText={setNewCategoryName}
+                      onChangeText={(value) => { setNewCategoryName(value); setCategoryNameError(""); }}
                     />
+                    {categoryNameError ? <Text accessibilityRole="alert" style={{ color: theme.danger, fontSize: 13 }}>{categoryNameError}</Text> : null}
                     <View style={styles.categoryTypeRow}>
                       {(["Expense", "Income"] as CategoryType[]).map((categoryType) => {
                         const isSelected = newCategoryType === categoryType;
@@ -901,9 +947,10 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
                     </View>
                   </Pressable>
                 </Pressable>
-              </KeyboardAvoidingView>
+              </View>
             ) : null}
           </BottomPopupPressable>
+          </KeyboardAvoidingView>
         </Pressable>
       </BottomPopup>
 

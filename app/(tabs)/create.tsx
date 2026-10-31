@@ -38,7 +38,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { categoriesApi, Category, CategoryType } from "@/api/categoriesApi";
+import { categoriesApi, Category, CategoryType, getCategoryCreateErrorMessage, hasCategoryName, normalizeCategoryName } from "@/api/categoriesApi";
 import { FinancialAccount, financialAccountApi } from "@/api/financialAccountApi";
 import { CreateTransactionPayload, transactionsApi, TransactionType } from "@/api/transactionsApi";
 import { CategoryIcon, CategoryIconBadge, getCategoryIconKey } from "@/components/category-icon";
@@ -160,6 +160,9 @@ export default function CreateScreen() {
   const [isCreateCategoryVisible, setIsCreateCategoryVisible] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
   const [isCreatingCategory, setIsCreatingCategory] = useState(false);
+  const isCreatingCategoryRef = useRef(false);
+  const [deletingCategoryId, setDeletingCategoryId] = useState<number | null>(null);
+  const [categoryNameError, setCategoryNameError] = useState("");
   const [datePickerMode, setDatePickerMode] = useState<"date" | "time">("date");
   const [isDatePickerVisible, setIsDatePickerVisible] = useState(false);
   const [isPaymentBankPickerVisible, setIsPaymentBankPickerVisible] = useState(false);
@@ -286,15 +289,31 @@ export default function CreateScreen() {
   );
 
   async function handleCreateCategory() {
-    const trimmedName = newCategoryName.trim();
+    if (isCreatingCategoryRef.current) return;
+    const trimmedName = normalizeCategoryName(newCategoryName);
 
     if (!trimmedName) {
-      Alert.alert("Thiếu tên danh mục", "Vui lòng nhập tên  mục.");
+      setCategoryNameError("Vui lòng nhập tên danh mục.");
       return;
     }
 
+    isCreatingCategoryRef.current = true;
+    setIsCreatingCategory(true);
     try {
-      setIsCreatingCategory(true);
+      let categoriesForCheck = categories;
+      try {
+        const latestResponse = await categoriesApi.list();
+        categoriesForCheck = Array.isArray(latestResponse.data) ? latestResponse.data : [];
+        setCategories(categoriesForCheck);
+      } catch {
+        // The backend remains the source of truth if a preflight list refresh fails.
+      }
+
+      if (hasCategoryName(categoriesForCheck, trimmedName)) {
+        setCategoryNameError("Tên danh mục đã tồn tại.");
+        return;
+      }
+      setCategoryNameError("");
       await categoriesApi.create({
         icon: getCategoryIconKey({ name: trimmedName, type: categoryType }),
         isDefault: false,
@@ -321,10 +340,36 @@ export default function CreateScreen() {
       setIsCreateCategoryVisible(false);
       setIsCategoryPickerVisible(false);
     } catch (error) {
-      Alert.alert("Tạo danh mục thất bại", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
+      setCategoryNameError(getCategoryCreateErrorMessage(error));
     } finally {
+      isCreatingCategoryRef.current = false;
       setIsCreatingCategory(false);
     }
+  }
+
+  function confirmDeleteCategory(category: Category) {
+    if (category.isDefault || category.userId === null || deletingCategoryId !== null) return;
+    Alert.alert("Xóa danh mục?", `Danh mục “${category.name}” sẽ bị xóa.`, [
+      { text: "Hủy", style: "cancel" },
+      {
+        text: "Xóa",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            setDeletingCategoryId(category.id);
+            await categoriesApi.delete(category.id);
+            const response = await categoriesApi.list();
+            const nextCategories = Array.isArray(response.data) ? response.data : [];
+            setCategories(nextCategories);
+            if (selectedCategoryId === category.id) setSelectedCategoryId(null);
+          } catch {
+            Alert.alert("Xóa danh mục thất bại", "Vui lòng thử lại sau.");
+          } finally {
+            setDeletingCategoryId(null);
+          }
+        },
+      },
+    ]);
   }
 
   const buildTransactionPayload = useCallback((): CreateTransactionPayload | null => {
@@ -993,9 +1038,13 @@ export default function CreateScreen() {
             setIsCreateCategoryVisible(false);
           }}
         >
+          <KeyboardAvoidingView
+            behavior={Platform.select({ ios: "padding", android: "height" })}
+            style={styles.modalOverlay}
+          >
           <BottomPopupPressable style={[styles.modalContent, { backgroundColor: theme.sheet }]}>
             {isCreateCategoryVisible ? (
-              <KeyboardAvoidingView behavior={Platform.select({ ios: "padding", android: "height" })}>
+              <View>
                 <View style={styles.categoryCreateHeader}>
                   <Pressable
                     onPress={() => setIsCreateCategoryVisible(false)}
@@ -1014,7 +1063,7 @@ export default function CreateScreen() {
                   accessibilityLabel="Tên danh mục mới"
                   autoCapitalize="sentences"
                   maxLength={50}
-                  onChangeText={setNewCategoryName}
+                  onChangeText={(value) => { setNewCategoryName(value); setCategoryNameError(""); }}
                   placeholder="Nhập tên danh mục"
                   placeholderTextColor={theme.textSubtle}
                   returnKeyType="done"
@@ -1024,6 +1073,7 @@ export default function CreateScreen() {
                   ]}
                   value={newCategoryName}
                 />
+                {categoryNameError ? <Text accessibilityRole="alert" style={{ color: theme.danger, fontSize: 13, marginTop: 6 }}>{categoryNameError}</Text> : null}
                 <View style={styles.categoryCreateActions}>
                   <Pressable
                     disabled={isCreatingCategory}
@@ -1033,12 +1083,12 @@ export default function CreateScreen() {
                     <Text style={[styles.categoryCreateCancelText, { color: theme.textMuted }]}>Hủy</Text>
                   </Pressable>
                   <Pressable
-                    disabled={isCreatingCategory || !newCategoryName.trim()}
+                    disabled={isCreatingCategory}
                     onPress={handleCreateCategory}
                     style={[
                       styles.categoryCreateAction,
                       { backgroundColor: theme.primary },
-                      (isCreatingCategory || !newCategoryName.trim()) && styles.categoryCreateDisabled,
+                      isCreatingCategory && styles.categoryCreateDisabled,
                     ]}
                   >
                     {isCreatingCategory ? (
@@ -1048,7 +1098,7 @@ export default function CreateScreen() {
                     )}
                   </Pressable>
                 </View>
-              </KeyboardAvoidingView>
+              </View>
             ) : (
               <>
                 <View style={styles.categoryPickerHeader}>
@@ -1059,6 +1109,7 @@ export default function CreateScreen() {
                     hitSlop={10}
                     onPress={() => {
                       setNewCategoryName("");
+                      setCategoryNameError("");
                       setIsCreateCategoryVisible(true);
                     }}
                     style={[styles.addCategoryButton, { backgroundColor: theme.primaryPressed }]}
@@ -1070,6 +1121,7 @@ export default function CreateScreen() {
                   {availableCategories.map((category) => (
                     <Pressable
                       key={category.id}
+                      onLongPress={() => confirmDeleteCategory(category)}
                       style={[
                         styles.pickerItem,
                         selectedCategoryId === category.id && { backgroundColor: theme.primaryPressed },
@@ -1084,7 +1136,7 @@ export default function CreateScreen() {
                         <View style={styles.categoryPickerCopy}>
                           <Text style={[styles.pickerItemText, { color: theme.text }]}>{category.name}</Text>
                           <Text style={[styles.pickerItemSubtext, { color: theme.textSubtle }]}>
-                            {category.type === "Expense" ? "Chi tiêu" : "Thu nhập"}
+                            {category.type === "Expense" ? "Chi tiêu" : "Thu nhập"}{category.isDefault ? " · Mặc định" : " · Nhấn giữ để xóa"}
                           </Text>
                         </View>
                       </View>
@@ -1094,6 +1146,7 @@ export default function CreateScreen() {
               </>
             )}
           </BottomPopupPressable>
+          </KeyboardAvoidingView>
         </Pressable>
       </BottomPopup>
 
