@@ -136,7 +136,7 @@ export default function ScanBillScreen() {
             onPress={handleUploadPhoto}
             disabled={isUploading}
           >
-            <Text style={styles.uploadButtonText}>{isUploading ? "Đang phân tích..." : "Đang phân tích..."}</Text>
+            <Text style={styles.uploadButtonText}>{isUploading ? "Đang phân tích..." : "Phân tích"}</Text>
           </Pressable>
         </View>
         <ScanBillLoadingOverlay visible={isUploading} />

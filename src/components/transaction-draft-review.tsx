@@ -977,7 +977,7 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
                 <Text style={styles.emptyAccountText}>Không có chi tiết hóa đơn.</Text>
               ) : (
                 (billEditDraft.items ?? []).map((item, index) => (
-                  <View key={`${item.name ?? "item"}-${index}`} style={styles.productEditCard}>
+                  <View key={`bill-product-${index}`} style={styles.productEditCard}>
                     <Text style={styles.editorLabel}>Sản phẩm</Text>
                     <TextInput multiline placeholder="Tên sản phẩm" placeholderTextColor={theme.inputPlaceholder} style={[styles.categoryInput, styles.productNameInput]} value={item.name ?? ""} onChangeText={(value) => updateBillItem(index, { name: value })} />
                     <View style={styles.productFieldsRow}>
