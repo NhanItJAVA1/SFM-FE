@@ -39,11 +39,11 @@ const overviewBackground = require("../../assets/expo.icon/Assets/Serene Blue Ab
 const darkOverviewBackground = require("../../assets/expo.icon/Assets/Monochrome Orbital Bubble Waves.png");
 
 const forecastChart = {
-  bottom: 204,
-  height: 186,
+  bottom: 156,
+  height: 138,
   left: 10,
   right: 312,
-  svgHeight: 234,
+  svgHeight: 186,
   top: 18,
   width: 350,
 };
@@ -760,27 +760,30 @@ function SpendingForecastChart({
   return (
     <View style={styles.forecastChartBlock}>
       <View style={styles.forecastSummaryRow}>
-        <View>
-          <Text style={styles.reportLabel}>
-            Đã chi đến hiện tại:{" "}
-            <Text style={styles.negativeText}>
-              {asOfDay}/{daysInMonth}
-            </Text>
-          </Text>
-          <Text style={[styles.forecastSummaryValue, styles.negativeText]}>{formatPlainMoney(actualTotal)}</Text>
+        <View style={styles.forecastSummaryItem}>
+          <View style={styles.forecastSummaryHeading}>
+            <View style={[styles.forecastSummaryDot, { backgroundColor: theme.dangerText }]} />
+            <Text numberOfLines={1} style={styles.forecastSummaryLabel}>Đã chi<Text style={styles.forecastSummaryCaption}> · {String(asOfDay).padStart(2, '0')}/{String(chartBaseMonth + 1).padStart(2, '0')}</Text></Text>
+          </View>
+          <View style={styles.forecastSummaryAmountRow}>
+            <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} style={styles.forecastSummaryValue}>{formatPlainMoney(actualTotal)}</Text>
+            <Text style={styles.forecastSummaryUnit}>{currency === 'VND' ? 'đ' : currency}</Text>
+          </View>
         </View>
-        <View style={styles.forecastSummaryRight}>
-          <Text style={styles.reportLabel}>Tổng dự kiến sau {forecastPoints.length - 1} ngày</Text>
-          <Text style={styles.forecastSummaryValue}>{formatPlainMoney(forecastEnd.value)}</Text>
+        <View style={[styles.forecastSummaryItem, styles.forecastSummaryPrediction]}>
+          <View style={styles.forecastSummaryHeading}>
+            <View style={[styles.forecastSummaryDot, { backgroundColor: theme.primary }]} />
+            <Text numberOfLines={1} style={styles.forecastSummaryLabel}>Dự kiến<Text style={styles.forecastSummaryCaption}>{hasForecastData ? ` ${forecastPoints.length - 1} ngày` : ''}</Text></Text>
+          </View>
+          <View style={styles.forecastSummaryAmountRow}>
+            <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} style={[styles.forecastSummaryValue, { color: theme.primary }]}>{hasForecastData ? formatPlainMoney(forecastEnd.value) : '—'}</Text>
+            {hasForecastData ? <Text style={styles.forecastSummaryUnit}>{currency === 'VND' ? 'đ' : currency}</Text> : null}
+          </View>
         </View>
-      </View>
-      <View style={styles.forecastDivider}>
-        <View style={[styles.forecastDividerSegment, styles.forecastDividerActual]} />
-        <View style={[styles.forecastDividerSegment, styles.forecastDividerPrediction]} />
       </View>
       <View style={styles.forecastChartCanvas}>
         <Svg
-          height={forecastChart.svgHeight}
+          height="100%"
           width="100%"
           viewBox={`0 0 ${forecastChart.width} ${forecastChart.svgHeight}`}
         >
@@ -959,7 +962,7 @@ function SpendingForecastChart({
             fontFamily={chartFont.fontFamily}
                   fontWeight={chartFont.fontWeight === 'normal' ? 'normal' : '500'}
             textAnchor="middle"
-            x={asOfX}
+            x={Math.max(forecastChart.left + 20, Math.min(asOfX, forecastChart.right - 20))}
             y={forecastChart.top - 7}
           >
             Hiện tại
@@ -1235,13 +1238,12 @@ function createStyles(theme: AppTheme) {
     reportCard: {
       backgroundColor: theme.card,
       borderColor: theme.border,
-      borderRadius: 8,
+      borderRadius: 20,
       borderWidth: 1,
       paddingHorizontal: 16,
-      paddingBottom: 14,
-      paddingTop: 10,
+      paddingBottom: 10,
+      paddingTop: 12,
     },
-    reportLabel: { color: theme.textMuted, fontSize: 12, fontWeight: '600' },
     chartEmptyState: {
       alignItems: "center",
       backgroundColor: theme.cardAlt,
@@ -1252,20 +1254,23 @@ function createStyles(theme: AppTheme) {
       padding: 18,
     },
     chartEmptyText: { color: theme.textSubtle, fontSize: 12, fontWeight: '600' },
-    forecastChartBlock: { marginTop: 0 },
-    forecastChartCanvas: { marginTop: 8 },
-    forecastDivider: { flexDirection: "row", gap: 6, marginTop: 10 },
-    forecastDividerActual: { backgroundColor: theme.dangerText, opacity: 0.34 },
-    forecastDividerPrediction: { backgroundColor: theme.primary, opacity: 0.28 },
-    forecastDividerSegment: { borderRadius: 2, flex: 1, height: 2 },
+    forecastChartBlock: { width: '100%' },
+    forecastChartCanvas: { marginTop: 8, width: '100%', aspectRatio: forecastChart.width / forecastChart.svgHeight },
     forecastLegendDot: { borderRadius: 4, height: 8, width: 8 },
     forecastLegendItem: { alignItems: "center", flexDirection: "row", gap: 6 },
-    forecastLegendRow: { flexDirection: "row", gap: 14, marginTop: 8 },
-    forecastLegendText: { color: theme.textSubtle, fontSize: 11, fontWeight: '600' },
+    forecastLegendRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 20, marginTop: 4, paddingTop: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.border },
+    forecastLegendText: { ...Typography.caption, color: theme.textMuted, fontSize: 11 },
     forecastNote: { color: theme.textSubtle, fontSize: 11, fontWeight: '600', lineHeight: 16, marginTop: 8 },
-    forecastSummaryRight: { alignItems: "flex-end", flex: 1 },
-    forecastSummaryRow: { alignItems: "flex-start", flexDirection: "row", justifyContent: "space-between", gap: 12 },
-    forecastSummaryValue: { color: theme.text, fontSize: 16, fontWeight: '600', marginTop: 4 },
+    forecastSummaryRow: { width: '100%', flexDirection: 'row', alignItems: 'stretch', paddingBottom: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.border },
+    forecastSummaryItem: { width: '50%', maxWidth: '50%', flexGrow: 0, flexShrink: 0, minWidth: 0, paddingRight: 12 },
+    forecastSummaryPrediction: { paddingRight: 0, paddingLeft: 12, borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: theme.border },
+    forecastSummaryHeading: { width: '100%', flexDirection: 'row', alignItems: 'center', gap: 5, minHeight: 16 },
+    forecastSummaryDot: { width: 5, height: 5, borderRadius: 3, flexShrink: 0 },
+    forecastSummaryLabel: { ...Typography.label, fontSize: 11, lineHeight: 16, color: theme.textMuted, flexShrink: 1 },
+    forecastSummaryAmountRow: { width: '100%', flexDirection: 'row', alignItems: 'baseline', gap: 3, marginTop: 3, minHeight: 26 },
+    forecastSummaryValue: { ...Typography.section, color: theme.text, fontSize: 18, lineHeight: 26, fontWeight: '600', minWidth: 0, flexShrink: 1 },
+    forecastSummaryUnit: { ...Typography.caption, fontSize: 10, lineHeight: 14, color: theme.textMuted, flexShrink: 0 },
+    forecastSummaryCaption: { color: theme.textSubtle, fontSize: 10, lineHeight: 16, fontWeight: '400' },
     reportSummaryRow: {
       borderTopColor: theme.border,
       borderTopWidth: 1,
