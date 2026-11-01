@@ -1,7 +1,7 @@
 import { Typography } from '@/theme/typography';
 import { AppText as Text, useInterFont } from '@/components/app-text';
 import { router, useFocusEffect } from "expo-router";
-import { Sparkles } from "lucide-react-native";
+import { ChevronRight, Sparkles } from "lucide-react-native";
 import { Fragment, useCallback, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -18,6 +18,7 @@ import Svg, { Circle, Defs, Line, LinearGradient, Path, Rect, Stop, Text as SvgT
 
 import type { AIAnalysis } from "@/api/aiApi";
 import { AIRecommendations } from '@/components/ai-recommendations';
+import { WalletMiniRow } from '@/components/wallet-card';
 import { CategoryIconBadge } from '@/components/category-icon';
 import { TransactionDayHeader } from '@/components/transaction-day-header';
 import { formatTransactionTime, getTransactionDayKey, isTransferTransaction } from '@/utils/transactionPresentation';
@@ -33,12 +34,6 @@ import { getAuthUser } from "@/stores/authSession";
 import { requestSpendingStatsFromHome } from '@/stores/spendingStatsNavigation';
 import type { AppTheme } from "@/theme/appTheme";
 import { getAccountCurrentBalance } from "@/utils/accountBalance";
-
-const accountTypeMeta: Record<FinancialAccount["type"], { color: string; icon: string; label: string }> = {
-  Bank: { color: "#2778d7", icon: "▤", label: "Bank" },
-  Cash: { color: "#22a66f", icon: "●", label: "Cash" },
-  Savings: { color: "#d9962b", icon: "◎", label: "Saving" },
-};
 
 const overviewBackground = require("../../assets/expo.icon/Assets/Serene Blue Abstract Gradient Wallpaper.png");
 const darkOverviewBackground = require("../../assets/expo.icon/Assets/Monochrome Orbital Bubble Waves.png");
@@ -417,17 +412,21 @@ export default function HomeScreen() {
             {isAccountsVisible && (
               <View style={styles.heroAccountsList}>
                 <View style={styles.heroAccountsHeader}>
-                  <Text style={styles.heroAccountsTitle}>Danh sách tài khoản</Text>
-                  <Pressable onPress={() => router.push("/account")} hitSlop={8}>
-                    <Text style={styles.heroAccountsAction}>Quản lý ví ➔</Text>
+                  <View style={styles.heroAccountsHeading}>
+                    <Text style={styles.heroAccountsTitle}>Danh sách ví</Text>
+                    <Text style={styles.heroAccountsCount}>{activeAccounts.length} ví</Text>
+                  </View>
+                  <Pressable accessibilityRole="button" accessibilityLabel="Quản lý ví" onPress={() => router.push('/account')} style={({ pressed }) => [styles.heroAccountsManage, pressed && { opacity: 0.7 }]}>
+                    <Text style={styles.heroAccountsAction}>Quản lý ví</Text>
+                    <ChevronRight size={15} color={theme.primary} />
                   </Pressable>
                 </View>
                 <View style={styles.heroAccountsGrid}>
                   {activeAccounts.length === 0 ? (
-                    <EmptyState title="Chưa có ví" description="Tạo ví đầu tiên để bắt đầu theo dõi số dư." />
+                    <Text style={styles.heroAccountsEmpty}>Chưa có ví đang hoạt động.</Text>
                   ) : (
-                    activeAccounts.map((account) => (
-                      <HeroAccountRow key={account.id} account={account} currency={currency} />
+                    activeAccounts.map((account, index) => (
+                      <WalletMiniRow key={account.id} account={account} showDivider={index > 0} />
                     ))
                   )}
                 </View>
@@ -984,26 +983,6 @@ function SpendingForecastChart({
   );
 }
 
-// Tài khoản trong Tổng số dư
-function HeroAccountRow({ account, currency }: { account: FinancialAccount; currency: string }) {
-  const styles = useHomeStyles();
-  const meta = accountTypeMeta[account.type] || { color: "#8fa49a", icon: "●", label: "Ví" };
-
-  return (
-    <Pressable style={styles.heroAccountRow} onPress={() => router.push("/account")}>
-      <View style={[styles.heroAccountIcon, { backgroundColor: `${meta.color}33` }]}>
-        <Text style={[styles.heroAccountIconText, { color: meta.color }]}>{meta.icon}</Text>
-      </View>
-      <Text numberOfLines={1} style={styles.heroAccountName}>
-        {account.name}
-      </Text>
-      <Text style={styles.heroAccountBalance}>
-        {formatMoney(getAccountCurrentBalance(account), account.currency || currency)}
-      </Text>
-    </Pressable>
-  );
-}
-
 // Chi tiêu nhiều nhất
 function CategoryRow({
   category,
@@ -1231,53 +1210,28 @@ function createStyles(theme: AppTheme) {
       flexDirection: "row",
       justifyContent: "space-between",
       alignItems: "center",
-      marginBottom: 12,
+      gap: 12,
+      marginBottom: 8,
     },
+    heroAccountsHeading: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 8 },
+    heroAccountsManage: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 2 },
+    heroAccountsAction: { ...Typography.caption, color: theme.primary, fontWeight: '600' },
+    heroAccountsCount: { ...Typography.caption, color: theme.textMuted, backgroundColor: theme.cardAlt, borderRadius: 9, paddingVertical: 3, paddingHorizontal: 9 },
     heroAccountsTitle: {
+      ...Typography.label,
       color: theme.text,
-      fontSize: 13,
-      fontWeight: '600',
-    },
-    heroAccountsAction: {
-      color: theme.textMuted,
-      fontSize: 12,
-      fontWeight: '600',
+      fontSize: 14,
+      flexShrink: 1,
     },
     heroAccountsGrid: {
-      gap: 8,
-    },
-    heroAccountRow: {
-      flexDirection: "row",
-      alignItems: "center",
       backgroundColor: theme.card,
-      borderRadius: 6,
-      paddingVertical: 10,
+      borderWidth: 1,
+      borderColor: theme.border,
+      borderRadius: 16,
       paddingHorizontal: 12,
+      paddingVertical: 2,
     },
-    heroAccountIcon: {
-      alignItems: "center",
-      borderRadius: 15,
-      height: 30,
-      justifyContent: "center",
-      marginRight: 10,
-      width: 30,
-    },
-    heroAccountIconText: {
-      fontSize: 15,
-      fontWeight: '600',
-    },
-    heroAccountName: {
-      color: theme.text,
-      fontSize: 14,
-      fontWeight: '600',
-      flex: 1,
-      marginRight: 8,
-    },
-    heroAccountBalance: {
-      color: theme.text,
-      fontSize: 14,
-      fontWeight: '600',
-    },
+    heroAccountsEmpty: { ...Typography.small, color: theme.textMuted, paddingVertical: 16, textAlign: 'center' },
     reportCard: {
       backgroundColor: theme.card,
       borderColor: theme.border,

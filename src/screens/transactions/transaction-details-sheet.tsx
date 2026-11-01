@@ -9,6 +9,7 @@ import { financialAccountApi, type FinancialAccount } from '@/api/financialAccou
 import { transactionsApi, type Transaction, type UpdateTransactionPayload } from '@/api/transactionsApi';
 import { transfersApi, type CreateTransferPayload, type Transfer } from '@/api/transfersApi';
 import { AppText as Text, AppTextInput as TextInput } from '@/components/app-text';
+import { MoneyInput } from '@/components/money-input';
 import { BottomPopup, BottomPopupSheet } from '@/components/bottom-popup';
 import { CategoryIconBadge } from '@/components/category-icon';
 import { invalidateAIAnalysis } from '@/hooks/use-ai-analysis';
@@ -241,7 +242,7 @@ export function TransactionDetailsSheet({ transactionId, onClose, onChanged }: P
                 </> : <>
                   {!isTransfer ? <View style={styles.row}>{(['Expense', 'Income'] as const).map(type => <Pressable key={type} accessibilityRole="radio" accessibilityState={{ checked: form.type === type }} disabled={saving} onPress={() => updateForm({ type, categoryId: form.type === type ? form.categoryId : null })} style={[styles.typeButton, { borderColor: form.type === type ? theme.primary : theme.border, backgroundColor: form.type === type ? theme.primaryPressed : theme.card }]}><Text style={{ color: form.type === type ? theme.primary : theme.text }}>{type === 'Income' ? 'Thu nhập' : 'Chi tiêu'}</Text></Pressable>)}</View> : null}
                   {label(`Số tiền (${accounts.find(account => account.id === form.accountId)?.currency ?? '—'})`)}
-                  <TextInput accessibilityLabel="Số tiền giao dịch" value={form.amount} onChangeText={amount => updateForm({ amount })} editable={!saving} keyboardType="decimal-pad" style={inputStyle} />
+                  <MoneyInput accessibilityLabel="Số tiền giao dịch" value={form.amount} onChangeText={amount => updateForm({ amount })} editable={!saving} style={inputStyle} />
                   {label(isTransfer ? 'Từ ví' : 'Ví')}
                   <Pressable accessibilityRole="button" disabled={saving} onPress={() => changeMode('account')} style={[styles.selector, { borderColor: theme.border }]}><Text style={[styles.grow, { color: theme.text }]}>{accountLabel(form.accountId)}{accounts.find(account => account.id === form.accountId)?.isActive ? '' : ' (không hoạt động)'}</Text><ChevronRight size={18} color={theme.textMuted} /></Pressable>
                   {isTransfer ? <>{label('Đến ví')}<Pressable accessibilityRole="button" disabled={saving} onPress={() => changeMode('toAccount')} style={[styles.selector, { borderColor: theme.border }]}><Text style={[styles.grow, { color: theme.text }]}>{toAccountId === null ? 'Chọn ví nhận' : accountLabel(toAccountId)}</Text><ChevronRight size={18} color={theme.textMuted} /></Pressable></> : <>{label('Danh mục')}
