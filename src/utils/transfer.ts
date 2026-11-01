@@ -44,6 +44,7 @@ const transferErrors: Record<string, string> = {
   INVALID_TRANSFER_DATE: 'Ngày chuyển không được trước ngày mở của một trong hai ví.',
   INVALID_TRANSFER_DESCRIPTION: 'Ghi chú không được dài hơn 500 ký tự.',
   TRANSFER_NOT_FOUND: 'Lần chuyển tiền này không còn tồn tại. Vui lòng tải lại lịch sử.',
+  TRANSFER_TRANSACTIONS_INVALID: 'Lần chuyển tiền không đủ hai giao dịch liên kết nên chưa thể sửa. Vui lòng tải lại dữ liệu.',
 };
 
 export function getTransferError(error: unknown) {

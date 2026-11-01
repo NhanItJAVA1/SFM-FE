@@ -180,6 +180,17 @@ export type CreateTransactionPayload = {
   isExcluded?: boolean;
 };
 
+export type UpdateTransactionPayload = {
+  accountId: number;
+  categoryId: number | null;
+  type: "Income" | "Expense";
+  amount: number;
+  description: string | null;
+  transactionDate: string;
+  location: string | null;
+  isExcluded: boolean;
+};
+
 function buildQuery(params: Record<string, number | string | null | undefined>) {
   const searchParams = new URLSearchParams();
 
@@ -312,6 +323,10 @@ export const transactionsApi = {
       })}`,
     ),
   list: listTransactionPage,
+  get: (id: number) => axiosClient.get<Transaction>(`/v1/transactions/${id}`),
+  update: (id: number, payload: UpdateTransactionPayload) =>
+    axiosClient.put<void>(`/v1/transactions/${id}`, payload),
+  delete: (id: number) => axiosClient.delete<void>(`/v1/transactions/${id}`),
   exportTransactions: (params: ExportTransactionsParams = {}) =>
     axiosClient.getBinary(
       `/v1/transactions/export${buildQuery({
