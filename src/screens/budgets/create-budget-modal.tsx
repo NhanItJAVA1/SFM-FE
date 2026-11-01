@@ -1,4 +1,5 @@
 import { AppText as Text, AppTextInput as TextInput } from '@/components/app-text';
+import { MoneyInput } from '@/components/money-input';
 import { BottomPopup, BottomPopupPressable } from "@/components/bottom-popup";
 import { ScreenGradientBackground } from "@/components/screen-gradient-background";
 import DateTimePicker, { DateTimePickerEvent } from "@react-native-community/datetimepicker";
@@ -150,9 +151,9 @@ export function CreateBudgetModal({
 
           <View style={styles.field}>
             <Text style={styles.label}>Hạn mức</Text>
-            <TextInput
-              keyboardType="decimal-pad"
-              placeholder="5000000"
+            <MoneyInput
+              accessibilityLabel="Hạn mức ngân sách"
+              placeholder="5.000.000"
               placeholderTextColor={isDark ? theme.textMuted : theme.inputPlaceholder}
               style={[styles.input, isDark && styles.darkFormText]}
               value={form.amount}

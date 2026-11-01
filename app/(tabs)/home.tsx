@@ -1,7 +1,7 @@
 import { Typography } from '@/theme/typography';
 import { AppText as Text, useInterFont } from '@/components/app-text';
 import { router, useFocusEffect } from "expo-router";
-import { Sparkles } from "lucide-react-native";
+import { ChevronRight, Sparkles } from "lucide-react-native";
 import { Fragment, useCallback, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -18,6 +18,7 @@ import Svg, { Circle, Defs, Line, LinearGradient, Path, Rect, Stop, Text as SvgT
 
 import type { AIAnalysis } from "@/api/aiApi";
 import { AIRecommendations } from '@/components/ai-recommendations';
+import { WalletMiniRow } from '@/components/wallet-card';
 import { CategoryIconBadge } from '@/components/category-icon';
 import { TransactionDayHeader } from '@/components/transaction-day-header';
 import { formatTransactionTime, getTransactionDayKey, isTransferTransaction } from '@/utils/transactionPresentation';
@@ -34,21 +35,15 @@ import { requestSpendingStatsFromHome } from '@/stores/spendingStatsNavigation';
 import type { AppTheme } from "@/theme/appTheme";
 import { getAccountCurrentBalance } from "@/utils/accountBalance";
 
-const accountTypeMeta: Record<FinancialAccount["type"], { color: string; icon: string; label: string }> = {
-  Bank: { color: "#2778d7", icon: "▤", label: "Bank" },
-  Cash: { color: "#22a66f", icon: "●", label: "Cash" },
-  Savings: { color: "#d9962b", icon: "◎", label: "Saving" },
-};
-
 const overviewBackground = require("../../assets/expo.icon/Assets/Serene Blue Abstract Gradient Wallpaper.png");
 const darkOverviewBackground = require("../../assets/expo.icon/Assets/Monochrome Orbital Bubble Waves.png");
 
 const forecastChart = {
-  bottom: 204,
-  height: 186,
+  bottom: 156,
+  height: 138,
   left: 10,
   right: 312,
-  svgHeight: 234,
+  svgHeight: 186,
   top: 18,
   width: 350,
 };
@@ -417,17 +412,21 @@ export default function HomeScreen() {
             {isAccountsVisible && (
               <View style={styles.heroAccountsList}>
                 <View style={styles.heroAccountsHeader}>
-                  <Text style={styles.heroAccountsTitle}>Danh sách tài khoản</Text>
-                  <Pressable onPress={() => router.push("/account")} hitSlop={8}>
-                    <Text style={styles.heroAccountsAction}>Quản lý ví ➔</Text>
+                  <View style={styles.heroAccountsHeading}>
+                    <Text style={styles.heroAccountsTitle}>Danh sách ví</Text>
+                    <Text style={styles.heroAccountsCount}>{activeAccounts.length} ví</Text>
+                  </View>
+                  <Pressable accessibilityRole="button" accessibilityLabel="Quản lý ví" onPress={() => router.push('/account')} style={({ pressed }) => [styles.heroAccountsManage, pressed && { opacity: 0.7 }]}>
+                    <Text style={styles.heroAccountsAction}>Quản lý ví</Text>
+                    <ChevronRight size={15} color={theme.primary} />
                   </Pressable>
                 </View>
                 <View style={styles.heroAccountsGrid}>
                   {activeAccounts.length === 0 ? (
-                    <EmptyState title="Chưa có ví" description="Tạo ví đầu tiên để bắt đầu theo dõi số dư." />
+                    <Text style={styles.heroAccountsEmpty}>Chưa có ví đang hoạt động.</Text>
                   ) : (
-                    activeAccounts.map((account) => (
-                      <HeroAccountRow key={account.id} account={account} currency={currency} />
+                    activeAccounts.map((account, index) => (
+                      <WalletMiniRow key={account.id} account={account} showDivider={index > 0} />
                     ))
                   )}
                 </View>
@@ -761,27 +760,30 @@ function SpendingForecastChart({
   return (
     <View style={styles.forecastChartBlock}>
       <View style={styles.forecastSummaryRow}>
-        <View>
-          <Text style={styles.reportLabel}>
-            Đã chi đến hiện tại:{" "}
-            <Text style={styles.negativeText}>
-              {asOfDay}/{daysInMonth}
-            </Text>
-          </Text>
-          <Text style={[styles.forecastSummaryValue, styles.negativeText]}>{formatPlainMoney(actualTotal)}</Text>
+        <View style={styles.forecastSummaryItem}>
+          <View style={styles.forecastSummaryHeading}>
+            <View style={[styles.forecastSummaryDot, { backgroundColor: theme.dangerText }]} />
+            <Text numberOfLines={1} style={styles.forecastSummaryLabel}>Đã chi<Text style={styles.forecastSummaryCaption}> · {String(asOfDay).padStart(2, '0')}/{String(chartBaseMonth + 1).padStart(2, '0')}</Text></Text>
+          </View>
+          <View style={styles.forecastSummaryAmountRow}>
+            <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} style={styles.forecastSummaryValue}>{formatPlainMoney(actualTotal)}</Text>
+            <Text style={styles.forecastSummaryUnit}>{currency === 'VND' ? 'đ' : currency}</Text>
+          </View>
         </View>
-        <View style={styles.forecastSummaryRight}>
-          <Text style={styles.reportLabel}>Tổng dự kiến sau {forecastPoints.length - 1} ngày</Text>
-          <Text style={styles.forecastSummaryValue}>{formatPlainMoney(forecastEnd.value)}</Text>
+        <View style={[styles.forecastSummaryItem, styles.forecastSummaryPrediction]}>
+          <View style={styles.forecastSummaryHeading}>
+            <View style={[styles.forecastSummaryDot, { backgroundColor: theme.primary }]} />
+            <Text numberOfLines={1} style={styles.forecastSummaryLabel}>Dự kiến<Text style={styles.forecastSummaryCaption}>{hasForecastData ? ` ${forecastPoints.length - 1} ngày` : ''}</Text></Text>
+          </View>
+          <View style={styles.forecastSummaryAmountRow}>
+            <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} style={[styles.forecastSummaryValue, { color: theme.primary }]}>{hasForecastData ? formatPlainMoney(forecastEnd.value) : '—'}</Text>
+            {hasForecastData ? <Text style={styles.forecastSummaryUnit}>{currency === 'VND' ? 'đ' : currency}</Text> : null}
+          </View>
         </View>
-      </View>
-      <View style={styles.forecastDivider}>
-        <View style={[styles.forecastDividerSegment, styles.forecastDividerActual]} />
-        <View style={[styles.forecastDividerSegment, styles.forecastDividerPrediction]} />
       </View>
       <View style={styles.forecastChartCanvas}>
         <Svg
-          height={forecastChart.svgHeight}
+          height="100%"
           width="100%"
           viewBox={`0 0 ${forecastChart.width} ${forecastChart.svgHeight}`}
         >
@@ -960,7 +962,7 @@ function SpendingForecastChart({
             fontFamily={chartFont.fontFamily}
                   fontWeight={chartFont.fontWeight === 'normal' ? 'normal' : '500'}
             textAnchor="middle"
-            x={asOfX}
+            x={Math.max(forecastChart.left + 20, Math.min(asOfX, forecastChart.right - 20))}
             y={forecastChart.top - 7}
           >
             Hiện tại
@@ -981,26 +983,6 @@ function SpendingForecastChart({
         <Text style={styles.forecastNote}>Dự đoán đang ở trạng thái {forecastStatus}.</Text>
       ) : null}
     </View>
-  );
-}
-
-// Tài khoản trong Tổng số dư
-function HeroAccountRow({ account, currency }: { account: FinancialAccount; currency: string }) {
-  const styles = useHomeStyles();
-  const meta = accountTypeMeta[account.type] || { color: "#8fa49a", icon: "●", label: "Ví" };
-
-  return (
-    <Pressable style={styles.heroAccountRow} onPress={() => router.push("/account")}>
-      <View style={[styles.heroAccountIcon, { backgroundColor: `${meta.color}33` }]}>
-        <Text style={[styles.heroAccountIconText, { color: meta.color }]}>{meta.icon}</Text>
-      </View>
-      <Text numberOfLines={1} style={styles.heroAccountName}>
-        {account.name}
-      </Text>
-      <Text style={styles.heroAccountBalance}>
-        {formatMoney(getAccountCurrentBalance(account), account.currency || currency)}
-      </Text>
-    </Pressable>
   );
 }
 
@@ -1231,63 +1213,37 @@ function createStyles(theme: AppTheme) {
       flexDirection: "row",
       justifyContent: "space-between",
       alignItems: "center",
-      marginBottom: 12,
+      gap: 12,
+      marginBottom: 8,
     },
+    heroAccountsHeading: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 8 },
+    heroAccountsManage: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 2 },
+    heroAccountsAction: { ...Typography.caption, color: theme.primary, fontWeight: '600' },
+    heroAccountsCount: { ...Typography.caption, color: theme.textMuted, backgroundColor: theme.cardAlt, borderRadius: 9, paddingVertical: 3, paddingHorizontal: 9 },
     heroAccountsTitle: {
+      ...Typography.label,
       color: theme.text,
-      fontSize: 13,
-      fontWeight: '600',
-    },
-    heroAccountsAction: {
-      color: theme.textMuted,
-      fontSize: 12,
-      fontWeight: '600',
+      fontSize: 14,
+      flexShrink: 1,
     },
     heroAccountsGrid: {
-      gap: 8,
-    },
-    heroAccountRow: {
-      flexDirection: "row",
-      alignItems: "center",
       backgroundColor: theme.card,
-      borderRadius: 6,
-      paddingVertical: 10,
+      borderWidth: 1,
+      borderColor: theme.border,
+      borderRadius: 16,
       paddingHorizontal: 12,
+      paddingVertical: 2,
     },
-    heroAccountIcon: {
-      alignItems: "center",
-      borderRadius: 15,
-      height: 30,
-      justifyContent: "center",
-      marginRight: 10,
-      width: 30,
-    },
-    heroAccountIconText: {
-      fontSize: 15,
-      fontWeight: '600',
-    },
-    heroAccountName: {
-      color: theme.text,
-      fontSize: 14,
-      fontWeight: '600',
-      flex: 1,
-      marginRight: 8,
-    },
-    heroAccountBalance: {
-      color: theme.text,
-      fontSize: 14,
-      fontWeight: '600',
-    },
+    heroAccountsEmpty: { ...Typography.small, color: theme.textMuted, paddingVertical: 16, textAlign: 'center' },
     reportCard: {
       backgroundColor: theme.card,
       borderColor: theme.border,
-      borderRadius: 8,
+      borderRadius: 20,
       borderWidth: 1,
       paddingHorizontal: 16,
-      paddingBottom: 14,
-      paddingTop: 10,
+      paddingBottom: 10,
+      paddingTop: 12,
     },
-    reportLabel: { color: theme.textMuted, fontSize: 12, fontWeight: '600' },
     chartEmptyState: {
       alignItems: "center",
       backgroundColor: theme.cardAlt,
@@ -1298,20 +1254,23 @@ function createStyles(theme: AppTheme) {
       padding: 18,
     },
     chartEmptyText: { color: theme.textSubtle, fontSize: 12, fontWeight: '600' },
-    forecastChartBlock: { marginTop: 0 },
-    forecastChartCanvas: { marginTop: 8 },
-    forecastDivider: { flexDirection: "row", gap: 6, marginTop: 10 },
-    forecastDividerActual: { backgroundColor: theme.dangerText, opacity: 0.34 },
-    forecastDividerPrediction: { backgroundColor: theme.primary, opacity: 0.28 },
-    forecastDividerSegment: { borderRadius: 2, flex: 1, height: 2 },
+    forecastChartBlock: { width: '100%' },
+    forecastChartCanvas: { marginTop: 8, width: '100%', aspectRatio: forecastChart.width / forecastChart.svgHeight },
     forecastLegendDot: { borderRadius: 4, height: 8, width: 8 },
     forecastLegendItem: { alignItems: "center", flexDirection: "row", gap: 6 },
-    forecastLegendRow: { flexDirection: "row", gap: 14, marginTop: 8 },
-    forecastLegendText: { color: theme.textSubtle, fontSize: 11, fontWeight: '600' },
+    forecastLegendRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 20, marginTop: 4, paddingTop: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.border },
+    forecastLegendText: { ...Typography.caption, color: theme.textMuted, fontSize: 11 },
     forecastNote: { color: theme.textSubtle, fontSize: 11, fontWeight: '600', lineHeight: 16, marginTop: 8 },
-    forecastSummaryRight: { alignItems: "flex-end", flex: 1 },
-    forecastSummaryRow: { alignItems: "flex-start", flexDirection: "row", justifyContent: "space-between", gap: 12 },
-    forecastSummaryValue: { color: theme.text, fontSize: 16, fontWeight: '600', marginTop: 4 },
+    forecastSummaryRow: { width: '100%', flexDirection: 'row', alignItems: 'stretch', paddingBottom: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: theme.border },
+    forecastSummaryItem: { width: '50%', maxWidth: '50%', flexGrow: 0, flexShrink: 0, minWidth: 0, paddingRight: 12 },
+    forecastSummaryPrediction: { paddingRight: 0, paddingLeft: 12, borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: theme.border },
+    forecastSummaryHeading: { width: '100%', flexDirection: 'row', alignItems: 'center', gap: 5, minHeight: 16 },
+    forecastSummaryDot: { width: 5, height: 5, borderRadius: 3, flexShrink: 0 },
+    forecastSummaryLabel: { ...Typography.label, fontSize: 11, lineHeight: 16, color: theme.textMuted, flexShrink: 1 },
+    forecastSummaryAmountRow: { width: '100%', flexDirection: 'row', alignItems: 'baseline', gap: 3, marginTop: 3, minHeight: 26 },
+    forecastSummaryValue: { ...Typography.section, color: theme.text, fontSize: 18, lineHeight: 26, fontWeight: '600', minWidth: 0, flexShrink: 1 },
+    forecastSummaryUnit: { ...Typography.caption, fontSize: 10, lineHeight: 14, color: theme.textMuted, flexShrink: 0 },
+    forecastSummaryCaption: { color: theme.textSubtle, fontSize: 10, lineHeight: 16, fontWeight: '400' },
     reportSummaryRow: {
       borderTopColor: theme.border,
       borderTopWidth: 1,

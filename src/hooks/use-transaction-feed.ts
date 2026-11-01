@@ -2,6 +2,8 @@ import { useFocusEffect } from "expo-router";
 import { useCallback, useRef, useState } from "react";
 
 import { transactionsApi, type Transaction, type TransactionListParams } from "@/api/transactionsApi";
+import type { CreateTransferPayload } from '@/api/transfersApi';
+import { isIncomingTransaction } from '@/utils/transactionPresentation';
 
 const LOAD_MORE_MIN_DURATION_MS = 1_000;
 
@@ -93,5 +95,24 @@ export function useTransactionFeed(params: TransactionListParams) {
     }
   }, [accountId, categoryId, fromDate, key, toDate]);
 
-  return { transactions, totalCount, isLoading, isRefreshing, isLoadingMore, error, loadMoreError, hasMore, reload, loadMore };
+  // Apply confirmed writes before reloading so a failed refresh cannot restore a deleted row.
+  const applyChange = useCallback((original: Transaction, updated: Transaction | null, transferUpdate?: CreateTransferPayload) => {
+    const affected = (row: Transaction) => (updated === null || transferUpdate) && original.transferId != null
+      ? row.transferId === original.transferId : row.id === original.id;
+    if (updated === null) {
+      const removed = transactions.filter(affected).length;
+      setTotalCount(current => Math.max(0, current - removed));
+    }
+    setTransactions(current => current.flatMap(row => {
+      if (!affected(row)) return [row];
+      if (updated === null) return [];
+      if (!transferUpdate) return [updated];
+      return [{ ...row, amount: transferUpdate.amount, description: transferUpdate.description ?? null,
+        accountId: isIncomingTransaction(row.type) ? transferUpdate.toAccountId : transferUpdate.fromAccountId,
+        transactionDate: transferUpdate.transferDate, categoryId: null, categoryName: '', isExcluded: true,
+        location: null, updatedAt: updated.updatedAt }];
+    }));
+  }, [transactions]);
+
+  return { transactions, totalCount, isLoading, isRefreshing, isLoadingMore, error, loadMoreError, hasMore, reload, loadMore, applyChange };
 }

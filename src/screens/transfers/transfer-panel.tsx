@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { financialAccountApi, type FinancialAccount } from '@/api/financialAccountApi';
 import { transfersApi, type Transfer } from '@/api/transfersApi';
 import { AppText as Text, AppTextInput as TextInput } from '@/components/app-text';
+import { MoneyInput } from '@/components/money-input';
 import { BottomPopup, BottomPopupSheet } from '@/components/bottom-popup';
 import { ScreenGradientBackground } from '@/components/screen-gradient-background';
 import { invalidateAIAnalysis } from '@/hooks/use-ai-analysis';
@@ -218,7 +219,7 @@ export function TransferPanel({ embedded = false, active = true, bottomPadding, 
             </View>
             <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
               <Text style={[Typography.label, { color: theme.textMuted }]}>Số tiền chuyển{currency ? ` (${currency})` : ''}</Text>
-              <TextInput accessibilityLabel="Số tiền chuyển" value={amount} onChangeText={setAmount} editable={!saving} keyboardType="decimal-pad" placeholder="0" placeholderTextColor={theme.textSubtle} style={[styles.amount, { color: theme.primary }]} />
+              <MoneyInput accessibilityLabel="Số tiền chuyển" value={amount} onChangeText={setAmount} editable={!saving} placeholder="0" placeholderTextColor={theme.textSubtle} style={[styles.amount, { color: theme.primary }]} />
               <View style={[styles.divider, { backgroundColor: theme.border }]} />
               {Platform.OS === 'web' ? <View style={styles.row}>
                 <TextInput accessibilityLabel="Ngày chuyển dd/MM/yyyy" value={webDate} onChangeText={setWebDate} editable={!saving} placeholder="dd/MM/yyyy" placeholderTextColor={theme.textSubtle} style={[styles.dateInput, { color: theme.text }]} />

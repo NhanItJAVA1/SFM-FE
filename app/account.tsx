@@ -1,612 +1,372 @@
-import { Typography } from '@/theme/typography';
+import { router, useFocusEffect } from 'expo-router';
+import { ArrowLeft, ArrowRightLeft, Check, CheckCircle2, ChevronRight, LockKeyhole, Pencil, Plus, Trash2, Wallet, X, type LucideIcon } from 'lucide-react-native';
+import { type ComponentRef, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Keyboard, KeyboardAvoidingView, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { financialAccountApi, type AccountType, type FinancialAccount } from '@/api/financialAccountApi';
 import { AppText as Text, AppTextInput as TextInput } from '@/components/app-text';
-import { router, useFocusEffect } from "expo-router";
-import { useCallback, useMemo, useState } from "react";
-import {
-  ActivityIndicator,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  View,
-} from "react-native";
+import { MoneyInput } from '@/components/money-input';
+import { BottomPopup, BottomPopupSheet } from '@/components/bottom-popup';
+import { AccountIcon, accountTypes, getAccountTypeMeta, WalletCard } from '@/components/wallet-card';
+import { ScreenGradientBackground } from '@/components/screen-gradient-background';
+import { FocusedScreenTransition } from '@/components/screen-transition';
+import { invalidateAIAnalysis } from '@/hooks/use-ai-analysis';
+import { useAppTheme } from '@/hooks/use-app-theme';
+import type { AppTheme } from '@/theme/appTheme';
+import { Typography } from '@/theme/typography';
+import { getAccountCurrentBalance } from '@/utils/accountBalance';
+import { formatCashflowAmount } from '@/utils/walletCashflow';
 
-import { AccountType, FinancialAccount, financialAccountApi } from "@/api/financialAccountApi";
-import { FocusedScreenTransition } from "@/components/screen-transition";
-import { ScreenGradientBackground } from "@/components/screen-gradient-background";
-import { useAppTheme } from "@/hooks/use-app-theme";
-import type { AppTheme } from "@/theme/appTheme";
-import { getAccountCurrentBalance } from "@/utils/accountBalance";
-
-const accountTypes: { label: string; value: AccountType }[] = [
-  { label: "Cash", value: "Cash" },
-  { label: "Bank", value: "Bank" },
-  // { label: 'E-Wallet', value: 'EWallet' },
-  // { label: 'Credit Card', value: 'CreditCard' },
-  { label: "Savings", value: "Savings" },
-];
-
-// Các lựa chọn hiển thị ở bước đầu; giá trị `value` được dùng để khởi tạo form.
-const walletTypeOptions: { label: string; value: AccountType; color: string; icon: string }[] = [
-  { label: "Ví cơ bản", value: "Cash", color: "#2abd4b", icon: "▰" },
-  { label: "Ví liên kết", value: "Bank", color: "#18cdb0", icon: "▤" },
-  { label: "Ví tiết kiệm", value: "Savings", color: "#f05b5b", icon: "◎" },
-];
-
-type AccountView = "wallets" | "add-options" | "create";
-
-function formatMoney(value: number, currency: string) {
-  return new Intl.NumberFormat("vi-VN", {
-    currency,
-    maximumFractionDigits: 0,
-    style: "currency",
-  }).format(value);
-}
+type AccountStyles = ReturnType<typeof createStyles>;
 
 export default function AccountScreen() {
   const theme = useAppTheme();
+  const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(theme), [theme]);
-  // `view` điều khiển ba trạng thái màn hình: danh sách ví, chọn loại ví và form tạo ví.
-  const [view, setView] = useState<AccountView>("wallets");
+  const [view, setView] = useState<'wallets' | 'form'>('wallets');
   const [accounts, setAccounts] = useState<FinancialAccount[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [name, setName] = useState("");
-  const [type, setType] = useState<AccountType>("Cash");
-  const [currency, setCurrency] = useState("VND");
-  const [initialBalance, setInitialBalance] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [openAccountMenu, setOpenAccountMenu] = useState<number | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [editingAccount, setEditingAccount] = useState<FinancialAccount | null>(null);
+  const [name, setName] = useState('');
+  const [type, setType] = useState<AccountType>('Cash');
+  const [initialBalance, setInitialBalance] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [selectedAccount, setSelectedAccount] = useState<FinancialAccount | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const busy = useRef(false);
+  const generation = useRef(0);
+  const hasLoaded = useRef(false);
+  const formScrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
+  const initialBalanceRef = useRef<ComponentRef<typeof TextInput>>(null);
+  const balanceFocused = useRef(false);
+  const scrollFrame = useRef<number | null>(null);
 
-  // Số dư hiện tại do BE tính sẵn trong currentBalance.
-  const totalBalance = useMemo(
-    () => (accounts ?? []).reduce((total, account) => total + getAccountCurrentBalance(account), 0),
-    [accounts],
-  );
+  const revealInitialBalance = useCallback(() => {
+    if (!balanceFocused.current) return;
+    if (scrollFrame.current !== null) cancelAnimationFrame(scrollFrame.current);
+    scrollFrame.current = requestAnimationFrame(() => {
+      scrollFrame.current = null;
+      if (balanceFocused.current) formScrollRef.current?.scrollToEnd({ animated: true });
+    });
+  }, []);
 
-  // Tải lại danh sách ví, đồng thời phân biệt loading lần đầu với pull-to-refresh.
-  const loadAccounts = useCallback(async (mode: "loading" | "refreshing" = "loading") => {
+  useEffect(() => {
+    const subscription = Keyboard.addListener('keyboardDidShow', revealInitialBalance);
+    return () => {
+      subscription.remove();
+      if (scrollFrame.current !== null) cancelAnimationFrame(scrollFrame.current);
+    };
+  }, [revealInitialBalance]);
+
+  const activeAccounts = accounts.filter(account => account.isActive);
+  const balanceGroups = useMemo(() => {
+    const groups = new Map<string, number>();
+    for (const account of accounts.filter(row => row.isActive)) {
+      const key = account.currency.trim().toUpperCase();
+      groups.set(key, (groups.get(key) ?? 0) + getAccountCurrentBalance(account));
+    }
+    return [...groups.entries()];
+  }, [accounts]);
+
+  const loadAccounts = useCallback(async (mode: 'loading' | 'refreshing' | 'silent' = 'loading') => {
+    const request = ++generation.current;
+    if (mode === 'loading') setIsLoading(true);
+    if (mode === 'refreshing') setIsRefreshing(true);
+    setLoadError(null);
     try {
-      if (mode === "refreshing") {
-        setIsRefreshing(true);
-      } else {
-        setIsLoading(true);
-      }
-
-      const accountResponse = await financialAccountApi.list();
-      setAccounts(Array.isArray(accountResponse.data) ? accountResponse.data : []);
-    } catch (error) {
-      Alert.alert("Không tải được ví", error instanceof Error ? error.message : "Vui lòng thử lại sau.");
+      const response = await financialAccountApi.list();
+      if (request !== generation.current) return;
+      setAccounts(Array.isArray(response.data) ? response.data : []);
+      hasLoaded.current = true;
+    } catch {
+      if (request === generation.current) setLoadError('Không tải được danh sách ví. Vui lòng thử lại.');
     } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
+      if (request === generation.current) { setIsLoading(false); setIsRefreshing(false); }
     }
   }, []);
 
   useFocusEffect(useCallback(() => {
-    // Chỉ gọi API khi đang ở màn hình danh sách; các màn hình form không cần tải lại dữ liệu.
-    if (view !== "wallets") {
-      return undefined;
-    }
-
-    const timeoutId = setTimeout(() => loadAccounts(), 0);
-
-    return () => clearTimeout(timeoutId);
+    if (view === 'wallets') void loadAccounts(hasLoaded.current ? 'silent' : 'loading');
+    return () => { generation.current++; };
   }, [loadAccounts, view]));
 
-  function handleEditAccount(account: FinancialAccount) {
-    // Nạp dữ liệu ví vào form dùng chung cho cả tạo mới và cập nhật.
-    setEditingAccount(account);
-    setName(account.name);
-    setType(account.type);
-    setCurrency(account.currency);
-    setInitialBalance(String(account.initialBalance));
-    setOpenAccountMenu(null);
-    setView("create");
+  function openForm(account?: FinancialAccount) {
+    setEditingAccount(account ?? null);
+    setName(account?.name ?? '');
+    setType(account?.type ?? 'Cash');
+    balanceFocused.current = false;
+    setInitialBalance(account ? String(account.initialBalance) : '');
+    setFormError(null); setNotice(null); setSelectedAccount(null);
+    setView('form');
   }
 
-  async function handleSaveAccount() {
-    // Chuẩn hóa dữ liệu nhập trước khi kiểm tra và gửi lên API.
+  function closeForm() {
+    if (busy.current) return;
+    balanceFocused.current = false;
+    Keyboard.dismiss(); setEditingAccount(null); setFormError(null); setView('wallets');
+  }
+
+  async function saveAccount() {
+    if (busy.current) return;
     const trimmedName = name.trim();
-    const trimmedCurrency = currency.trim().toUpperCase();
-    const normalizedBalance = initialBalance.trim().replace(/,/g, "");
-    const parsedBalance = Number(normalizedBalance || "0");
-
-    // Dừng sớm để tránh gửi request khi dữ liệu form chưa hợp lệ.
-    if (!trimmedName) {
-      Alert.alert("Thiếu tên ví", "Vui lòng nhập tên ví.");
+    const parsedBalance = Number(initialBalance.trim().replace(/,/g, '') || '0');
+    let validationError: string | null = null;
+    if (!trimmedName) validationError = 'Bạn hãy đặt tên cho ví.';
+    else if (!editingAccount && (!Number.isFinite(parsedBalance) || parsedBalance < 0)) validationError = 'Số dư ban đầu phải lớn hơn hoặc bằng 0.';
+    if (validationError) {
+      balanceFocused.current = false;
+      Keyboard.dismiss();
+      setFormError(validationError);
+      formScrollRef.current?.scrollTo({ y: 0, animated: true });
       return;
     }
-
-    if (!trimmedCurrency) {
-      Alert.alert("Thiếu tiền tệ", "Vui lòng nhập mã tiền tệ, ví dụ VND.");
-      return;
-    }
-
-    if (!Number.isFinite(parsedBalance) || parsedBalance < 0) {
-      Alert.alert("Số dư không hợp lệ", "Số dư ban đầu phải là số lớn hơn hoặc bằng 0.");
-      return;
-    }
-
+    balanceFocused.current = false;
+    busy.current = true; setIsSubmitting(true); setFormError(null); Keyboard.dismiss();
     try {
-      // Khóa nút LƯU trong thời gian request để tránh gửi trùng dữ liệu.
-      setIsSubmitting(true);
       if (editingAccount) {
-        await financialAccountApi.update(editingAccount.id, {
-          name: trimmedName,
-          type,
-          currency: trimmedCurrency,
-          isActive: editingAccount.isActive,
-        });
+        await financialAccountApi.update(editingAccount.id, { name: trimmedName, type, currency: editingAccount.currency, isActive: editingAccount.isActive });
       } else {
-        await financialAccountApi.create({
-          name: trimmedName,
-          type,
-          currency: trimmedCurrency,
-          initialBalance: parsedBalance,
-        });
+        await financialAccountApi.create({ name: trimmedName, type, currency: 'VND', initialBalance: parsedBalance });
       }
-      setName("");
-      setType("Cash");
-      setCurrency("VND");
-      setInitialBalance("");
-      setEditingAccount(null);
-      setView("wallets");
-    } catch (error) {
-      Alert.alert(
-        editingAccount ? "Cập nhật ví thất bại" : "Tạo ví thất bại",
-        error instanceof Error ? error.message : "Không thể lưu ví.",
-      );
-    } finally {
-      setIsSubmitting(false);
-    }
+      invalidateAIAnalysis();
+      setNotice(editingAccount ? 'Đã cập nhật thông tin ví.' : 'Đã thêm ví mới.');
+      setEditingAccount(null); setView('wallets');
+    } catch {
+      setFormError('Chưa thể lưu ví. Vui lòng kiểm tra kết nối và thử lại.');
+      formScrollRef.current?.scrollTo({ y: 0, animated: true });
+    } finally { busy.current = false; setIsSubmitting(false); }
   }
 
-  async function deleteAccount(account: FinancialAccount) {
+  function closeActions() {
+    if (busy.current) return;
+    setSelectedAccount(null); setDeleteError(null);
+  }
+
+  async function deleteAccount() {
+    if (!selectedAccount || busy.current) return;
+    busy.current = true; setIsDeleting(true); setDeleteError(null);
     try {
-      await financialAccountApi.delete(account.id);
-      setAccounts((currentAccounts) => currentAccounts.filter((item) => item.id !== account.id));
-    } catch (error) {
-      Alert.alert("Xóa ví thất bại", error instanceof Error ? error.message : "Không thể xóa ví.");
-    }
+      await financialAccountApi.delete(selectedAccount.id);
+      setAccounts(current => current.filter(account => account.id !== selectedAccount.id));
+      invalidateAIAnalysis();
+      setNotice('Đã xóa ví.'); setSelectedAccount(null);
+    } catch {
+      setDeleteError('Chưa thể xóa ví. Vui lòng thử lại.');
+    } finally { busy.current = false; setIsDeleting(false); }
   }
 
-  function handleDeleteAccount(account: FinancialAccount) {
-    setOpenAccountMenu(null);
-    Alert.alert("Xóa ví", `Bạn có chắc muốn xóa ví "${account.name}" không?`, [
-      { text: "Hủy", style: "cancel" },
-      { text: "Xóa", style: "destructive", onPress: () => void deleteAccount(account) },
-    ]);
-  }
+  const previewBalance = editingAccount ? getAccountCurrentBalance(editingAccount) : Number(initialBalance.replace(/,/g, '') || '0');
+  const previewCurrency = editingAccount?.currency ?? 'VND';
+  const selectedType = getAccountTypeMeta(type);
 
-  function handleCloseForm() {
-    setEditingAccount(null);
-    setView("add-options");
-  }
-
-  // Bước chọn loại ví trước khi mở form chi tiết.
-  if (view === "add-options") {
-    return (
-      <FocusedScreenTransition style={styles.screen} triggerKey={view} variant="slide-left">
+  return (
+    <FocusedScreenTransition style={styles.screen} triggerKey={view} variant={view === 'form' ? 'slide-left' : 'fade'} reanimateOnFocus={false}>
+      <SafeAreaView style={styles.screen} edges={['top']}>
         <ScreenGradientBackground darkOnly />
-        <View style={styles.walletHeader}>
-          <Pressable onPress={() => setView("wallets")} hitSlop={12}>
-            <Text style={styles.closeText}>×</Text>
-          </Pressable>
-          <Text style={styles.topTitle}>Thêm Ví</Text>
-          <View style={styles.topSpacer} />
-        </View>
-        <View style={styles.addOptionsPanel}>
-          <Text style={styles.addOptionsTitle}>Thêm ví</Text>
-          <View style={styles.addOptionsGrid}>
-            {walletTypeOptions.map((option) => (
-              <Pressable
-                key={option.value}
-                style={[styles.addOption, { backgroundColor: option.color }]}
-                onPress={() => {
-                  setType(option.value);
-                  setView("create");
-                }}
-              >
-                <Text style={styles.addOptionTitle}>{option.label}</Text>
-                <Text style={styles.addOptionIcon}>{option.icon}</Text>
-              </Pressable>
-            ))}
+        <KeyboardAvoidingView style={styles.screenBody} enabled={view === 'form' && Platform.OS !== 'web'} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={insets.top}>
+          <View style={styles.header}>
+            <Pressable accessibilityRole="button" accessibilityLabel={view === 'form' ? 'Quay lại danh sách ví' : 'Quay lại'} disabled={isSubmitting} onPress={view === 'form' ? closeForm : () => router.canGoBack() ? router.back() : router.replace('/(tabs)/home')} style={({ pressed }) => [styles.headerButton, pressed && styles.pressed]}><ArrowLeft size={22} color={theme.text} /></Pressable>
+            <Text accessibilityRole="header" style={styles.headerTitle}>{view === 'form' ? editingAccount ? 'Sửa ví' : 'Thêm ví' : 'Ví của tôi'}</Text>
+            <View style={styles.headerButton}>{view === 'wallets' ? <Wallet size={21} color={theme.primary} /> : null}</View>
           </View>
-        </View>
-      </FocusedScreenTransition>
-    );
-  }
 
-  // Form nhập thông tin ví mới hoặc chỉnh sửa ví hiện tại.
-  if (view === "create") {
-    return (
-      <FocusedScreenTransition style={styles.screen} triggerKey={view} variant="slide-left">
-        <KeyboardAvoidingView behavior={Platform.select({ ios: "padding", default: undefined })} style={styles.screen}>
-          <ScreenGradientBackground darkOnly />
-          <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-            <View style={styles.topBar}>
-              <Pressable onPress={handleCloseForm} hitSlop={12}>
-                <Text style={styles.closeText}>×</Text>
-              </Pressable>
-              <Text style={styles.topTitle}>{editingAccount ? "Sửa ví" : "Thêm ví"}</Text>
-              <Pressable onPress={handleSaveAccount} disabled={isSubmitting}>
-                <Text style={styles.saveText}>LƯU</Text>
-              </Pressable>
+          {view === 'form' ? <ScrollView
+            ref={formScrollRef}
+            style={styles.formScroll}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+            showsVerticalScrollIndicator={false}
+            onLayout={revealInitialBalance}
+            onContentSizeChange={revealInitialBalance}
+            contentContainerStyle={styles.formContent}
+          >
+            <Text style={styles.intro}>{editingAccount ? 'Cập nhật thông tin để dễ quản lý ví của bạn.' : 'Thêm nơi bạn giữ tiền và bắt đầu theo dõi số dư.'}</Text>
+            <View style={[styles.preview, { borderColor: `${selectedType.color}40` }]}>
+              <View style={styles.previewTop}>
+                <AccountIcon type={type} />
+                <View style={styles.grow}><Text numberOfLines={2} style={styles.previewName}>{name.trim() || 'Ví mới của bạn'}</Text><Text style={styles.muted}>{selectedType.label} · {previewCurrency}</Text></View>
+                <View style={styles.previewDot} />
+              </View>
+              <Text style={styles.balanceCaption}>{editingAccount ? 'Số dư hiện tại' : 'Số dư ban đầu'}</Text>
+              <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.65} style={styles.previewAmount}>{formatCashflowAmount(Number.isFinite(previewBalance) ? previewBalance : 0, previewCurrency)}</Text>
             </View>
 
-            <View style={styles.form}>
+            {formError ? <Text accessibilityRole="alert" style={styles.errorNotice}>{formError}</Text> : null}
+            <View style={styles.formCard}>
+              <Text style={styles.sectionTitle}>Thông tin ví</Text>
               <View style={styles.field}>
-                <Text style={styles.label}>Tên Ví</Text>
-                <TextInput
-                  placeholder="Cash wallet"
-                  placeholderTextColor={theme.inputPlaceholder}
-                  style={styles.input}
-                  value={name}
-                  onChangeText={setName}
-                />
+                <Text style={styles.label}>Tên ví</Text>
+                <TextInput accessibilityLabel="Tên ví" value={name} onChangeText={value => { setName(value); setFormError(null); }} editable={!isSubmitting} maxLength={100} placeholder="Ví dụ: Tiền mặt, Tài khoản lương" placeholderTextColor={theme.inputPlaceholder} style={styles.input} returnKeyType={editingAccount ? 'done' : 'next'} onSubmitEditing={() => editingAccount ? Keyboard.dismiss() : initialBalanceRef.current?.focus()} />
               </View>
-
               <View style={styles.field}>
-                <Text style={styles.label}>Loại tài khoản</Text>
-                <View style={styles.typeGrid}>
-                  {accountTypes.map((accountType) => {
-                    const isSelected = accountType.value === type;
-
-                    return (
-                      <Pressable
-                        key={accountType.value}
-                        style={[styles.typeOption, isSelected && styles.typeOptionSelected]}
-                        onPress={() => setType(accountType.value)}
-                      >
-                        <Text style={[styles.typeOptionText, isSelected && styles.typeOptionTextSelected]}>
-                          {accountType.label}
-                        </Text>
-                      </Pressable>
-                    );
+                <Text style={styles.label}>Loại ví</Text>
+                <View accessibilityRole="radiogroup" style={styles.typeGrid}>
+                  {accountTypes.map(option => {
+                    const selected = type === option.value;
+                    const Icon = option.Icon;
+                    return <Pressable key={option.value} accessibilityRole="radio" accessibilityState={{ checked: selected }} disabled={isSubmitting} onPress={() => setType(option.value)} style={({ pressed }) => [styles.typeOption, selected && styles.typeSelected, pressed && styles.pressed]}>
+                      {selected ? <View style={styles.typeCheck}><Check size={10} color={theme.textInverse} strokeWidth={3} /></View> : null}
+                      <Icon size={25} color={selected ? theme.primary : theme.textMuted} strokeWidth={1.7} />
+                      <Text style={[styles.typeLabel, selected && { color: theme.primary, fontWeight: '600' }]}>{option.label}</Text>
+                    </Pressable>;
                   })}
                 </View>
               </View>
-
-              <View style={styles.row}>
-                <View style={[styles.field, styles.currencyField]}>
-                  <Text style={styles.label}>Tiền tệ</Text>
-                  <TextInput
-                    autoCapitalize="characters"
-                    maxLength={3}
-                    placeholder="VND"
-                    placeholderTextColor={theme.inputPlaceholder}
-                    style={styles.input}
-                    value={currency}
-                    onChangeText={setCurrency}
-                  />
-                </View>
-
-                <View style={[styles.field, styles.balanceField]}>
-                  <Text style={styles.label}>Số dư ban đầu</Text>
-                  <TextInput
-                    editable={!editingAccount}
-                    keyboardType="decimal-pad"
-                    placeholder="1000000"
-                    placeholderTextColor={theme.inputPlaceholder}
-                    style={[styles.input, editingAccount && styles.inputDisabled]}
+              <View style={styles.field}>
+                <View style={styles.inline}><Text style={styles.label}>Số dư ban đầu</Text>{editingAccount ? <LockKeyhole size={14} color={theme.textMuted} /> : null}</View>
+                <View style={[styles.currencyInput, editingAccount && styles.inputDisabled]}>
+                  <MoneyInput
+                    ref={initialBalanceRef}
+                    accessibilityLabel="Số dư ban đầu"
+                    editable={!editingAccount && !isSubmitting}
                     value={initialBalance}
-                    onChangeText={setInitialBalance}
+                    onChangeText={value => { setInitialBalance(value); setFormError(null); }}
+                    onFocus={() => { balanceFocused.current = true; revealInitialBalance(); }}
+                    onBlur={() => { balanceFocused.current = false; }}
+                    keyboardType="decimal-pad"
+                    returnKeyType="done"
+                    onSubmitEditing={() => Keyboard.dismiss()}
+                    placeholder="0"
+                    placeholderTextColor={theme.inputPlaceholder}
+                    style={[styles.currencyText, editingAccount && { color: theme.textMuted }]}
                   />
+                  <Text style={styles.muted}>{previewCurrency}</Text>
                 </View>
-              </View>
-
-              <View style={styles.formHint}>
-                <Text style={styles.formHintTitle}>
-                  {editingAccount ? "Đang chỉnh sửa ví" : `Đang tạo ${type === "Savings" ? "Ví tiết kiệm" : "Ví mới"}`}
-                </Text>
-                <Text style={styles.formHintText}>
-                  {editingAccount
-                    ? "Số dư ban đầu không thay đổi khi cập nhật thông tin ví."
-                    : "Thông tin sẽ được lưu vào FinancialAccounts."}
-                </Text>
+                <Text style={styles.fieldHint}>{editingAccount ? 'Số dư ban đầu được giữ nguyên khi sửa ví.' : 'Nhập số tiền đang có trong ví. Bạn có thể để 0.'}</Text>
               </View>
             </View>
-          </ScrollView>
+          </ScrollView> : <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.listContent} refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={() => void loadAccounts('refreshing')} tintColor={theme.primary} />}>
+            <View style={styles.summary}>
+              <View pointerEvents="none" style={styles.summaryDecoration} />
+              <View style={styles.inline}><View style={styles.summaryIcon}><Wallet size={20} color={theme.primary} /></View><Text style={styles.summaryLabel}>Tổng số dư</Text></View>
+              {isLoading || loadError && accounts.length === 0 ? <Text style={styles.summaryAmount}>—</Text> : (balanceGroups.length ? balanceGroups : [['VND', 0] as const]).map(([code, amount]) => <Text key={code} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6} style={styles.summaryAmount}>{formatCashflowAmount(amount, code)}</Text>)}
+              <View style={styles.summaryFooter}><View style={styles.activeDot} /><Text style={styles.summaryFootnote}>{activeAccounts.length} ví đang hoạt động</Text></View>
+            </View>
+
+            {notice ? <View style={styles.successNotice}><CheckCircle2 size={18} color={theme.goodText} /><Text accessibilityRole="alert" style={[styles.grow, { color: theme.goodText }]}>{notice}</Text><Pressable accessibilityRole="button" accessibilityLabel="Đóng thông báo" onPress={() => setNotice(null)} hitSlop={8}><X size={16} color={theme.goodText} /></Pressable></View> : null}
+            <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Danh sách ví</Text><Text style={styles.countLabel}>{accounts.length} ví</Text></View>
+            {loadError ? <View style={styles.emptyCard}><Text accessibilityRole="alert" style={styles.errorText}>{loadError}</Text><Pressable accessibilityRole="button" onPress={() => void loadAccounts('refreshing')} style={styles.retryButton}><Text style={styles.retryText}>Tải lại danh sách</Text></Pressable></View> : null}
+            {isLoading ? <View style={styles.emptyCard}><ActivityIndicator color={theme.primary} /><Text style={styles.muted}>Đang tải ví của bạn...</Text></View> : accounts.length === 0 && !loadError ? <View style={styles.emptyCard}>
+              <View style={styles.emptyIcon}><Wallet size={34} color={theme.primary} strokeWidth={1.5} /></View>
+              <Text style={styles.emptyTitle}>Bắt đầu với ví đầu tiên</Text>
+              <Text style={styles.emptyDescription}>Quản lý tiền mặt, tài khoản ngân hàng và tiền tiết kiệm ở cùng một nơi.</Text>
+            </View> : accounts.map(account => <WalletCard key={account.id} account={account} actionIcon="menu" onPress={() => { setSelectedAccount(account); setConfirmDelete(false); setDeleteError(null); }} />)}
+          </ScrollView>}
+
+          <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+            <Pressable accessibilityRole="button" disabled={isSubmitting} onPress={view === 'form' ? () => void saveAccount() : () => openForm()} style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed, isSubmitting && styles.disabled]}>
+              {isSubmitting ? <ActivityIndicator color={theme.textInverse} /> : <>{view === 'form' && editingAccount ? <Check size={20} color={theme.textInverse} /> : <Plus size={20} color={theme.textInverse} />}<Text style={styles.primaryButtonText}>{view === 'wallets' ? 'Thêm ví mới' : editingAccount ? 'Lưu thay đổi' : 'Tạo ví'}</Text></>}
+            </Pressable>
+          </View>
         </KeyboardAvoidingView>
-      </FocusedScreenTransition>
-    );
-  }
 
-  // Màn hình mặc định: tổng số dư, danh sách ví và thao tác thêm ví.
-  if (view === "wallets") {
-    return (
-      <FocusedScreenTransition style={styles.screen} triggerKey={view} variant="slide-right">
-        <ScreenGradientBackground darkOnly />
-        <View style={styles.walletHeader}>
-          <Pressable onPress={() => router.back()} hitSlop={12}>
-            <Text style={styles.backText}>‹</Text>
-          </Pressable>
-          <Text style={styles.topTitle}>Ví của tôi</Text>
-          <View style={styles.headerTools}>
-            <Text style={styles.filterIcon}>☰</Text>
-            <Text style={styles.searchIcon}>⌕</Text>
+        <BottomPopup visible={selectedAccount !== null} onRequestClose={closeActions}>
+          <View style={styles.overlay}>
+            <Pressable accessibilityRole="button" accessibilityLabel="Đóng thao tác ví" disabled={isDeleting} onPress={closeActions} style={StyleSheet.absoluteFill} />
+            <BottomPopupSheet style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 20) }]}>
+              <View style={styles.sheetHandle} />
+              <View style={styles.sheetHeader}><Text style={styles.sectionTitle}>{confirmDelete ? 'Xóa ví?' : 'Quản lý ví'}</Text><Pressable accessibilityRole="button" accessibilityLabel="Đóng" disabled={isDeleting} onPress={closeActions} style={styles.headerButton}><X size={20} color={theme.textMuted} /></Pressable></View>
+              {selectedAccount ? <>
+                <View style={styles.selectedWallet}><AccountIcon type={selectedAccount.type} /><View style={styles.grow}><Text numberOfLines={2} style={styles.walletName}>{selectedAccount.name}</Text><Text style={styles.muted}>{formatCashflowAmount(getAccountCurrentBalance(selectedAccount), selectedAccount.currency)}</Text></View></View>
+                {deleteError ? <Text accessibilityRole="alert" style={styles.errorNotice}>{deleteError}</Text> : null}
+                {confirmDelete ? <>
+                  <Text style={styles.deleteDescription}>Bạn muốn xóa ví “{selectedAccount.name}”? Ví sẽ không còn hiển thị trong danh sách.</Text>
+                  <Pressable accessibilityRole="button" disabled={isDeleting} onPress={() => void deleteAccount()} style={[styles.primaryButton, { backgroundColor: theme.danger }, isDeleting && styles.disabled]}>{isDeleting ? <ActivityIndicator color={theme.textInverse} /> : <><Trash2 size={19} color={theme.textInverse} /><Text style={styles.primaryButtonText}>Xác nhận xóa ví</Text></>}</Pressable>
+                  <Pressable accessibilityRole="button" disabled={isDeleting} onPress={() => { setConfirmDelete(false); setDeleteError(null); }} style={styles.cancelButton}><Text style={styles.muted}>Hủy</Text></Pressable>
+                </> : <>
+                  {selectedAccount.isActive ? <WalletAction label="Chuyển tiền đến ví khác" Icon={ArrowRightLeft} styles={styles} onPress={() => { closeActions(); router.push({ pathname: '/transfer', params: { fromAccountId: String(selectedAccount.id) } }); }} /> : null}
+                  <WalletAction label="Sửa thông tin ví" Icon={Pencil} styles={styles} onPress={() => openForm(selectedAccount)} />
+                  <WalletAction label="Xóa ví" Icon={Trash2} danger styles={styles} onPress={() => setConfirmDelete(true)} />
+                </>}
+              </> : null}
+            </BottomPopupSheet>
           </View>
-        </View>
+        </BottomPopup>
+      </SafeAreaView>
+    </FocusedScreenTransition>
+  );
+}
 
-        <ScrollView
-          contentContainerStyle={styles.walletList}
-          refreshControl={
-            <RefreshControl
-              refreshing={isRefreshing}
-              onRefresh={() => loadAccounts("refreshing")}
-              tintColor={theme.text}
-            />
-          }
-        >
-          {openAccountMenu !== null ? (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Đóng menu ví"
-              style={styles.accountMenuDismissLayer}
-              onPress={() => setOpenAccountMenu(null)}
-            />
-          ) : null}
-
-          <View style={styles.balanceSummary}>
-            <Text style={styles.summaryLabel}>Tổng số dư</Text>
-            <Text style={styles.summaryValue}>{formatMoney(totalBalance, accounts[0]?.currency ?? "VND")}</Text>
-          </View>
-
-          {isLoading ? (
-            <ActivityIndicator color={theme.primary} />
-          ) : accounts.length === 0 ? (
-            <Text style={styles.emptyText}>Chưa có Ví nào. Bấm + để thêm Ví đầu tiên.</Text>
-          ) : (
-            // Menu thao tác của từng ví được mở độc lập theo `account.id`.
-            (accounts ?? []).map((account) => (
-              <View
-                key={account.id}
-                style={[styles.walletCard, openAccountMenu === account.id && styles.walletCardOpen]}
-              >
-                <View style={styles.walletIcon}>
-                  <Text style={styles.walletIconText}>▣</Text>
-                </View>
-                <View style={styles.walletInfo}>
-                  <Text style={styles.walletName}>{account.name}</Text>
-                  <Text style={styles.walletType}>{account.type}</Text>
-                </View>
-                <View style={styles.walletRight}>
-                  <Text style={styles.walletBalance}>
-                    {formatMoney(getAccountCurrentBalance(account), account.currency)}
-                  </Text>
-                  <Pressable
-                    style={styles.moreButton}
-                    onPress={() => setOpenAccountMenu(openAccountMenu === account.id ? null : account.id)}
-                  >
-                    <Text style={styles.moreText}>⋯</Text>
-                  </Pressable>
-                </View>
-                {openAccountMenu === account.id && (
-                  <View style={styles.accountMenu}>
-                    <Pressable
-                      style={({ pressed }) => [styles.accountMenuItem, pressed && styles.accountMenuItemPressed]}
-                      onPress={() => setOpenAccountMenu(null)}
-                    >
-                      <Text style={styles.accountMenuText}>★ Đặt làm ví mặc định</Text>
-                    </Pressable>
-                    <Pressable
-                      style={({ pressed }) => [styles.accountMenuItem, pressed && styles.accountMenuItemPressed]}
-                      onPress={() => {
-                        setOpenAccountMenu(null);
-                        router.push({ pathname: '/transfer', params: { fromAccountId: String(account.id) } });
-                      }}
-                    >
-                      <Text style={styles.accountMenuText}>↔ Chuyển tiền đến ví khác</Text>
-                    </Pressable>
-                    <Pressable
-                      style={({ pressed }) => [styles.accountMenuItem, pressed && styles.accountMenuItemPressed]}
-                      onPress={() => handleEditAccount(account)}
-                    >
-                      <Text style={styles.accountMenuText}>□ Sửa</Text>
-                    </Pressable>
-                    <Pressable
-                      style={({ pressed }) => [styles.accountMenuItem, pressed && styles.accountMenuItemPressed]}
-                      onPress={() => handleDeleteAccount(account)}
-                    >
-                      <Text style={[styles.accountMenuText, styles.deleteMenuText]}>♧ Xóa</Text>
-                    </Pressable>
-                  </View>
-                )}
-              </View>
-            ))
-          )}
-        </ScrollView>
-        <Pressable style={styles.floatingAddButton} onPress={() => setView("add-options")}>
-          <Text style={styles.floatingAddText}>+</Text>
-        </Pressable>
-      </FocusedScreenTransition>
-    );
-  }
-
-  return null;
+function WalletAction({ label, Icon, onPress, danger = false, styles }: { label: string; Icon: LucideIcon; onPress: () => void; danger?: boolean; styles: AccountStyles }) {
+  const theme = useAppTheme();
+  return <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.actionRow, pressed && styles.actionPressed]}><Icon size={20} color={danger ? theme.dangerText : theme.textMuted} /><Text style={[styles.actionLabel, danger && { color: theme.dangerText }]}>{label}</Text><ChevronRight size={18} color={theme.textSubtle} /></Pressable>;
 }
 
 function createStyles(theme: AppTheme) {
   return StyleSheet.create({
     screen: { flex: 1, backgroundColor: theme.screen },
-    content: { padding: 24, paddingBottom: 96 },
-    walletHeader: {
-      alignItems: "center",
-      flexDirection: "row",
-      justifyContent: "space-between",
-      paddingBottom: 16,
-      paddingHorizontal: 20,
-      paddingTop: 56,
-    },
-    backText: { color: theme.primary, fontSize: 17, fontWeight: '600' },
-    closeText: { color: theme.text, fontSize: 32, fontWeight: "300", lineHeight: 34 },
-    saveText: { color: theme.text, fontSize: 14, fontWeight: '600' },
-    topTitle: { ...Typography.title, color: theme.text },
-    topBar: {
-      alignItems: "center",
-      flexDirection: "row",
-      justifyContent: "space-between",
-      marginBottom: 12,
-      marginTop: 32,
-    },
-    topSpacer: { width: 82 },
-    headerTools: { alignItems: "center", flexDirection: "row", gap: 22, width: 72 },
-    filterIcon: { color: theme.text, fontSize: 21, transform: [{ rotate: "90deg" }] },
-    searchIcon: { color: theme.text, fontSize: 27 },
-    walletList: { flexGrow: 1, gap: 14, padding: 20, paddingBottom: 96, position: "relative" },
-    balanceSummary: { paddingBottom: 0, paddingTop: 0 },
-    summaryLabel: { color: theme.textMuted, fontSize: 14, marginBottom: 4 },
-    summaryValue: { color: theme.text, fontSize: 26, fontWeight: '600' },
-    walletCard: {
-      alignItems: "center",
-      backgroundColor: theme.card,
-      borderColor: theme.border,
-      borderRadius: 8,
-      borderWidth: 1,
-      flexDirection: "row",
-      minHeight: 78,
-      padding: 16,
-      position: "relative",
-    },
-    walletCardOpen: {
-      borderColor: theme.primary,
-      elevation: 8,
-      shadowOpacity: 0.1,
-      zIndex: 10,
-    },
-    walletIcon: {
-      alignItems: "center",
-      backgroundColor: theme.cardAlt,
-      borderColor: theme.border,
-      borderRadius: 20,
-      borderWidth: 1,
-      justifyContent: "center",
-      marginRight: 14,
-      width: 40,
-    },
-    walletIconText: { color: theme.text, fontSize: 20 },
-    walletInfo: { flex: 1 },
-    walletName: { ...Typography.section, color: theme.text },
-    walletType: { color: theme.textMuted, fontSize: 14, marginTop: 3 },
-    walletBalance: { ...Typography.label, color: theme.text },
-    walletRight: { alignItems: "flex-end", gap: 12 },
-    moreButton: {
-      alignItems: "center",
-      backgroundColor: theme.cardAlt,
-      borderColor: theme.border,
-      borderRadius: 12,
-      borderWidth: 1,
-      height: 24,
-      justifyContent: "center",
-      width: 24,
-    },
-    moreText: { color: theme.text, fontSize: 22, lineHeight: 17 },
-    accountMenu: {
-      backgroundColor: theme.sheet,
-      borderColor: theme.border,
-      borderRadius: 10,
-      borderWidth: 1,
-      elevation: 12,
-      minWidth: 236,
-      paddingVertical: 6,
-      position: "absolute",
-      right: 8,
-      shadowColor: "#000",
-      shadowOpacity: 0.16,
-      shadowRadius: 8,
-      top: 62,
-      zIndex: 20,
-    },
-    accountMenuDismissLayer: {
-      bottom: 0,
-      left: 0,
-      position: "absolute",
-      right: 0,
-      top: 0,
-      zIndex: 5,
-    },
-    accountMenuItem: { minHeight: 42, justifyContent: "center", paddingHorizontal: 16 },
-    accountMenuItemPressed: { backgroundColor: theme.primaryPressed },
-    accountMenuText: { color: theme.text, fontSize: 15, lineHeight: 19 },
-    deleteMenuText: { color: theme.dangerText },
-    floatingAddButton: {
-      alignItems: "center",
-      backgroundColor: theme.primary,
-      borderRadius: 28,
-      bottom: 34,
-      elevation: 8,
-      height: 56,
-      justifyContent: "center",
-      position: "absolute",
-      right: 18,
-      shadowColor: "#000",
-      shadowOffset: { height: 3, width: 0 },
-      shadowOpacity: 0.35,
-      shadowRadius: 5,
-      width: 56,
-    },
-    floatingAddText: { color: theme.textInverse, fontSize: 32, fontWeight: "300", lineHeight: 36 },
-    addOptionsPanel: { backgroundColor: theme.card, marginTop: 322, padding: 16 },
-    addOptionsTitle: { color: theme.text, fontSize: 20, fontWeight: '600', marginBottom: 28 },
-    addOptionsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 5 },
-    addOption: {
-      borderRadius: 8,
-      height: 95,
-      justifyContent: "space-between",
-      overflow: "hidden",
-      padding: 14,
-      width: "49%",
-    },
-    addOptionTitle: { color: theme.textInverse, fontSize: 19, fontWeight: '600', maxWidth: 120 },
-    addOptionIcon: { alignSelf: "flex-end", color: "#ffffff55", fontSize: 42, lineHeight: 42 },
-    formHint: {
-      backgroundColor: theme.card,
-      borderColor: theme.border,
-      borderRadius: 8,
-      borderWidth: 1,
-      marginTop: 10,
-      padding: 16,
-    },
-    formHintTitle: { color: theme.text, fontSize: 15, fontWeight: '600' },
-    formHintText: { color: theme.textMuted, fontSize: 13, marginTop: 5 },
-    emptyText: { color: theme.textMuted, fontSize: 16, lineHeight: 23, marginTop: 18, textAlign: "center" },
-    form: { gap: 18, paddingTop: 28 },
-    field: { gap: 8 },
+    screenBody: { flex: 1 },
+    header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingTop: 8, paddingBottom: 12 },
+    headerButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 14 },
+    headerTitle: { ...Typography.section, color: theme.text, flex: 1, textAlign: 'center' },
+    grow: { flex: 1, minWidth: 0 },
+    pressed: { opacity: 0.72 },
+    disabled: { opacity: 0.55 },
+    listContent: { flexGrow: 1, paddingHorizontal: 20, paddingTop: 4, paddingBottom: 24, gap: 14 },
+    summary: { backgroundColor: theme.primaryPressed, borderRadius: 24, borderWidth: 1, borderColor: `${theme.primary}30`, padding: 22, overflow: 'hidden', gap: 12 },
+    summaryDecoration: { position: 'absolute', right: -35, top: -54, width: 180, height: 180, borderRadius: 90, borderWidth: 28, borderColor: `${theme.primary}0B` },
+    inline: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    summaryIcon: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center', borderRadius: 11, backgroundColor: `${theme.primary}18` },
+    summaryLabel: { ...Typography.label, color: theme.textMuted },
+    summaryAmount: { fontSize: 32, lineHeight: 42, fontWeight: '600', color: theme.text },
+    summaryFooter: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 4 },
+    activeDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: theme.primary },
+    summaryFootnote: { ...Typography.caption, color: theme.textMuted },
+    sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8, marginBottom: 2 },
+    sectionTitle: { ...Typography.section, color: theme.text, fontSize: 17 },
+    countLabel: { ...Typography.caption, color: theme.textMuted, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10, backgroundColor: theme.cardAlt },
+    walletName: { ...Typography.bodyLarge, fontWeight: '600', color: theme.text },
+    balanceCaption: { ...Typography.caption, color: theme.textMuted },
+    footer: { paddingTop: 12, paddingHorizontal: 20, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: theme.border, backgroundColor: theme.sheet },
+    primaryButton: { minHeight: 52, borderRadius: 16, backgroundColor: theme.primary, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingVertical: 12 },
+    primaryButtonText: { ...Typography.button, color: theme.textInverse },
+    muted: { ...Typography.small, color: theme.textMuted },
+    emptyCard: { padding: 24, paddingVertical: 32, backgroundColor: theme.card, borderWidth: 1, borderColor: theme.border, borderRadius: 20, alignItems: 'center', gap: 12 },
+    emptyIcon: { width: 76, height: 76, borderRadius: 26, backgroundColor: theme.primaryPressed, alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
+    emptyTitle: { ...Typography.bodyLarge, fontWeight: '600', color: theme.text, textAlign: 'center' },
+    emptyDescription: { ...Typography.body, color: theme.textMuted, textAlign: 'center', lineHeight: 22, maxWidth: 280 },
+    successNotice: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 12, backgroundColor: theme.goodBackground },
+    errorNotice: { ...Typography.body, color: theme.dangerText, backgroundColor: theme.warningBackground, padding: 14, borderRadius: 12 },
+    errorText: { ...Typography.body, color: theme.dangerText, textAlign: 'center' },
+    retryButton: { minHeight: 44, paddingHorizontal: 12, justifyContent: 'center' },
+    retryText: { ...Typography.label, color: theme.primary },
+    formContent: { padding: 20, paddingTop: 0, paddingBottom: 28, gap: 20 },
+    formScroll: { flex: 1 },
+    intro: { ...Typography.body, color: theme.textMuted, lineHeight: 22 },
+    preview: { borderRadius: 20, borderWidth: 1, backgroundColor: theme.card, padding: 20, gap: 4 },
+    previewTop: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 },
+    previewName: { ...Typography.bodyLarge, color: theme.text, fontWeight: '600', marginBottom: 3 },
+    previewDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: theme.primary },
+    previewAmount: { fontSize: 29, lineHeight: 40, fontWeight: '600', color: theme.text },
+    formCard: { borderRadius: 20, padding: 18, backgroundColor: theme.card, borderWidth: 1, borderColor: theme.border, gap: 20 },
+    field: { gap: 9 },
     label: { ...Typography.label, color: theme.text },
-    input: {
-      backgroundColor: theme.inputBackground,
-      borderColor: theme.border,
-      borderRadius: 8,
-      borderWidth: 1,
-      color: theme.text,
-      fontSize: 16,
-      paddingHorizontal: 14,
-      paddingVertical: 13,
-    },
-    inputDisabled: { backgroundColor: theme.cardAlt, color: theme.textMuted },
-    typeGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-    typeOption: {
-      alignItems: "center",
-      backgroundColor: theme.card,
-      borderColor: theme.border,
-      borderRadius: 8,
-      borderWidth: 1,
-      justifyContent: "center",
-      minHeight: 44,
-      minWidth: 104,
-      paddingHorizontal: 14,
-    },
-    typeOptionSelected: { backgroundColor: theme.primary, borderColor: theme.primary },
-    typeOptionText: { color: theme.textSoft, fontWeight: '600' },
-    typeOptionTextSelected: { color: theme.textInverse },
-    row: { flexDirection: "row", gap: 12 },
-    currencyField: { flex: 0.8 },
-    balanceField: { flex: 1.4 },
-    buttonDisabled: { opacity: 0.7 },
+    input: { minHeight: 50, borderRadius: 12, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.inputBackground, color: theme.text, fontSize: 14, paddingHorizontal: 14, paddingVertical: 12 },
+    currencyInput: { minHeight: 50, borderRadius: 12, borderWidth: 1, borderColor: theme.border, backgroundColor: theme.inputBackground, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14 },
+    currencyText: { flex: 1, minWidth: 0, fontSize: 16, color: theme.text, paddingVertical: 12 },
+    inputDisabled: { backgroundColor: theme.cardAlt },
+    fieldHint: { ...Typography.caption, color: theme.textMuted, lineHeight: 18 },
+    typeGrid: { flexDirection: 'row', gap: 8 },
+    typeOption: { flex: 1, minWidth: 0, minHeight: 90, borderRadius: 14, borderWidth: 1, borderColor: theme.border, alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 13, paddingHorizontal: 2 },
+    typeSelected: { borderColor: theme.primary, backgroundColor: theme.primaryPressed },
+    typeLabel: { ...Typography.caption, color: theme.textMuted, textAlign: 'center' },
+    typeCheck: { position: 'absolute', top: 6, right: 6, width: 15, height: 15, borderRadius: 8, backgroundColor: theme.primary, alignItems: 'center', justifyContent: 'center' },
+    overlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: theme.overlay },
+    sheet: { backgroundColor: theme.sheet, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 20, paddingTop: 10, gap: 8 },
+    sheetHandle: { width: 36, height: 4, borderRadius: 2, backgroundColor: theme.borderStrong, alignSelf: 'center', marginBottom: 2 },
+    sheetHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    selectedWallet: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, marginBottom: 6 },
+    actionRow: { minHeight: 56, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 8, borderRadius: 12 },
+    actionPressed: { backgroundColor: theme.cardAlt },
+    actionLabel: { ...Typography.body, color: theme.text, flex: 1 },
+    deleteDescription: { ...Typography.body, color: theme.textMuted, lineHeight: 22, marginBottom: 12 },
+    cancelButton: { minHeight: 48, alignItems: 'center', justifyContent: 'center' },
   });
 }

@@ -1,5 +1,6 @@
 import { AmountSuggestions } from "@/components/amount-suggestions";
 import { AppText as Text, AppTextInput as TextInput } from "@/components/app-text";
+import { MoneyInput } from '@/components/money-input';
 import { BottomPopup, BottomPopupPressable, BottomPopupSheet } from "@/components/bottom-popup";
 import { ScreenGradientBackground } from "@/components/screen-gradient-background";
 import { Typography } from "@/theme/typography";
@@ -730,12 +731,13 @@ export default function CreateScreen() {
                   {type === "Income" ? "Số tiền thu" : "Số tiền chi"}
                 </Text>
                 <View style={styles.amountLine}>
-                  <TextInput
+                  <MoneyInput
                     ref={amountInputRef}
                     accessibilityLabel="Số tiền"
                     style={[styles.amountInput, { color: modeColor }]}
                     editable={!isSaving && !isPaymentAutoSavePending}
                     value={amount}
+                    allowDecimals={false}
                     onChangeText={(value) => {
                       setAmount(value);
                       setAmountSuggestionInput(value);

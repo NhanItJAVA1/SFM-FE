@@ -1,5 +1,6 @@
 import { Typography } from '@/theme/typography';
 import { AppText as Text, AppTextInput as TextInput } from '@/components/app-text';
+import { MoneyInput } from '@/components/money-input';
 import { BottomPopup, BottomPopupPressable } from "@/components/bottom-popup";
 import { CategoryIcon, CategoryIconBadge, getCategoryIconKey } from '@/components/category-icon';
 import DateTimePicker, { DateTimePickerEvent } from "@react-native-community/datetimepicker";
@@ -754,9 +755,9 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
           <Pressable style={styles.amountModalDismissArea} onPress={() => setIsAmountEditorVisible(false)}>
             <BottomPopupPressable style={styles.smallBottomSheet} onPress={(event) => event.stopPropagation()}>
               <Text style={styles.sheetTitle}>Sửa tổng tiền</Text>
-              <TextInput
+              <MoneyInput
+                accessibilityLabel="Tổng tiền hóa đơn"
                 autoFocus
-                keyboardType="decimal-pad"
                 placeholder="Tổng tiền"
                 placeholderTextColor={theme.inputPlaceholder}
                 returnKeyType="done"
@@ -983,7 +984,7 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
               {isTransactionInfoExpanded ? <View style={styles.editorGrid}>
                 <View style={styles.editorField}>
                   <Text style={styles.editorLabel}>Tổng tiền</Text>
-                  <TextInput keyboardType="decimal-pad" placeholder="Tổng tiền" placeholderTextColor={theme.inputPlaceholder} style={[styles.categoryInput, styles.editorCompactInput]} value={String(billEditDraft.amount ?? "")} onChangeText={(value) => setBillEditDraft((currentDraft) => ({ ...currentDraft, amount: parseOptionalNumber(value) }))} />
+                  <MoneyInput accessibilityLabel="Tổng tiền hóa đơn đang sửa" placeholder="Tổng tiền" placeholderTextColor={theme.inputPlaceholder} style={[styles.categoryInput, styles.editorCompactInput]} value={String(billEditDraft.amount ?? "")} onChangeText={(value) => setBillEditDraft((currentDraft) => ({ ...currentDraft, amount: parseOptionalNumber(value) }))} />
                 </View>
                 <View style={styles.editorField}>
                   <Text style={styles.editorLabel}>Loại giao dịch</Text>
@@ -1038,7 +1039,7 @@ export function TransactionDraftReview({ draft, onRetake }: TransactionDraftRevi
                       </View>
                       <View style={styles.productField}>
                         <Text style={styles.editorLabel}>Đơn giá (₫)</Text>
-                        <TextInput keyboardType="decimal-pad" placeholder="Đơn giá" placeholderTextColor={theme.inputPlaceholder} style={styles.categoryInput} value={item.unitPrice == null ? "" : String(item.unitPrice)} onChangeText={(value) => updateBillItem(index, { unitPrice: parseOptionalNumber(value) })} />
+                        <MoneyInput accessibilityLabel={`Đơn giá sản phẩm ${index + 1}`} placeholder="Đơn giá" placeholderTextColor={theme.inputPlaceholder} style={styles.categoryInput} value={item.unitPrice == null ? "" : String(item.unitPrice)} onChangeText={(value) => updateBillItem(index, { unitPrice: parseOptionalNumber(value) })} />
                       </View>
                     </View>
                     <View style={styles.productAmountRow}>

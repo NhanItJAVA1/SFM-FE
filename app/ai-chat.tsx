@@ -2,10 +2,11 @@ import { Typography } from '@/theme/typography';
 import { AppText as Text, AppTextInput as TextInput, useInterFont } from '@/components/app-text';
 import { router } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
-import { type ReactNode, useMemo, useRef, useState } from 'react';
+import { type ComponentRef, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -15,7 +16,7 @@ import {
   View,
 } from 'react-native';
 import Markdown from 'react-native-markdown-display';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, Ellipse, RadialGradient, Rect, Stop } from 'react-native-svg';
 
 import { aiApi } from '@/api/aiApi';
@@ -42,23 +43,41 @@ function createMessageId() {
 
 export default function AIChatScreen() {
   const theme = useAppTheme();
+  const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(theme), [theme]);
   const regularFont = useInterFont();
   const semiboldFont = useInterFont('600');
   const markdownStyles = useMemo(() => createMarkdownStyles(theme, regularFont, semiboldFont), [theme, regularFont, semiboldFont]);
   const markdownRules = useMemo(() => createMarkdownRules(styles), [styles]);
-  const scrollRef = useRef<ScrollView | null>(null);
+  const scrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
+  const scrollFrame = useRef<number | null>(null);
   const user = getAuthUser();
   const displayName = user?.displayName ?? user?.username ?? 'bạn';
   const [question, setQuestion] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [keyboardVisible, setKeyboardVisible] = useState(() => Keyboard.isVisible());
 
-  function scrollToBottom() {
-    requestAnimationFrame(() => {
+  const scrollToBottom = useCallback(() => {
+    if (scrollFrame.current !== null) cancelAnimationFrame(scrollFrame.current);
+    scrollFrame.current = requestAnimationFrame(() => {
+      scrollFrame.current = null;
       scrollRef.current?.scrollToEnd({ animated: true });
     });
-  }
+  }, []);
+
+  useEffect(() => {
+    const shown = Platform.OS === 'web' ? null : Keyboard.addListener('keyboardDidShow', () => {
+      setKeyboardVisible(true);
+      scrollToBottom();
+    });
+    const hidden = Platform.OS === 'web' ? null : Keyboard.addListener('keyboardDidHide', () => setKeyboardVisible(false));
+    return () => {
+      shown?.remove();
+      hidden?.remove();
+      if (scrollFrame.current !== null) cancelAnimationFrame(scrollFrame.current);
+    };
+  }, [scrollToBottom]);
 
   async function sendQuestion(nextQuestion = question) {
     const trimmedQuestion = nextQuestion.trim();
@@ -99,7 +118,11 @@ export default function AIChatScreen() {
     <FocusedScreenTransition style={styles.screen}>
       <SafeAreaView style={styles.screen} edges={['top']}>
         <AuroraChatBackground theme={theme} />
-        <KeyboardAvoidingView behavior={Platform.select({ ios: 'padding', default: undefined })} style={styles.chatLayer}>
+        <KeyboardAvoidingView
+          enabled={Platform.OS !== 'web'}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.chatLayer}
+        >
           <View style={styles.header}>
             <Pressable onPress={() => router.back()} hitSlop={12} style={styles.headerIconButton}>
               <SymbolView
@@ -120,8 +143,11 @@ export default function AIChatScreen() {
 
           <ScrollView
             ref={scrollRef}
+            style={styles.messagesViewport}
             contentContainerStyle={[styles.messagesContent, messages.length === 0 && !isSending && styles.emptyMessagesContent]}
             keyboardShouldPersistTaps="handled"
+            keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+            onLayout={scrollToBottom}
             onContentSizeChange={scrollToBottom}
             showsVerticalScrollIndicator={false}
           >
@@ -149,9 +175,10 @@ export default function AIChatScreen() {
             ) : null}
           </ScrollView>
 
-          <View style={styles.footer}>
+          <View style={[styles.footer, { paddingBottom: keyboardVisible ? 10 : Math.max(insets.bottom, 12) }]}>
             <View style={styles.inputRow}>
               <TextInput
+                accessibilityLabel="Tin nhắn cho trợ lý tài chính AI"
                 multiline
                 editable={!isSending}
                 placeholder="Hỏi AI về tài chính của bạn..."
@@ -159,8 +186,11 @@ export default function AIChatScreen() {
                 style={styles.input}
                 value={question}
                 onChangeText={setQuestion}
+                onFocus={scrollToBottom}
               />
               <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Gửi tin nhắn"
                 style={[styles.sendButton, (!question.trim() || isSending) && styles.sendButtonDisabled]}
                 onPress={() => sendQuestion()}
                 disabled={!question.trim() || isSending}
@@ -280,13 +310,14 @@ function AIAnswer({
 function createStyles(theme: AppTheme) {
   return StyleSheet.create({
     screen: { backgroundColor: theme.screen, flex: 1 },
-    chatLayer: { flex: 1 },
+    chatLayer: { flex: 1, minHeight: 0 },
     header: {
       alignItems: 'center',
       backgroundColor: 'transparent',
       flexDirection: 'row',
       gap: 12,
       minHeight: 70,
+      flexShrink: 0,
       paddingHorizontal: 14,
     },
     headerIconButton: {
@@ -312,6 +343,7 @@ function createStyles(theme: AppTheme) {
       width: 36,
     },
     aiMarkText: { color: theme.textInverse, fontSize: 13, fontWeight: '600' },
+    messagesViewport: { flex: 1, minHeight: 0 },
     messagesContent: { flexGrow: 1, gap: 14, padding: 14, paddingBottom: 18 },
     emptyMessagesContent: { justifyContent: 'center' },
     initialPrompt: {
@@ -371,12 +403,12 @@ function createStyles(theme: AppTheme) {
     loadingBubble: { alignItems: 'center', flexDirection: 'row', gap: 10 },
     loadingText: { color: theme.textMuted, fontSize: 13, fontWeight: '600' },
     footer: {
+      flexShrink: 0,
       backgroundColor: `${theme.screen}e8`,
       borderTopColor: theme.borderOverlay,
       borderTopWidth: StyleSheet.hairlineWidth,
       gap: 10,
       padding: 12,
-      paddingBottom: Platform.select({ ios: 18, default: 12 }),
     },
     inputRow: { alignItems: 'flex-end', flexDirection: 'row', gap: 10 },
     input: {

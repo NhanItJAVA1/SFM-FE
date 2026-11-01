@@ -25,6 +25,7 @@ import { requestSpendingStatsFromTransactions } from "@/stores/spendingStatsNavi
 import type { AppTheme } from "@/theme/appTheme";
 import { emptyTransactionFilters, getTransactionMonthRange, TransactionFilterScreen, type TransactionFilters } from "@/screens/transactions/transaction-filter-screen";
 import { calendarDay, getAnomalyWindow } from "@/screens/transactions/anomaly-window";
+import { TransactionDetailsSheet, type TransactionChange } from '@/screens/transactions/transaction-details-sheet';
 type AnomalyDateFilter = string;
 type AnomalyFilters = { category: string; date: AnomalyDateFilter; reason: string };
 type TransactionRowData = Pick<Transaction, 'amount' | 'description' | 'categoryName' | 'transactionDate' | 'transferId'> & { type?: Transaction['type'] };
@@ -64,7 +65,9 @@ export default function TransactionsScreen() {
   const [categories, setCategories] = useState<Category[]>([]);
   const listRef = useRef<FlatList<Transaction>>(null);
   const [showScrollToTop, setShowScrollToTop] = useState(false);
-  const { transactions, totalCount, isLoading, isRefreshing, isLoadingMore, error: transactionError, loadMoreError, hasMore, reload, loadMore } = useTransactionFeed({
+  const [selectedTransactionId, setSelectedTransactionId] = useState<number | null>(null);
+  const [mutationNotice, setMutationNotice] = useState<string | null>(null);
+  const { transactions, totalCount, isLoading, isRefreshing, isLoadingMore, error: transactionError, loadMoreError, hasMore, reload, loadMore, applyChange } = useTransactionFeed({
     accountId: filters.accountId,
     categoryId: filters.categoryId,
     ...getTransactionMonthRange(filters.month),
@@ -100,6 +103,22 @@ export default function TransactionsScreen() {
       console.warn("Không tải được danh sách ví", error);
     }
   }, []);
+
+  const onTransactionChanged = ({ original, updated, transferUpdate, message }: TransactionChange) => {
+    applyChange(original, updated, transferUpdate);
+    setSelectedTransactionId(null);
+    setMutationNotice(message);
+    setCashflowRefreshKey(key => key + 1);
+    void reload({ refresh: true });
+    void loadAccounts();
+    void loadFilterCategories();
+    void refreshAI({ force: true });
+  };
+  const openTransaction = (id: number) => {
+    Keyboard.dismiss();
+    setMutationNotice(null);
+    setSelectedTransactionId(id);
+  };
 
   useFocusEffect(
     useCallback(() => {
@@ -209,7 +228,8 @@ export default function TransactionsScreen() {
               showDay={index === 0 || getTransactionDayKey(item.transactionDate) !== getTransactionDayKey(filteredTransactions[index - 1].transactionDate)}
               category={item.categoryId === null ? undefined : categoryMap.get(item.categoryId)}
               isAnomaly={anomalyIds.has(item.id)}
-              currency={currency}
+              currency={accounts.find(account => account.id === item.accountId)?.currency ?? currency}
+              onPress={() => openTransaction(item.id)}
             />
           )}
           onEndReached={() => { if (!showAnomaliesOnly && !searchQuery.trim()) void loadMore(); }}
@@ -293,6 +313,10 @@ export default function TransactionsScreen() {
               </Pressable>
             ))}
           </View>
+          {mutationNotice ? <View style={[styles.mutationNotice, { backgroundColor: theme.goodBackground }]}>
+            <Text accessibilityRole="alert" style={{ flex: 1, color: theme.goodText }}>{mutationNotice}</Text>
+            <Pressable accessibilityRole="button" accessibilityLabel="Đóng thông báo" hitSlop={8} onPress={() => setMutationNotice(null)}><X size={18} color={theme.goodText} /></Pressable>
+          </View> : null}
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>{showAnomaliesOnly ? "Giao dịch bất thường" : filters.month === getCurrentTransactionMonth() ? "Giao dịch gần đây" : "Lịch sử giao dịch"}</Text>
             <Text style={styles.sectionMeta}>
@@ -349,6 +373,7 @@ export default function TransactionsScreen() {
                       transaction={transaction}
                       category={categoryId === null ? undefined : categoryMap.get(categoryId)}
                       currency={accounts.find((account) => account.id === transaction?.accountId)?.currency ?? 'VND'}
+                      onPress={anomaly.transactionId == null ? undefined : () => openTransaction(anomaly.transactionId!)}
                     />
                   );
                 })
@@ -363,7 +388,7 @@ export default function TransactionsScreen() {
             </View>
           ) : null}
           </>}
-          ListEmptyComponent={!showAnomaliesOnly ? isLoading ? <TransactionSkeleton /> : !transactionError ? <EmptyState /> : null : null}
+          ListEmptyComponent={!showAnomaliesOnly ? isLoading ? <TransactionSkeleton /> : !transactionError ? <EmptyState /> : undefined : undefined}
           ListFooterComponent={!showAnomaliesOnly ? (
             <View style={styles.feedFooter}>
               {isLoadingMore ? <ActivityIndicator accessibilityLabel="Đang tải thêm giao dịch" color={theme.primary} /> : transactionError || loadMoreError ? <>
@@ -373,9 +398,9 @@ export default function TransactionsScreen() {
                 </Pressable>
               </> : hasMore && searchQuery.trim() ? <Pressable accessibilityRole="button" onPress={() => void loadMore()} style={styles.feedRetry}><Text style={styles.feedRetryText}>Tải thêm giao dịch</Text></Pressable> : !isLoading && !hasMore && transactions.length > 0 ? <Text style={styles.sectionMeta}>Đã hiển thị tất cả giao dịch</Text> : null}
             </View>
-          ) : null}
+          ) : undefined}
         />
-        {showScrollToTop && !isAccountPickerOpen && !isUtilitiesOpen && !isAnomalyFilterOpen ? (
+        {showScrollToTop && selectedTransactionId === null && !isAccountPickerOpen && !isUtilitiesOpen && !isAnomalyFilterOpen ? (
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Lên đầu danh sách"
@@ -386,6 +411,7 @@ export default function TransactionsScreen() {
             <ArrowUp size={22} color={theme.textInverse} strokeWidth={2} />
           </Pressable>
         ) : null}
+        <TransactionDetailsSheet transactionId={selectedTransactionId} onClose={() => setSelectedTransactionId(null)} onChanged={onTransactionChanged} />
         <TransactionFilterScreen
           visible={isAccountPickerOpen}
           initialFilters={filters}
@@ -557,11 +583,12 @@ function AnomalyFilterSheet({
   );
 }
 
-function AnomalyRow({ anomaly, transaction, category, currency }: {
+function AnomalyRow({ anomaly, transaction, category, currency, onPress }: {
   anomaly: AIAnomaly;
   transaction?: Transaction;
   category?: Category;
   currency: string;
+  onPress?: () => void;
 }) {
   const row: TransactionRowData = transaction ?? {
     categoryName: anomaly.category,
@@ -576,7 +603,7 @@ function AnomalyRow({ anomaly, transaction, category, currency }: {
   const reason = (anomaly.reasonCodes ?? []).map((code) => anomalyReasonLabels[code] ?? code).join(' · ')
     || 'Được AI đánh dấu bất thường';
 
-  return <TransactionListItem transaction={row} category={category} currency={currency} isAnomaly showDay={false} timeLabel={timeLabel} reason={reason} anomalyScore={anomaly.anomalyScore} />;
+  return <TransactionListItem transaction={row} category={category} currency={currency} isAnomaly showDay={false} timeLabel={timeLabel} reason={reason} anomalyScore={anomaly.anomalyScore} onPress={onPress} />;
 }
 
 function TransactionListItem({
@@ -588,6 +615,7 @@ function TransactionListItem({
   timeLabel,
   reason,
   anomalyScore,
+  onPress,
 }: {
   isAnomaly: boolean;
   showDay: boolean;
@@ -597,6 +625,7 @@ function TransactionListItem({
   timeLabel?: string;
   reason?: string;
   anomalyScore?: number | null;
+  onPress?: () => void;
 }) {
   const theme = useAppTheme();
   const styles = useTransactionStyles();
@@ -608,7 +637,7 @@ function TransactionListItem({
   return (
     <View style={styles.dayGroup}>
       {showDay ? <TransactionDayHeader date={date} /> : null}
-      <View style={styles.transactionRow}>
+      <Pressable accessibilityRole={onPress ? 'button' : undefined} accessibilityLabel={onPress ? `Xem chi tiết: ${transaction.description || categoryLabel}` : undefined} onPress={onPress} disabled={!onPress} style={({ pressed }) => [styles.transactionRow, pressed && { backgroundColor: theme.cardAlt }]}>
         <CategoryIconBadge icon={category?.icon} name={categoryLabel} type={transaction.type} transferId={transaction.transferId} size={36} iconSize={22} style={{ marginRight: 10 }} />
         <View style={styles.transactionCopy}>
           <View style={styles.transactionTitleRow}>
@@ -648,7 +677,7 @@ function TransactionListItem({
             </View>
           ) : null}
         </View>
-      </View>
+      </Pressable>
     </View>
   );
 }
@@ -686,6 +715,7 @@ function TransactionSkeleton() {
 
 function createStyles(theme: AppTheme) {
   return StyleSheet.create({
+    mutationNotice: { flexDirection: 'row', alignItems: 'center', gap: 12, marginHorizontal: 16, marginTop: 12, padding: 12, borderRadius: 10 },
     scrollToTop: { position: "absolute", right: 20, bottom: 20, width: 48, height: 48, borderRadius: 24, alignItems: "center", justifyContent: "center", backgroundColor: theme.primary, zIndex: 5, elevation: 4, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 5 },
     feedFooter: { alignItems: "center", gap: 10, paddingHorizontal: 16, paddingVertical: 20 },
     feedRetry: { minHeight: 44, justifyContent: "center", paddingHorizontal: 16 },
