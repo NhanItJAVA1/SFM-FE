@@ -1,27 +1,56 @@
-import { Typography } from '@/theme/typography';
-import { AppText as Text, AppTextInput as TextInput } from '@/components/app-text';
+import { AppText as Text, AppTextInput as TextInput } from "@/components/app-text";
 import { BottomPopup, BottomPopupPressable } from "@/components/bottom-popup";
 import { ScreenGradientBackground } from "@/components/screen-gradient-background";
+import { Typography } from "@/theme/typography";
 import DateTimePicker, { DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import axios from "axios";
 import * as Google from "expo-auth-session/providers/google";
 import * as FileSystem from "expo-file-system/legacy";
 import * as ImagePicker from "expo-image-picker";
 import { router, useFocusEffect } from "expo-router";
-import { ArrowLeft } from 'lucide-react-native';
 import { SymbolView } from "expo-symbols";
 import * as WebBrowser from "expo-web-browser";
+import {
+  ArrowLeft,
+  ChartPie,
+  Check,
+  ChevronRight,
+  Download,
+  LogOut,
+  Moon,
+  Settings2,
+  Sun,
+  Trash2,
+  UserRound,
+  UserRoundPen,
+  Wallet,
+  type LucideIcon,
+} from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import {
+  ActivityIndicator,
+  Alert,
+  Image,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  View,
+} from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { authApi } from "@/api/authApi";
 import { FinancialAccount, financialAccountApi } from "@/api/financialAccountApi";
 import { financialInsightsApi, FinancialInsightsResponse } from "@/api/financialInsightsApi";
 import { CategorySpendingItem, CategorySpendingResponse, Transaction, transactionsApi } from "@/api/transactionsApi";
 import { usersApi } from "@/api/usersApi";
+import { CategoryIconBadge, getCategoryVisual } from "@/components/category-icon";
+import { CURVED_TAB_BAR_HEIGHT } from "@/components/curved-tab-bar-background";
 import { FocusedScreenTransition } from "@/components/screen-transition";
 import { SpendingDonutChart, SpendingDonutSegment } from "@/components/spending-donut-chart";
 import { ThemeModeIconFrame, useThemeModeTransition } from "@/components/theme-mode-transition";
+import { AccountIcon, getAccountTypeMeta } from "@/components/wallet-card";
 import { useAppTheme } from "@/hooks/use-app-theme";
 import { useThemeMode } from "@/hooks/use-theme-mode";
 import { getAuthRefreshToken, getAuthUser } from "@/stores/authSession";
@@ -37,13 +66,14 @@ import {
 import { subscribeUserTabPress } from "@/stores/userTabPress";
 import type { AppTheme } from "@/theme/appTheme";
 import { exportTransactionsFile } from "@/utils/transactionExportFile";
-import { CategoryIconBadge, getCategoryVisual } from '@/components/category-icon';
-import { isIncomingTransaction } from '@/utils/transactionPresentation';
+import { isIncomingTransaction } from "@/utils/transactionPresentation";
 
 WebBrowser.maybeCompleteAuthSession();
 
 type UserView = "menu" | "manage" | "editProfile" | "spendingStats" | "exportFile" | "resetWarning" | "resetPassword";
 type ExportDateField = "fromDate" | "toDate";
+
+const profileAvatarSize = 192;
 
 const googleWebClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID;
 const googleIosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID;
@@ -186,9 +216,10 @@ export default function UserScreen() {
   const [user, setUser] = useState(() => getAuthUser());
   const resetStatsOnFocus = useRef(false);
   const theme = useAppTheme();
+  const insets = useSafeAreaInsets();
   const themeMode = useThemeMode();
   const isDarkMode = themeMode === "dark";
-  const styles = useMemo(() => createStyles(theme), [theme]);
+  const styles = useMemo(() => createStyles(theme, insets.top, insets.bottom), [theme, insets.top, insets.bottom]);
   const { iconAnimatedStyle, toggleThemeMode, transitionOverlay } = useThemeModeTransition({
     screenColor: theme.screen,
     themeMode,
@@ -250,7 +281,7 @@ export default function UserScreen() {
       .filter((category) => category.amount > 0)
       .map((category) => ({
         amount: category.amount,
-        color: getCategoryVisual({ icon: category.icon, name: category.categoryName, type: 'Expense' }).color,
+        color: getCategoryVisual({ icon: category.icon, name: category.categoryName, type: "Expense" }).color,
         key: getCategoryKey(category),
         label: category.categoryName,
         percentage: category.percentage,
@@ -266,22 +297,27 @@ export default function UserScreen() {
     });
   }, []);
 
-  useFocusEffect(useCallback(() => {
-    if (resetStatsOnFocus.current) {
-      resetStatsOnFocus.current = false;
-      setStatsReturnPath(null);
-      setView('menu');
-    }
-  }, []));
+  useFocusEffect(
+    useCallback(() => {
+      if (resetStatsOnFocus.current) {
+        resetStatsOnFocus.current = false;
+        setStatsReturnPath(null);
+        setView("menu");
+      }
+    }, []),
+  );
 
-  const openSpendingStats = useCallback((returnPath: SpendingStatsReturnPath, period?: SpendingStatsPeriod) => {
-    resetStatsOnFocus.current = false;
-    setStatsReturnPath(returnPath);
-    setStatsMonth(period?.month ?? defaultMonth);
-    setStatsYear(period?.year ?? defaultYear);
-    setIsFinancialInsightsVisible(false);
-    setView("spendingStats");
-  }, [defaultMonth, defaultYear]);
+  const openSpendingStats = useCallback(
+    (returnPath: SpendingStatsReturnPath, period?: SpendingStatsPeriod) => {
+      resetStatsOnFocus.current = false;
+      setStatsReturnPath(returnPath);
+      setStatsMonth(period?.month ?? defaultMonth);
+      setStatsYear(period?.year ?? defaultYear);
+      setIsFinancialInsightsVisible(false);
+      setView("spendingStats");
+    },
+    [defaultMonth, defaultYear],
+  );
 
   useEffect(() => {
     const unsubscribe = subscribeSpendingStatsRequest((request) => {
@@ -341,17 +377,19 @@ export default function UserScreen() {
     }
   }, [statsMonth, statsYear]);
 
-  useFocusEffect(useCallback(() => {
-    if (view !== "spendingStats") {
-      return undefined;
-    }
+  useFocusEffect(
+    useCallback(() => {
+      if (view !== "spendingStats") {
+        return undefined;
+      }
 
-    const timeoutId = setTimeout(() => {
-      void loadSpendingStats();
-    }, 0);
+      const timeoutId = setTimeout(() => {
+        void loadSpendingStats();
+      }, 0);
 
-    return () => clearTimeout(timeoutId);
-  }, [loadSpendingStats, view]));
+      return () => clearTimeout(timeoutId);
+    }, [loadSpendingStats, view]),
+  );
 
   useEffect(() => {
     if (view !== "spendingStats" || !isFinancialInsightsVisible) {
@@ -603,15 +641,11 @@ export default function UserScreen() {
       headers,
       blobSize: imageBlob.size,
     });
-    const s3Response = await FileSystem.uploadAsync(
-      uploadUrlResponse.data.uploadUrl,
-      asset.uri,
-      {
-        httpMethod: "PUT",
-        headers,
-        uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
-      },
-    );
+    const s3Response = await FileSystem.uploadAsync(uploadUrlResponse.data.uploadUrl, asset.uri, {
+      httpMethod: "PUT",
+      headers,
+      uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
+    });
 
     if (s3Response.status < 200 || s3Response.status >= 300) {
       const detail = s3Response.body;
@@ -625,9 +659,7 @@ export default function UserScreen() {
         status: s3Response.status,
       });
       throw new Error(
-        s3ErrorCode
-          ? `Upload S3 lỗi ${s3Response.status}: ${s3ErrorCode}.`
-          : `Upload S3 lỗi ${s3Response.status}.`,
+        s3ErrorCode ? `Upload S3 lỗi ${s3Response.status}: ${s3ErrorCode}.` : `Upload S3 lỗi ${s3Response.status}.`,
       );
     }
 
@@ -662,10 +694,7 @@ export default function UserScreen() {
       Alert.alert("Đã cập nhật", "Hồ sơ người dùng đã được lưu.");
     } catch (error) {
       if (axios.isAxiosError(error)) {
-        console.log(
-          "UPDATE USER VALIDATION:",
-          JSON.stringify(error.response?.data?.errors, null, 2),
-        );
+        console.log("UPDATE USER VALIDATION:", JSON.stringify(error.response?.data?.errors, null, 2));
         console.log("UPDATE USER REQUEST:", error.config?.data);
       }
       console.warn("Không lưu được hồ sơ", error);
@@ -746,29 +775,29 @@ export default function UserScreen() {
     return (
       <FocusedScreenTransition style={styles.screen} triggerKey={view} variant="slide-left">
         <ScreenGradientBackground darkOnly />
-        <View style={styles.walletHeader}>
-          <Pressable onPress={() => setView("menu")} hitSlop={12}>
-            <Text style={styles.backText}>‹ Cá nhân</Text>
-          </Pressable>
-          <Text style={styles.topTitle}>Xuất File</Text>
-          <View style={styles.topSpacer} />
-        </View>
+        <PersonalScreenHeader title="Xuất giao dịch" onBack={() => setView("menu")} styles={styles} />
 
         <ScrollView contentContainerStyle={styles.exportContent} keyboardShouldPersistTaps="handled">
           <View style={styles.exportSection}>
             <Text style={styles.exportSectionTitle}>Ví</Text>
             <Pressable
+              accessibilityRole="radio"
+              aria-checked={selectedExportAccountId === null}
               style={[styles.exportOptionRow, selectedExportAccountId === null && styles.exportOptionRowActive]}
               onPress={() => setSelectedExportAccountId(null)}
             >
               <View style={styles.exportOptionIcon}>
-                <Text style={styles.exportOptionIconText}>▰</Text>
+                <Wallet size={22} color={theme.primary} strokeWidth={1.8} />
               </View>
               <View style={styles.walletInfo}>
                 <Text style={styles.exportOptionTitle}>Tất cả ví</Text>
                 <Text style={styles.exportOptionSubtitle}>Xuất giao dịch của mọi ví</Text>
               </View>
-              <Text style={styles.exportOptionCheck}>{selectedExportAccountId === null ? "✓" : ""}</Text>
+              {selectedExportAccountId === null ? (
+                <Check size={20} color={theme.primary} />
+              ) : (
+                <View style={styles.exportCheckSpacer} />
+              )}
             </Pressable>
 
             {isLoadingExportAccounts ? (
@@ -783,17 +812,17 @@ export default function UserScreen() {
                 return (
                   <Pressable
                     key={account.id}
+                    accessibilityRole="radio"
+                    aria-checked={isSelected}
                     style={[styles.exportOptionRow, isSelected && styles.exportOptionRowActive]}
                     onPress={() => setSelectedExportAccountId(account.id)}
                   >
-                    <View style={styles.exportOptionIcon}>
-                      <Text style={styles.exportOptionIconText}>◧</Text>
-                    </View>
+                    <AccountIcon type={account.type} compact />
                     <View style={styles.walletInfo}>
                       <Text style={styles.exportOptionTitle}>{account.name}</Text>
-                      <Text style={styles.exportOptionSubtitle}>{account.type}</Text>
+                      <Text style={styles.exportOptionSubtitle}>{getAccountTypeMeta(account.type).label}</Text>
                     </View>
-                    <Text style={styles.exportOptionCheck}>{isSelected ? "✓" : ""}</Text>
+                    {isSelected ? <Check size={20} color={theme.primary} /> : <View style={styles.exportCheckSpacer} />}
                   </Pressable>
                 );
               })
@@ -822,7 +851,7 @@ export default function UserScreen() {
             {isExportingTransactions ? (
               <ActivityIndicator color={theme.textInverse} />
             ) : (
-              <Text style={styles.primaryButtonText}>Xuất File</Text>
+              <Text style={styles.primaryButtonText}>Xuất giao dịch</Text>
             )}
           </Pressable>
         </ScrollView>
@@ -880,19 +909,13 @@ export default function UserScreen() {
     return (
       <FocusedScreenTransition style={styles.screen} triggerKey={view} variant="slide-left">
         <ScreenGradientBackground darkOnly />
-        <View style={styles.walletHeader}>
-          <Pressable onPress={() => setView("manage")} hitSlop={12}>
-            <Text style={styles.backText}>‹ Quản lý</Text>
-          </Pressable>
-          <Text style={styles.topTitle}>Đặt lại tài khoản</Text>
-          <View style={styles.topSpacer} />
-        </View>
+        <PersonalScreenHeader title="Đặt lại tài khoản" onBack={() => setView("manage")} styles={styles} />
 
         <View style={styles.resetScreenBody}>
           <ScrollView contentContainerStyle={styles.resetWarningContent}>
             <View style={styles.resetWarningHero}>
               <Text style={styles.resetWarningIcon}>!</Text>
-              <Text style={styles.resetWarningTitle}>Hành động này sẽ xóa Vĩnh Viễn dữ liệu tài chính hiện tại</Text>
+              <Text style={styles.resetWarningTitle}>Hành động này sẽ xóa vĩnh viễn dữ liệu tài chính hiện tại</Text>
               <Text style={styles.resetWarningText}>
                 Tài khoản đăng nhập vẫn được giữ, nhưng dữ liệu bên dưới sẽ được làm mới và không thể hoàn tác.
               </Text>
@@ -928,13 +951,7 @@ export default function UserScreen() {
       <FocusedScreenTransition style={styles.screen} triggerKey={view} variant="slide-left">
         <KeyboardAvoidingView behavior={Platform.select({ ios: "padding", default: undefined })} style={styles.screen}>
           <ScreenGradientBackground darkOnly />
-          <View style={styles.walletHeader}>
-            <Pressable onPress={() => setView("resetWarning")} hitSlop={12}>
-              <Text style={styles.backText}>‹ Cảnh báo</Text>
-            </Pressable>
-            <Text style={styles.topTitle}>Xác nhận</Text>
-            <View style={styles.topSpacer} />
-          </View>
+          <PersonalScreenHeader title="Xác nhận" onBack={() => setView("resetWarning")} styles={styles} />
 
           <ScrollView contentContainerStyle={styles.resetPasswordContent} keyboardShouldPersistTaps="handled">
             <View style={styles.resetConfirmCard}>
@@ -1004,15 +1021,9 @@ export default function UserScreen() {
     return (
       <FocusedScreenTransition style={styles.screen} triggerKey={view} variant="slide-left">
         <ScreenGradientBackground darkOnly />
-        <View style={styles.walletHeader}>
-          <Pressable onPress={() => setView("menu")} hitSlop={12}>
-            <Text style={styles.backText}>‹ Người dùng</Text>
-          </Pressable>
-          <Text style={styles.topTitle}>Quản lý người dùng</Text>
-          <View style={styles.topSpacer} />
-        </View>
+        <PersonalScreenHeader title="Tài khoản" onBack={() => setView("menu")} styles={styles} />
 
-        <View style={styles.manageContent}>
+        <ScrollView contentContainerStyle={styles.manageContent} showsVerticalScrollIndicator={false}>
           <View style={styles.profileMiniCard}>
             <View style={styles.smallAvatar}>
               {user?.avatarUrl ? (
@@ -1027,34 +1038,44 @@ export default function UserScreen() {
               )}
             </View>
             <View style={styles.manageTextGroup}>
-              <Text style={styles.manageTitle}>{user?.username ?? "Người dùng"}</Text>
+              <Text style={styles.manageTitle}>{user?.displayName ?? user?.username ?? "Người dùng"}</Text>
               <Text style={styles.manageSubtitle}>{user?.email ?? "Chưa có email"}</Text>
             </View>
           </View>
 
           <View style={styles.manageActionCard}>
-            <Pressable style={styles.manageDangerRow} onPress={openResetWarning}>
-              <Text style={styles.manageDangerIcon}>!</Text>
+            <Pressable
+              accessibilityRole="button"
+              style={({ pressed }) => [styles.manageDangerRow, pressed && styles.menuRowPressed]}
+              onPress={openResetWarning}
+            >
+              <View style={[styles.menuIconBubble, { backgroundColor: `${theme.dangerText}12` }]}>
+                <Trash2 size={20} color={theme.dangerText} strokeWidth={1.8} />
+              </View>
               <View style={styles.manageTextGroup}>
                 <Text style={styles.manageDangerTitle}>Đặt lại tài khoản</Text>
                 <Text style={styles.manageSubtitle}>Xóa dữ liệu tài chính và bắt đầu lại</Text>
               </View>
-              <Text style={styles.chevron}>›</Text>
+              <ChevronRight size={18} color={theme.chevron} />
             </Pressable>
           </View>
 
           <Pressable
+            accessibilityRole="button"
             style={[styles.logoutButton, isLoggingOut && styles.buttonDisabled]}
             onPress={handleLogout}
             disabled={isLoggingOut}
           >
             {isLoggingOut ? (
-              <ActivityIndicator color={theme.textInverse} />
+              <ActivityIndicator color={theme.dangerText} />
             ) : (
-              <Text style={styles.logoutButtonText}>Đăng xuất</Text>
+              <>
+                <LogOut size={19} color={theme.dangerText} />
+                <Text style={styles.logoutButtonText}>Đăng xuất</Text>
+              </>
             )}
           </Pressable>
-        </View>
+        </ScrollView>
       </FocusedScreenTransition>
     );
   }
@@ -1063,16 +1084,15 @@ export default function UserScreen() {
     return (
       <FocusedScreenTransition style={styles.screen} triggerKey={view} variant="slide-left">
         <ScreenGradientBackground darkOnly />
-        <View style={styles.walletHeader}>
-          <Pressable onPress={() => setView("menu")} hitSlop={12}>
-            <Text style={styles.backText}>‹ Cá nhân</Text>
-          </Pressable>
-          <Text style={styles.topTitle}>Chỉnh sửa hồ sơ</Text>
-          <View style={styles.topSpacer} />
-        </View>
+        <PersonalScreenHeader title="Chỉnh sửa hồ sơ" onBack={() => setView("menu")} styles={styles} />
 
-        <ScrollView contentContainerStyle={styles.editProfileContent}>
-          <Pressable style={styles.editAvatarButton} onPress={handlePickAvatar}>
+        <ScrollView contentContainerStyle={styles.editProfileContent} keyboardShouldPersistTaps="handled">
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Đổi ảnh đại diện"
+            style={styles.editAvatarButton}
+            onPress={handlePickAvatar}
+          >
             {editAvatarUrl ? (
               <Image
                 key={getAvatarCacheKey(editAvatarUrl)}
@@ -1131,10 +1151,22 @@ export default function UserScreen() {
       >
         <ScreenGradientBackground darkOnly />
         <View style={styles.walletHeader}>
-          <Pressable accessibilityRole="button" accessibilityLabel="Quay lại" onPress={closeSpendingStats} style={styles.statsBackButton}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Quay lại"
+            onPress={closeSpendingStats}
+            style={styles.statsBackButton}
+          >
             <ArrowLeft size={23} color={theme.primary} />
           </Pressable>
-          <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85} style={[styles.topTitle, styles.statsHeaderTitle]}>Thống kê chi tiêu</Text>
+          <Text
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.85}
+            style={[styles.topTitle, styles.statsHeaderTitle]}
+          >
+            Thống kê chi tiêu
+          </Text>
           <View style={styles.statsHeaderSpacer} />
         </View>
 
@@ -1295,7 +1327,13 @@ export default function UserScreen() {
                       style={[styles.statCard, isSelected && styles.statCardSelected]}
                     >
                       <View style={styles.statCategoryHeader}>
-                        <CategoryIconBadge icon={category.icon} name={category.categoryName} type="Expense" size={40} style={{ marginRight: 14 }} />
+                        <CategoryIconBadge
+                          icon={category.icon}
+                          name={category.categoryName}
+                          type="Expense"
+                          size={40}
+                          style={{ marginRight: 14 }}
+                        />
                         <View style={styles.walletInfo}>
                           <Text style={styles.statCategoryName}>{category.categoryName}</Text>
                           <Text style={styles.statCategoryMeta}>
@@ -1348,7 +1386,14 @@ export default function UserScreen() {
                             categoryTransactions.map((transaction) => (
                               <View key={transaction.id} style={styles.categoryTransactionRow}>
                                 <View style={{ marginRight: 8 }}>
-                                  <CategoryIconBadge icon={category.icon} name={category.categoryName} type={transaction.type} transferId={transaction.transferId} size={28} iconSize={18} />
+                                  <CategoryIconBadge
+                                    icon={category.icon}
+                                    name={category.categoryName}
+                                    type={transaction.type}
+                                    transferId={transaction.transferId}
+                                    size={28}
+                                    iconSize={18}
+                                  />
                                 </View>
                                 <View style={styles.categoryTransactionCopy}>
                                   <Text numberOfLines={1} style={styles.categoryTransactionDescription}>
@@ -1358,8 +1403,18 @@ export default function UserScreen() {
                                     {formatTransactionDate(transaction.transactionDate)}
                                   </Text>
                                 </View>
-                                <Text style={[styles.categoryTransactionAmount, { color: isIncomingTransaction(transaction.type) ? theme.goodText : theme.dangerText }]}>
-                                  {isIncomingTransaction(transaction.type) ? '+' : '-'}{formatMoney(Math.abs(transaction.amount), "VND")}
+                                <Text
+                                  style={[
+                                    styles.categoryTransactionAmount,
+                                    {
+                                      color: isIncomingTransaction(transaction.type)
+                                        ? theme.goodText
+                                        : theme.dangerText,
+                                    },
+                                  ]}
+                                >
+                                  {isIncomingTransaction(transaction.type) ? "+" : "-"}
+                                  {formatMoney(Math.abs(transaction.amount), "VND")}
                                 </Text>
                               </View>
                             ))
@@ -1398,93 +1453,114 @@ export default function UserScreen() {
   return (
     <FocusedScreenTransition style={styles.screen} triggerKey={view} variant="slide-right">
       <ScreenGradientBackground />
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.content}>
+      <ScrollView
+        style={styles.scrollViewport}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.headerRow}>
-          <View style={styles.headerSide}>
-            <Text style={styles.supportText}>Hỗ trợ</Text>
+          <View style={styles.headerCopy}>
+            <Text style={styles.pageTitle}>Cá nhân</Text>
+            <Text style={styles.pageSubtitle}>Tài khoản và tiện ích của bạn</Text>
           </View>
-          <Text style={styles.pageTitle}>Cá nhân</Text>
-          <View style={styles.headerActions}>
-            <Pressable style={styles.themeButton} onPress={toggleThemeMode} hitSlop={10}>
-              <ThemeModeIconFrame style={iconAnimatedStyle}>
-                <SymbolView
-                  name={{
-                    ios: isDarkMode ? "sun.max.fill" : "moon.fill",
-                    android: isDarkMode ? "light_mode" : "dark_mode",
-                    web: isDarkMode ? "light_mode" : "dark_mode",
-                  }}
-                  size={21}
-                  tintColor={theme.text}
-                  fallback={<Text style={styles.themeFallbackIcon}>{isDarkMode ? "☀" : "☾"}</Text>}
-                />
-              </ThemeModeIconFrame>
-            </Pressable>
-          </View>
-        </View>
-
-        <View style={styles.profileCard}>
-          <Pressable style={styles.avatar} onPress={openEditProfile} accessibilityLabel="Chỉnh sửa hồ sơ">
-            {user?.avatarUrl ? (
-              <Image
-                key={getAvatarCacheKey(user.avatarUrl)}
-                source={{ uri: user.avatarUrl }}
-                style={styles.avatarImage}
-                onError={(event) => console.warn("Không tải được avatar", event.nativeEvent)}
-              />
-            ) : (
-              <Text style={styles.avatarText}>{initial}</Text>
-            )}
-          </Pressable>
-          <Text style={styles.username}>{user?.displayName ?? user?.username ?? "Người dùng"}</Text>
-          <Text style={styles.email}>{user?.email ?? "Chưa có email"}</Text>
-
-          <View style={styles.divider} />
-
-          <Pressable style={styles.manageRow} onPress={openEditProfile}>
-            <Text style={styles.manageIcon}>♙</Text>
-            <View style={styles.manageTextGroup}>
-              <Text style={styles.manageTitle}>Chỉnh sửa hồ sơ</Text>
-              <Text style={styles.manageSubtitle}>Avatar và tên hiển thị</Text>
-            </View>
-            <Text style={styles.chevron}>›</Text>
-          </Pressable>
-        </View>
-
-        <View style={styles.menuCard}>
-          <Pressable style={styles.menuRow} onPress={() => router.push("/account")}>
-            <Text style={styles.menuIcon}>▰</Text>
-            <Text style={styles.menuText}>Ví của tôi</Text>
-            <Text style={styles.chevron}>›</Text>
-          </Pressable>
-          <View style={styles.menuDivider} />
           <Pressable
-            style={styles.menuRow}
+            accessibilityRole="button"
+            accessibilityLabel={isDarkMode ? "Chuyển sang giao diện sáng" : "Chuyển sang giao diện tối"}
+            style={({ pressed }) => [styles.themeButton, pressed && styles.menuRowPressed]}
+            onPress={toggleThemeMode}
+          >
+            <ThemeModeIconFrame style={iconAnimatedStyle}>
+              {isDarkMode ? (
+                <Sun size={21} color={theme.text} strokeWidth={1.8} />
+              ) : (
+                <Moon size={21} color={theme.text} strokeWidth={1.8} />
+              )}
+            </ThemeModeIconFrame>
+          </Pressable>
+        </View>
+
+        <View style={styles.profileSection}>
+          <View style={styles.profileIdentity}>
+            <Pressable
+              accessibilityRole="button"
+              style={({ pressed }) => [styles.avatar, pressed && styles.menuRowDisabled]}
+              onPress={openEditProfile}
+              accessibilityLabel="Chỉnh sửa hồ sơ"
+            >
+              {user?.avatarUrl ? (
+                <Image
+                  key={getAvatarCacheKey(user.avatarUrl)}
+                  source={{ uri: user.avatarUrl }}
+                  style={styles.avatarImage}
+                  onError={(event) => console.warn("Không tải được avatar", event.nativeEvent)}
+                />
+              ) : (
+                <UserRound size={120} color={theme.textInverse} fill={theme.textInverse} strokeWidth={1.4} />
+              )}
+            </Pressable>
+            <View style={styles.identityCopy}>
+              <Text style={styles.username}>{user?.displayName ?? user?.username ?? "Người dùng"}</Text>
+              <Text style={styles.email}>{user?.email ?? "Chưa có email"}</Text>
+            </View>
+          </View>
+
+          <View style={styles.menuCard}>
+            <PersonalMenuRow
+              Icon={UserRoundPen}
+              color={theme.primary}
+              title="Chỉnh sửa hồ sơ"
+              subtitle="Ảnh đại diện và tên hiển thị"
+              onPress={openEditProfile}
+              styles={styles}
+            />
+          </View>
+        </View>
+
+        <Text style={styles.menuSectionTitle}>Tài chính</Text>
+        <View style={styles.menuCard}>
+          <PersonalMenuRow
+            Icon={Wallet}
+            color={theme.primary}
+            title="Ví của tôi"
+            subtitle="Quản lý số dư và các ví"
+            onPress={() => router.push("/account")}
+            styles={styles}
+          />
+          <View style={styles.menuDivider} />
+          <PersonalMenuRow
+            Icon={ChartPie}
+            color="#4285E5"
+            title="Thống kê chi tiêu"
+            subtitle="Theo dõi chi tiêu theo danh mục"
+            styles={styles}
             onPress={() => {
               clearSpendingStatsFromTransactions();
               setStatsReturnPath(null);
               setView("spendingStats");
             }}
-          >
-            <Text style={styles.menuIcon}>◷</Text>
-            <Text style={styles.menuText}>Thống kê chi tiêu</Text>
-            <Text style={styles.chevron}>›</Text>
-          </Pressable>
+          />
           <View style={styles.menuDivider} />
-          <Pressable
-            style={[styles.menuRow, isExportingTransactions && styles.menuRowDisabled]}
+          <PersonalMenuRow
+            Icon={Download}
+            color="#CF9131"
+            title="Xuất giao dịch"
+            subtitle="Lưu dữ liệu theo ví và thời gian"
+            styles={styles}
             onPress={openExportFile}
             disabled={isExportingTransactions}
-          >
-            <Text style={styles.menuIcon}>⇩</Text>
-            <Text style={styles.menuText}>Xuất File</Text>
-            <Text style={styles.chevron}>›</Text>
-          </Pressable>
-          <View style={styles.menuDivider} />
-          <Pressable style={styles.menuRow} onPress={() => setView("manage")}>
-            <Text style={styles.menuIcon}>⚙</Text>
-            <Text style={styles.menuText}>Tài khoản</Text>
-            <Text style={styles.chevron}>›</Text>
-          </Pressable>
+          />
+        </View>
+
+        <Text style={styles.menuSectionTitle}>Tài khoản</Text>
+        <View style={styles.menuCard}>
+          <PersonalMenuRow
+            Icon={Settings2}
+            color={theme.textMuted}
+            title="Quản lý tài khoản"
+            subtitle="Dữ liệu tài khoản và đăng xuất"
+            onPress={() => setView("manage")}
+            styles={styles}
+          />
         </View>
       </ScrollView>
       {transitionOverlay}
@@ -1492,92 +1568,170 @@ export default function UserScreen() {
   );
 }
 
-function createStyles(theme: AppTheme) {
+function PersonalScreenHeader({
+  title,
+  onBack,
+  styles,
+}: {
+  title: string;
+  onBack: () => void;
+  styles: ReturnType<typeof createStyles>;
+}) {
+  const theme = useAppTheme();
+  return (
+    <View style={styles.walletHeader}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Quay lại"
+        onPress={onBack}
+        style={({ pressed }) => [styles.statsBackButton, pressed && styles.headerButtonPressed]}
+      >
+        <ArrowLeft size={22} color={theme.text} strokeWidth={1.8} />
+      </Pressable>
+      <Text style={[styles.topTitle, styles.statsHeaderTitle]}>{title}</Text>
+      <View style={styles.statsHeaderSpacer} />
+    </View>
+  );
+}
+
+function PersonalMenuRow({
+  Icon,
+  color,
+  title,
+  subtitle,
+  onPress,
+  disabled = false,
+  styles,
+}: {
+  Icon: LucideIcon;
+  color: string;
+  title: string;
+  subtitle: string;
+  onPress: () => void;
+  disabled?: boolean;
+  styles: ReturnType<typeof createStyles>;
+}) {
+  const theme = useAppTheme();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ disabled }}
+      disabled={disabled}
+      onPress={onPress}
+      style={({ pressed }) => [styles.menuRow, pressed && styles.menuRowPressed, disabled && styles.menuRowDisabled]}
+    >
+      <View style={[styles.menuIconBubble, { backgroundColor: `${color}18` }]}>
+        <Icon size={21} color={color} strokeWidth={1.8} />
+      </View>
+      <View style={styles.manageTextGroup}>
+        <Text style={styles.menuText}>{title}</Text>
+        <Text style={styles.menuSubtitle}>{subtitle}</Text>
+      </View>
+      <ChevronRight size={18} color={theme.chevron} />
+    </Pressable>
+  );
+}
+
+function createStyles(theme: AppTheme, topInset: number, bottomInset: number) {
   return StyleSheet.create({
     screen: { flex: 1, backgroundColor: theme.screen },
-    content: { padding: 24, paddingBottom: 96 },
-    headerRow: { alignItems: "center", flexDirection: "row", marginBottom: 32, marginTop: 36 },
-    headerSide: { flex: 1 },
-    pageTitle: { ...Typography.title, color: theme.text, flex: 1, textAlign: "center" },
-    headerActions: { alignItems: "center", flex: 1, flexDirection: "row", justifyContent: "flex-end" },
-    supportText: { color: theme.text, fontSize: 16 },
+    scrollViewport: { flex: 1 },
+    content: {
+      paddingHorizontal: 20,
+      paddingTop: topInset + 16,
+      paddingBottom: CURVED_TAB_BAR_HEIGHT + Math.max(bottomInset, 6) + 24,
+    },
+    headerRow: { alignItems: "center", flexDirection: "row", gap: 16, marginBottom: 24 },
+    headerCopy: { flex: 1, minWidth: 0, gap: 4 },
+    pageTitle: { ...Typography.title, color: theme.text, fontSize: 26, lineHeight: 34 },
+    pageSubtitle: { ...Typography.small, color: theme.textMuted },
     themeButton: {
       alignItems: "center",
       backgroundColor: theme.card,
       borderColor: theme.border,
-      borderRadius: 17,
+      borderRadius: 14,
       borderWidth: 1,
-      height: 34,
+      height: 44,
       justifyContent: "center",
-      width: 34,
+      width: 44,
     },
-    themeFallbackIcon: { color: theme.text, fontSize: 18, fontWeight: '600' },
-    profileCard: { backgroundColor: theme.card, borderRadius: 8, overflow: "hidden", paddingTop: 34 },
+    profileSection: { gap: 16 },
+    profileIdentity: { alignItems: "center", gap: 8, paddingHorizontal: 16, paddingVertical: 10 },
+    identityCopy: { width: "100%", minWidth: 0, alignItems: "center" },
     avatar: {
       alignItems: "center",
-      alignSelf: "center",
-      backgroundColor: theme.avatar,
-      borderRadius: 44,
-      height: 88,
+      backgroundColor: "#565D66",
+      borderRadius: profileAvatarSize / 2,
+      height: profileAvatarSize,
+      flexShrink: 0,
       justifyContent: "center",
-      marginBottom: 16,
-      width: 88,
+      width: profileAvatarSize,
     },
-    avatarImage: { borderRadius: 44, height: 88, width: 88 },
-    avatarText: { color: theme.textInverse, fontSize: 44, fontWeight: "500" },
-    username: { color: theme.text, fontSize: 23, fontWeight: "600", textAlign: "center" },
-    email: { ...Typography.body, color: theme.textMuted, marginTop: 6, textAlign: "center" },
-    divider: { backgroundColor: theme.border, height: 1, marginTop: 34 },
-    manageRow: { alignItems: "center", flexDirection: "row", minHeight: 78, paddingHorizontal: 22 },
-    manageIcon: { color: theme.text, fontSize: 30, width: 46 },
-    manageTextGroup: { flex: 1 },
-    manageTitle: { color: theme.text, fontSize: 18, fontWeight: '600' },
-    manageSubtitle: { ...Typography.body, color: theme.textMuted, marginTop: 3 },
-    manageContent: { gap: 18, padding: 20 },
-    manageActionCard: { backgroundColor: theme.card, borderRadius: 8, overflow: "hidden" },
-    manageDangerRow: { alignItems: "center", flexDirection: "row", minHeight: 78, paddingHorizontal: 18 },
-    manageDangerIcon: {
-      color: theme.dangerText,
-      fontSize: 28,
-      fontWeight: '600',
-      marginRight: 14,
+    avatarImage: { borderRadius: profileAvatarSize / 2, height: profileAvatarSize, width: profileAvatarSize },
+    username: {
+      color: theme.link,
+      fontSize: 20,
+      lineHeight: 28,
+      fontWeight: "600",
       textAlign: "center",
-      width: 34,
+      width: "100%",
     },
-    manageDangerTitle: { color: theme.dangerText, fontSize: 18, fontWeight: '600' },
+    email: { ...Typography.small, color: theme.textMuted, marginTop: 4, textAlign: "center", width: "100%" },
+    manageTextGroup: { flex: 1, minWidth: 0 },
+    manageTitle: { ...Typography.bodyLarge, color: theme.text, fontWeight: "600" },
+    manageSubtitle: { ...Typography.small, color: theme.textMuted, marginTop: 4 },
+    manageContent: { gap: 16, padding: 20, paddingBottom: CURVED_TAB_BAR_HEIGHT + Math.max(bottomInset, 6) + 24 },
+    manageActionCard: {
+      backgroundColor: theme.card,
+      borderColor: theme.border,
+      borderWidth: 1,
+      borderRadius: 20,
+      overflow: "hidden",
+    },
+    manageDangerRow: {
+      alignItems: "center",
+      flexDirection: "row",
+      gap: 12,
+      minHeight: 80,
+      paddingHorizontal: 16,
+      paddingVertical: 16,
+    },
+    manageDangerTitle: { ...Typography.label, color: theme.dangerText, fontWeight: "600" },
     profileMiniCard: {
       alignItems: "center",
       backgroundColor: theme.card,
-      borderRadius: 8,
+      borderColor: theme.border,
+      borderWidth: 1,
+      borderRadius: 20,
       flexDirection: "row",
       minHeight: 84,
       padding: 18,
     },
     smallAvatar: {
       alignItems: "center",
-      backgroundColor: theme.avatar,
-      borderRadius: 24,
+      backgroundColor: theme.primary,
+      borderRadius: 18,
       height: 48,
       justifyContent: "center",
       marginRight: 14,
       width: 48,
     },
-    smallAvatarImage: { borderRadius: 24, height: 48, width: 48 },
-    smallAvatarText: { color: theme.textInverse, fontSize: 24, fontWeight: '600' },
-    editProfileContent: { gap: 18, padding: 20, paddingBottom: 96 },
+    smallAvatarImage: { borderRadius: 18, height: 48, width: 48 },
+    smallAvatarText: { color: theme.textInverse, fontSize: 24, fontWeight: "600" },
+    editProfileContent: { gap: 22, padding: 20, paddingBottom: CURVED_TAB_BAR_HEIGHT + Math.max(bottomInset, 6) + 24 },
     editAvatarButton: {
       alignItems: "center",
       alignSelf: "center",
-      backgroundColor: theme.avatar,
-      borderRadius: 58,
-      height: 116,
+      backgroundColor: theme.primary,
+      borderRadius: 32,
+      height: 112,
       justifyContent: "center",
       marginBottom: 8,
       overflow: "hidden",
-      width: 116,
+      width: 112,
     },
-    editAvatarImage: { height: 116, width: 116 },
-    editAvatarText: { color: theme.textInverse, fontSize: 52, fontWeight: '600' },
+    editAvatarImage: { height: 112, width: 112 },
+    editAvatarText: { color: theme.textInverse, fontSize: 52, fontWeight: "600" },
     avatarChangeBadge: {
       alignItems: "center",
       backgroundColor: theme.overlayStrong,
@@ -1588,48 +1742,56 @@ function createStyles(theme: AppTheme) {
       position: "absolute",
       right: 0,
     },
-    avatarChangeText: { color: theme.textInverse, fontSize: 12, fontWeight: '600' },
+    avatarChangeText: { color: theme.textInverse, fontSize: 12, fontWeight: "600" },
     profileInfoBox: {
       backgroundColor: theme.card,
       borderColor: theme.border,
-      borderRadius: 8,
+      borderRadius: 20,
       borderWidth: 1,
-      gap: 4,
-      padding: 14,
+      gap: 6,
+      padding: 18,
     },
     profileInfoLabel: { ...Typography.caption, color: theme.textMuted },
-    profileInfoValue: { color: theme.text, fontSize: 16, fontWeight: '600' },
-    profileInfoSubValue: { color: theme.textMuted, fontSize: 14, fontWeight: "600" },
+    profileInfoValue: { color: theme.text, fontSize: 16, fontWeight: "600" },
+    profileInfoSubValue: { ...Typography.body, color: theme.textMuted },
     logoutButton: {
       alignItems: "center",
-      backgroundColor: theme.danger,
-      borderRadius: 8,
+      backgroundColor: theme.card,
+      borderColor: `${theme.dangerText}40`,
+      borderWidth: 1,
+      borderRadius: 16,
+      flexDirection: "row",
+      gap: 10,
       justifyContent: "center",
       minHeight: 52,
     },
-    logoutButtonText: { color: theme.textInverse, fontSize: 16, fontWeight: '600' },
+    logoutButtonText: { ...Typography.button, color: theme.dangerText },
     resetScreenBody: { flex: 1 },
-    resetWarningContent: { gap: 16, padding: 20, paddingBottom: 110 },
+    resetWarningContent: {
+      gap: 16,
+      padding: 20,
+      paddingBottom: CURVED_TAB_BAR_HEIGHT + Math.max(bottomInset, 6) + 100,
+    },
     resetWarningHero: {
       alignItems: "center",
       backgroundColor: theme.card,
       borderColor: theme.border,
-      borderRadius: 8,
+      borderRadius: 20,
       borderWidth: 1,
       padding: 22,
     },
     resetWarningIcon: {
       color: theme.dangerText,
       fontSize: 44,
-      fontWeight: '600',
+      fontWeight: "600",
       lineHeight: 48,
       marginBottom: 10,
     },
-    resetWarningTitle: { color: theme.text, fontSize: 20, fontWeight: '600', lineHeight: 27, textAlign: "center" },
+    resetWarningTitle: { color: theme.text, fontSize: 20, fontWeight: "600", lineHeight: 27, textAlign: "center" },
     resetWarningText: {
       color: theme.textMuted,
       fontSize: 14,
-      fontWeight: "600",
+      fontWeight: "400",
       lineHeight: 21,
       marginTop: 10,
       textAlign: "center",
@@ -1637,7 +1799,7 @@ function createStyles(theme: AppTheme) {
     resetImpactCard: {
       backgroundColor: theme.card,
       borderColor: theme.border,
-      borderRadius: 8,
+      borderRadius: 20,
       borderWidth: 1,
       overflow: "hidden",
     },
@@ -1649,74 +1811,107 @@ function createStyles(theme: AppTheme) {
       minHeight: 58,
       paddingHorizontal: 16,
     },
-    resetImpactBullet: { color: theme.dangerText, fontSize: 22, fontWeight: '600', marginRight: 12, width: 20 },
-    resetImpactText: { color: theme.text, flex: 1, fontSize: 15, fontWeight: '600', lineHeight: 21 },
+    resetImpactBullet: { color: theme.dangerText, fontSize: 22, fontWeight: "600", marginRight: 12, width: 20 },
+    resetImpactText: { color: theme.text, flex: 1, fontSize: 15, fontWeight: "600", lineHeight: 21 },
     resetFooter: {
       backgroundColor: theme.screen,
       borderTopColor: theme.border,
       borderTopWidth: 1,
       bottom: 0,
       left: 0,
-      paddingBottom: 22,
+      paddingBottom: CURVED_TAB_BAR_HEIGHT + Math.max(bottomInset, 6) + 12,
       paddingHorizontal: 20,
       paddingTop: 12,
       position: "absolute",
       right: 0,
     },
-    resetPasswordContent: { gap: 18, padding: 20, paddingBottom: 96 },
+    resetPasswordContent: {
+      gap: 18,
+      padding: 20,
+      paddingBottom: CURVED_TAB_BAR_HEIGHT + Math.max(bottomInset, 6) + 24,
+    },
     resetConfirmCard: {
       backgroundColor: theme.card,
       borderColor: theme.border,
-      borderRadius: 8,
+      borderRadius: 20,
       borderWidth: 1,
       gap: 18,
       padding: 18,
     },
-    resetConfirmTitle: { color: theme.text, fontSize: 19, fontWeight: '600' },
-    resetConfirmText: { color: theme.textMuted, fontSize: 14, fontWeight: "600", lineHeight: 21 },
+    resetConfirmTitle: { color: theme.text, fontSize: 19, fontWeight: "600" },
+    resetConfirmText: { ...Typography.body, color: theme.textMuted, lineHeight: 21 },
     resetAuthDividerRow: { alignItems: "center", flexDirection: "row", gap: 10 },
     resetAuthDividerLine: { backgroundColor: theme.border, flex: 1, height: 1 },
-    resetAuthDividerText: { color: theme.textMuted, fontSize: 12, fontWeight: '600', textTransform: "uppercase" },
+    resetAuthDividerText: { color: theme.textMuted, fontSize: 12, fontWeight: "600", textTransform: "uppercase" },
     googleResetButton: {
       alignItems: "center",
       backgroundColor: theme.cardAlt,
       borderColor: theme.border,
-      borderRadius: 8,
+      borderRadius: 16,
       borderWidth: 1,
       flexDirection: "row",
       gap: 10,
       justifyContent: "center",
       minHeight: 50,
     },
-    googleResetIcon: { color: theme.primary, fontSize: 18, fontWeight: '600' },
-    googleResetText: { color: theme.text, fontSize: 15, fontWeight: '600' },
+    googleResetIcon: { color: theme.primary, fontSize: 18, fontWeight: "600" },
+    googleResetText: { color: theme.text, fontSize: 15, fontWeight: "600" },
     dangerButton: {
       alignItems: "center",
       backgroundColor: theme.danger,
-      borderRadius: 8,
+      borderRadius: 16,
       justifyContent: "center",
       minHeight: 52,
     },
-    dangerButtonText: { color: theme.textInverse, fontSize: 16, fontWeight: '600' },
-    chevron: { color: theme.chevron, fontSize: 40, lineHeight: 42 },
-    menuCard: { backgroundColor: theme.card, borderRadius: 8, marginTop: 34, overflow: "hidden" },
-    menuRow: { alignItems: "center", flexDirection: "row", minHeight: 76, paddingHorizontal: 22 },
+    dangerButtonText: { color: theme.textInverse, fontSize: 16, fontWeight: "600" },
+    menuSectionTitle: {
+      ...Typography.label,
+      fontWeight: "600",
+      color: theme.textMuted,
+      marginTop: 24,
+      marginBottom: 10,
+      marginLeft: 4,
+    },
+    menuCard: {
+      backgroundColor: theme.card,
+      borderColor: theme.border,
+      borderWidth: 1,
+      borderRadius: 20,
+      overflow: "hidden",
+    },
+    menuRow: {
+      alignItems: "center",
+      flexDirection: "row",
+      gap: 12,
+      minHeight: 76,
+      paddingHorizontal: 16,
+      paddingVertical: 14,
+    },
+    menuRowPressed: { backgroundColor: theme.cardAlt },
     menuRowDisabled: { opacity: 0.62 },
-    menuDivider: { backgroundColor: theme.border, height: 1, marginLeft: 68 },
-    menuIcon: { color: theme.text, fontSize: 30, width: 46 },
-    menuText: { color: theme.text, flex: 1, fontSize: 22, fontWeight: "500" },
+    menuDivider: { backgroundColor: theme.border, height: StyleSheet.hairlineWidth, marginLeft: 68, marginRight: 16 },
+    menuIconBubble: {
+      alignItems: "center",
+      justifyContent: "center",
+      width: 40,
+      height: 40,
+      borderRadius: 13,
+      flexShrink: 0,
+    },
+    menuText: { ...Typography.label, color: theme.text, fontSize: 15, lineHeight: 22, fontWeight: "600" },
+    menuSubtitle: { ...Typography.caption, color: theme.textMuted, marginTop: 3 },
     walletHeader: {
       alignItems: "center",
       flexDirection: "row",
       justifyContent: "space-between",
       paddingBottom: 16,
       paddingHorizontal: 20,
-      paddingTop: 56,
+      paddingTop: topInset + 12,
     },
-    backText: { color: theme.primary, fontSize: 17, fontWeight: '600' },
-    topTitle: { ...Typography.title, color: theme.text },
-    statsBackButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-    statsHeaderTitle: { flex: 1, textAlign: 'center' },
+    topTitle: { ...Typography.section, color: theme.text, flexShrink: 1, textAlign: "center" },
+    statsBackButton: { width: 44, height: 44, borderRadius: 14, alignItems: "center", justifyContent: "center" },
+    headerButtonPressed: { backgroundColor: theme.cardAlt },
+    statsHeaderTitle: { flex: 1, textAlign: "center" },
     statsHeaderSpacer: { width: 44 },
     topBar: {
       alignItems: "center",
@@ -1725,7 +1920,6 @@ function createStyles(theme: AppTheme) {
       marginBottom: 12,
       marginTop: 32,
     },
-    topSpacer: { width: 82 },
     insightToggleButton: {
       alignItems: "center",
       backgroundColor: theme.card,
@@ -1740,7 +1934,7 @@ function createStyles(theme: AppTheme) {
       backgroundColor: theme.primary,
       borderColor: theme.primary,
     },
-    insightToggleFallback: { color: theme.primary, fontSize: 18, fontWeight: '600' },
+    insightToggleFallback: { color: theme.primary, fontSize: 18, fontWeight: "600" },
     insightToggleFallbackActive: { color: theme.textInverse },
     addWalletButton: {
       alignItems: "center",
@@ -1752,18 +1946,18 @@ function createStyles(theme: AppTheme) {
     },
     addWalletText: { color: theme.textInverse, fontSize: 30, fontWeight: "500", lineHeight: 33 },
     walletList: { gap: 14, padding: 20, paddingBottom: 96 },
-    exportContent: { gap: 16, padding: 20, paddingBottom: 96 },
+    exportContent: { gap: 16, padding: 20, paddingBottom: CURVED_TAB_BAR_HEIGHT + Math.max(bottomInset, 6) + 24 },
     exportSection: {
       backgroundColor: theme.card,
       borderColor: theme.border,
-      borderRadius: 8,
+      borderRadius: 20,
       borderWidth: 1,
       overflow: "hidden",
     },
     exportSectionTitle: {
       color: theme.text,
       fontSize: 16,
-      fontWeight: '600',
+      fontWeight: "600",
       paddingHorizontal: 16,
       paddingTop: 15,
       paddingBottom: 10,
@@ -1771,8 +1965,9 @@ function createStyles(theme: AppTheme) {
     exportOptionRow: {
       alignItems: "center",
       borderTopColor: theme.border,
-      borderTopWidth: 1,
+      borderTopWidth: StyleSheet.hairlineWidth,
       flexDirection: "row",
+      gap: 12,
       minHeight: 70,
       paddingHorizontal: 14,
       paddingVertical: 10,
@@ -1780,17 +1975,15 @@ function createStyles(theme: AppTheme) {
     exportOptionRowActive: { backgroundColor: theme.primaryPressed },
     exportOptionIcon: {
       alignItems: "center",
-      backgroundColor: theme.cardAlt,
-      borderRadius: 19,
-      height: 38,
+      backgroundColor: `${theme.primary}18`,
+      borderRadius: 12,
+      height: 32,
       justifyContent: "center",
-      marginRight: 12,
-      width: 38,
+      width: 32,
     },
-    exportOptionIconText: { color: theme.text, fontSize: 18, fontWeight: '600' },
-    exportOptionTitle: { color: theme.text, fontSize: 16, fontWeight: '600' },
-    exportOptionSubtitle: { color: theme.textMuted, fontSize: 13, fontWeight: '600', marginTop: 3 },
-    exportOptionCheck: { color: theme.primary, fontSize: 21, fontWeight: '600', width: 24 },
+    exportOptionTitle: { ...Typography.label, color: theme.text, fontWeight: "600" },
+    exportOptionSubtitle: { ...Typography.small, color: theme.textMuted, marginTop: 3 },
+    exportCheckSpacer: { width: 20 },
     exportLoadingRow: {
       alignItems: "center",
       borderTopColor: theme.border,
@@ -1804,7 +1997,7 @@ function createStyles(theme: AppTheme) {
     exportDateCard: {
       backgroundColor: theme.cardAlt,
       borderColor: theme.border,
-      borderRadius: 8,
+      borderRadius: 14,
       borderWidth: 1,
       flex: 1,
       gap: 7,
@@ -1812,8 +2005,8 @@ function createStyles(theme: AppTheme) {
       justifyContent: "center",
       paddingHorizontal: 12,
     },
-    exportDateLabel: { color: theme.textMuted, fontSize: 12, fontWeight: '600', textTransform: "uppercase" },
-    exportDateValue: { color: theme.text, fontSize: 17, fontWeight: '600' },
+    exportDateLabel: { color: theme.textMuted, fontSize: 12, fontWeight: "600", textTransform: "uppercase" },
+    exportDateValue: { ...Typography.label, color: theme.text, fontWeight: "600" },
     bottomSheetOverlay: {
       backgroundColor: theme.overlay,
       flex: 1,
@@ -1832,8 +2025,8 @@ function createStyles(theme: AppTheme) {
       justifyContent: "space-between",
       marginBottom: 8,
     },
-    datePickerTitle: { color: theme.text, flex: 1, fontSize: 17, fontWeight: '600', textAlign: "center" },
-    datePickerAction: { fontSize: 16, fontWeight: '600' },
+    datePickerTitle: { color: theme.text, flex: 1, fontSize: 17, fontWeight: "600", textAlign: "center" },
+    datePickerAction: { fontSize: 16, fontWeight: "600" },
     datePicker: { alignSelf: "stretch" },
     statsContent: { backgroundColor: theme.screen, padding: 14, paddingBottom: 96 },
     statsPanel: { backgroundColor: theme.screen, borderRadius: 8, gap: 12, padding: 4 },
@@ -1842,8 +2035,8 @@ function createStyles(theme: AppTheme) {
     monthButtonDisabled: { opacity: 0.28 },
     monthButtonText: { color: theme.chevron, fontSize: 34, fontWeight: "500", lineHeight: 34 },
     monthTitleWrap: { alignItems: "center", flex: 1 },
-    monthTitle: { color: theme.text, fontSize: 15, fontWeight: '600' },
-    monthSubtitle: { color: theme.textMuted, fontSize: 11, fontWeight: '600', marginTop: 2 },
+    monthTitle: { color: theme.text, fontSize: 15, fontWeight: "600" },
+    monthSubtitle: { color: theme.textMuted, fontSize: 11, fontWeight: "600", marginTop: 2 },
     insightCard: {
       backgroundColor: theme.card,
       borderColor: theme.border,
@@ -1861,13 +2054,13 @@ function createStyles(theme: AppTheme) {
       justifyContent: "center",
       width: 34,
     },
-    insightBadgeText: { color: theme.primary, fontSize: 11, fontWeight: '600' },
-    insightTitle: { color: theme.text, fontSize: 15, fontWeight: '600' },
-    insightSummary: { color: theme.text, fontSize: 14, fontWeight: '600', lineHeight: 20 },
+    insightBadgeText: { color: theme.primary, fontSize: 11, fontWeight: "600" },
+    insightTitle: { color: theme.text, fontSize: 15, fontWeight: "600" },
+    insightSummary: { color: theme.text, fontSize: 14, fontWeight: "600", lineHeight: 20 },
     insightLoadingRow: { alignItems: "center", flexDirection: "row", gap: 10, minHeight: 34 },
     insightErrorRow: { alignItems: "center", flexDirection: "row", gap: 10, justifyContent: "space-between" },
-    insightMutedText: { color: theme.textMuted, flex: 1, fontSize: 13, fontWeight: '600', lineHeight: 19 },
-    insightRetryText: { color: theme.primary, fontSize: 13, fontWeight: '600' },
+    insightMutedText: { color: theme.textMuted, flex: 1, fontSize: 13, fontWeight: "600", lineHeight: 19 },
+    insightRetryText: { color: theme.primary, fontSize: 13, fontWeight: "600" },
     insightItem: { alignItems: "flex-start", flexDirection: "row", gap: 10 },
     insightIcon: {
       alignItems: "center",
@@ -1877,9 +2070,9 @@ function createStyles(theme: AppTheme) {
       justifyContent: "center",
       width: 30,
     },
-    insightIconText: { color: theme.primary, fontSize: 15, fontWeight: '600' },
+    insightIconText: { color: theme.primary, fontSize: 15, fontWeight: "600" },
     insightCopy: { flex: 1, gap: 2 },
-    insightItemTitle: { color: theme.text, fontSize: 13, fontWeight: '600' },
+    insightItemTitle: { color: theme.text, fontSize: 13, fontWeight: "600" },
     insightItemMessage: { color: theme.textMuted, fontSize: 13, fontWeight: "600", lineHeight: 19 },
     statsLoading: { alignItems: "center", minHeight: 260, justifyContent: "center" },
     statsSummaryRow: { flexDirection: "row", gap: 8 },
@@ -1893,8 +2086,8 @@ function createStyles(theme: AppTheme) {
       padding: 10,
     },
     statsSummaryCardActive: { borderColor: theme.accent },
-    statsSummaryLabel: { color: theme.textMuted, fontSize: 12, fontWeight: '600', marginBottom: 7 },
-    statsSummaryValue: { color: theme.text, fontSize: 18, fontWeight: '600' },
+    statsSummaryLabel: { color: theme.textMuted, fontSize: 12, fontWeight: "600", marginBottom: 7 },
+    statsSummaryValue: { color: theme.text, fontSize: 18, fontWeight: "600" },
     statsTrendCard: {
       alignItems: "center",
       borderRadius: 8,
@@ -1907,7 +2100,7 @@ function createStyles(theme: AppTheme) {
     },
     statsTrendCardGood: { backgroundColor: theme.goodBackground },
     statsTrendCardWarn: { backgroundColor: theme.warningBackground },
-    statsTrendText: { flex: 1, fontSize: 13, fontWeight: '600', lineHeight: 18 },
+    statsTrendText: { flex: 1, fontSize: 13, fontWeight: "600", lineHeight: 18 },
     statsTrendTextGood: { color: theme.goodText },
     statsTrendTextWarn: { color: theme.warning },
     chartSection: {
@@ -1917,11 +2110,11 @@ function createStyles(theme: AppTheme) {
       position: "relative",
       zIndex: 24,
     },
-    detailTitle: { color: theme.accent, fontSize: 13, fontWeight: '600', marginTop: 2, textAlign: "center" },
+    detailTitle: { color: theme.accent, fontSize: 13, fontWeight: "600", marginTop: 2, textAlign: "center" },
     statsEmptyText: { color: theme.textMuted, fontSize: 15, lineHeight: 22, paddingVertical: 36, textAlign: "center" },
     balanceSummary: { backgroundColor: theme.card, borderRadius: 8, padding: 18 },
     summaryLabel: { color: theme.textMuted, fontSize: 14, marginBottom: 4 },
-    summaryValue: { color: theme.text, fontSize: 26, fontWeight: '600' },
+    summaryValue: { color: theme.text, fontSize: 26, fontWeight: "600" },
     walletCard: {
       alignItems: "center",
       backgroundColor: theme.card,
@@ -1931,9 +2124,9 @@ function createStyles(theme: AppTheme) {
       padding: 16,
     },
     statControlCard: { backgroundColor: theme.card, borderRadius: 8, gap: 14, padding: 16 },
-    statControlTitle: { color: theme.textMuted, fontSize: 13, fontWeight: '600' },
+    statControlTitle: { color: theme.textMuted, fontSize: 13, fontWeight: "600" },
     periodRow: { alignItems: "center", flexDirection: "row", flexWrap: "wrap", gap: 8 },
-    periodValue: { color: theme.text, fontSize: 15, fontWeight: '600', minWidth: 64, textAlign: "center" },
+    periodValue: { color: theme.text, fontSize: 15, fontWeight: "600", minWidth: 64, textAlign: "center" },
     stepButton: {
       alignItems: "center",
       backgroundColor: theme.cardAlt,
@@ -1942,7 +2135,7 @@ function createStyles(theme: AppTheme) {
       justifyContent: "center",
       width: 34,
     },
-    stepButtonText: { color: theme.text, fontSize: 22, fontWeight: '600', lineHeight: 24 },
+    stepButtonText: { color: theme.text, fontSize: 22, fontWeight: "600", lineHeight: 24 },
     statCard: {
       backgroundColor: theme.card,
       borderColor: theme.border,
@@ -1953,9 +2146,9 @@ function createStyles(theme: AppTheme) {
     },
     statCardSelected: { borderColor: theme.accent, shadowColor: theme.accent, shadowOpacity: 0.2, shadowRadius: 10 },
     statCategoryHeader: { alignItems: "center", flexDirection: "row" },
-    statCategoryName: { color: theme.text, fontSize: 16, fontWeight: '600' },
-    statCategoryMeta: { color: theme.textMuted, fontSize: 13, fontWeight: '600', marginTop: 3 },
-    statCategoryAmount: { color: theme.text, fontSize: 15, fontWeight: '600' },
+    statCategoryName: { color: theme.text, fontSize: 16, fontWeight: "600" },
+    statCategoryMeta: { color: theme.textMuted, fontSize: 13, fontWeight: "600", marginTop: 3 },
+    statCategoryAmount: { color: theme.text, fontSize: 15, fontWeight: "600" },
     categoryDetailButton: {
       alignItems: "center",
       backgroundColor: theme.cardAlt,
@@ -1966,10 +2159,10 @@ function createStyles(theme: AppTheme) {
       width: 32,
     },
     categoryDetailButtonActive: { backgroundColor: theme.primaryPressed },
-    categoryDetailIcon: { color: theme.primary, fontSize: 18, fontWeight: '600', lineHeight: 20 },
+    categoryDetailIcon: { color: theme.primary, fontSize: 18, fontWeight: "600", lineHeight: 20 },
     statCompareText: { color: theme.textMuted, fontSize: 13, lineHeight: 19 },
-    statCompareTextDecrease: { color: theme.goodText, fontWeight: '600' },
-    statCompareTextIncrease: { color: theme.dangerText, fontWeight: '600' },
+    statCompareTextDecrease: { color: theme.goodText, fontWeight: "600" },
+    statCompareTextIncrease: { color: theme.dangerText, fontWeight: "600" },
     categoryTransactionsPanel: { borderTopColor: theme.border, borderTopWidth: 1, gap: 2, paddingTop: 8 },
     categoryTransactionsEmpty: { color: theme.textMuted, fontSize: 12, paddingVertical: 10, textAlign: "center" },
     categoryTransactionRow: {
@@ -1981,11 +2174,11 @@ function createStyles(theme: AppTheme) {
       paddingVertical: 7,
     },
     categoryTransactionCopy: { flex: 1, marginRight: 10 },
-    categoryTransactionDescription: { color: theme.text, fontSize: 13, fontWeight: '600' },
+    categoryTransactionDescription: { color: theme.text, fontSize: 13, fontWeight: "600" },
     categoryTransactionDate: { color: theme.textMuted, fontSize: 11, marginTop: 3 },
-    categoryTransactionAmount: { color: theme.dangerText, fontSize: 12, fontWeight: '600' },
+    categoryTransactionAmount: { color: theme.dangerText, fontSize: 12, fontWeight: "600" },
     categoryTransactionsMoreButton: { alignItems: "center", minHeight: 38, justifyContent: "center" },
-    categoryTransactionsMoreText: { color: theme.primary, fontSize: 13, fontWeight: '600' },
+    categoryTransactionsMoreText: { color: theme.primary, fontSize: 13, fontWeight: "600" },
     walletIcon: {
       alignItems: "center",
       backgroundColor: theme.cardAlt,
@@ -2007,7 +2200,7 @@ function createStyles(theme: AppTheme) {
     input: {
       backgroundColor: theme.inputBackground,
       borderColor: theme.border,
-      borderRadius: 8,
+      borderRadius: 16,
       borderWidth: 1,
       color: theme.text,
       fontSize: 16,
@@ -2027,7 +2220,7 @@ function createStyles(theme: AppTheme) {
       paddingHorizontal: 14,
     },
     typeOptionSelected: { backgroundColor: theme.primary, borderColor: theme.primary },
-    typeOptionText: { color: theme.textSoft, fontWeight: '600' },
+    typeOptionText: { color: theme.textSoft, fontWeight: "600" },
     typeOptionTextSelected: { color: theme.textInverse },
     row: { flexDirection: "row", gap: 12 },
     currencyField: { flex: 0.8 },
@@ -2035,7 +2228,7 @@ function createStyles(theme: AppTheme) {
     primaryButton: {
       alignItems: "center",
       backgroundColor: theme.primary,
-      borderRadius: 8,
+      borderRadius: 16,
       justifyContent: "center",
       minHeight: 50,
     },
