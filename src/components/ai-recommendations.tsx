@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { router } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, View, type ScrollViewInstance } from 'react-native';
 
 import type { AIRecommendation } from '@/api/aiApi';
 import { AppText as Text } from '@/components/app-text';
 import { useAppTheme } from '@/hooks/use-app-theme';
 import { Typography } from '@/theme/typography';
+import { currentRecommendations } from '@/utils/recommendationPresentation';
+
+const priorityLabels: Record<string, string> = { HIGH: 'Ưu tiên cao', MEDIUM: 'Cần chú ý', LOW: 'Tham khảo', INFO: 'Thông tin' };
 
 export function AIRecommendations({ recommendations }: { recommendations: AIRecommendation[] }) {
   const theme = useAppTheme();
@@ -15,10 +19,7 @@ export function AIRecommendations({ recommendations }: { recommendations: AIReco
   const [pageSizes, setPageSizes] = useState<Record<number, { width: number; height: number }>>({});
   const activePageSize = pageSizes[activeIndex];
   const activeHeight = activePageSize?.width === width ? activePageSize.height : undefined;
-  const items = useMemo(() => {
-    const priorities: Record<string, number> = { HIGH: 0, MEDIUM: 1, LOW: 2 };
-    return [...recommendations].sort((a, b) => (priorities[a.priority] ?? 3) - (priorities[b.priority] ?? 3));
-  }, [recommendations]);
+  const items = useMemo(() => currentRecommendations(recommendations), [recommendations]);
 
   // Keep the visible page aligned after rotation or a container width change.
   useEffect(() => {
@@ -39,7 +40,7 @@ export function AIRecommendations({ recommendations }: { recommendations: AIReco
     <View style={[styles.container, { borderLeftColor: theme.primary }]}>
       <ScrollView
         ref={scrollRef}
-        accessibilityLabel="Các khuyến nghị từ AI"
+        accessibilityLabel="Các khuyến nghị hành động"
         horizontal
         pagingEnabled
         directionalLockEnabled
@@ -69,8 +70,15 @@ export function AIRecommendations({ recommendations }: { recommendations: AIReco
             }}
             style={[styles.page, { width: width || 220 }]}
           >
+            <Text style={[styles.message, { color: theme.primary }]}>{priorityLabels[recommendation.priority] ?? recommendation.priority}</Text>
             <Text accessibilityRole="header" style={[styles.title, { color: theme.text }]}>{recommendation.title}</Text>
             <Text style={[styles.message, { color: theme.textMuted }]}>{recommendation.message}</Text>
+            <Text style={[styles.action, { color: theme.text }]}>{recommendation.action}</Text>
+            {recommendation.actionTarget === 'budgets' || recommendation.actionTarget === 'transactions' ? (
+              <Pressable accessibilityRole="button" style={styles.actionButton} onPress={() => router.navigate(recommendation.actionTarget === 'budgets' ? '/(tabs)/budgets' : '/(tabs)/transactions')}>
+                <Text style={[styles.action, { color: theme.primary }]}>{recommendation.actionTarget === 'budgets' ? 'Xem ngân sách' : 'Xem giao dịch'}</Text>
+              </Pressable>
+            ) : null}
           </View>
         ))}
       </ScrollView>
@@ -103,6 +111,8 @@ const styles = StyleSheet.create({
   page: { flexShrink: 0, paddingRight: 4 },
   title: { ...Typography.caption, fontWeight: '600' },
   message: { ...Typography.caption, marginTop: 3 },
+  action: { ...Typography.caption, marginTop: 6, fontWeight: '500' },
+  actionButton: { alignSelf: 'flex-start', paddingVertical: 6, paddingRight: 8 },
   pagination: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, marginTop: 4 },
   indicatorButton: { width: 12, height: 14, flexShrink: 1, justifyContent: 'center' },
   indicatorButtonActive: { width: 24 },

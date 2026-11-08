@@ -580,7 +580,7 @@ function AIWidget({
     return null;
   }
 
-  const normalizedHealthStatus = analysis.health_status.toLowerCase();
+  const normalizedHealthStatus = analysis.health.status.toLowerCase();
   const isCritical = normalizedHealthStatus === "critical" || normalizedHealthStatus === "risk";
   const isHealthy = normalizedHealthStatus === "healthy";
 
@@ -606,20 +606,23 @@ function AIWidget({
           <View
             style={[
               styles.aiBadge,
-              isHealthy ? styles.aiBadgeHealthy : isCritical ? styles.aiBadgeCritical : styles.aiBadgeWarning,
+              isHealthy ? styles.aiBadgeHealthy : isCritical ? styles.aiBadgeCritical : normalizedHealthStatus === 'insufficientdata' ? styles.aiBadgeUnknown : styles.aiBadgeWarning,
             ]}
           >
-            <Text style={styles.aiBadgeText}>{analysis.health_status}</Text>
+            <Text style={styles.aiBadgeText}>{({ Healthy: 'Tốt theo chỉ báo', Warning: 'Cần theo dõi', Risk: 'Cần chú ý', InsufficientData: 'Chưa đủ dữ liệu' })[analysis.health.status] ?? 'Chưa đủ dữ liệu'}</Text>
           </View>
         </View>
       </View>
       <View style={styles.aiStatsRow}>
         <View>
-          <Text style={styles.aiLabel}>Tỷ lệ tiết kiệm</Text>
-          <Text style={styles.aiRate}>{Math.round(analysis.features.savings_rate * 100)}%</Text>
+          <Text style={styles.aiLabel}>Số tháng dự phòng</Text>
+          <Text style={styles.aiRate}>{analysis.health.reserveMonths == null ? '—' : new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 1 }).format(analysis.health.reserveMonths)}</Text>
+          <Text style={styles.aiLabel}>{analysis.health.reserveMonths == null ? 'Chưa đủ dữ liệu' : 'tháng chi tiêu bình quân'}</Text>
+          {analysis.features.history_months > 0 ? <Text style={styles.aiLabel}>Từ {analysis.features.history_months} tháng đầy đủ</Text> : null}
         </View>
         <AIRecommendations key={JSON.stringify(analysis.recommendations)} recommendations={analysis.recommendations ?? []} />
       </View>
+      {analysis.health.reasons.map((reason, index) => <Text key={index} style={[styles.aiLabel, { marginTop: 6 }]}>{reason}</Text>)}
     </View>
   );
 }
@@ -677,19 +680,19 @@ function SpendingForecastChart({
 }) {
   const chartFont = useInterFont('500');
   const forecast = analysis?.forecast;
-  const forecastAsOf = forecast?.asOf;
-  const forecastEndDate = forecast?.forecastEndDate;
-  const forecastStatus = forecast?.status;
-  const dailyForecasts = forecast?.dailyForecasts ?? [];
-  const daysInMonth = getDaysInMonthFromDate(forecastAsOf ?? forecastEndDate, dailySpending.length || 31);
   const now = new Date();
-  const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-  const isCurrentMonthForecast = (forecastAsOf ?? forecastEndDate)?.slice(0, 7) === currentMonthKey;
-  const chartBaseDate = forecastAsOf ? new Date(`${forecastAsOf.slice(0, 10)}T00:00:00`) : now;
+  // Giao dịch phía trên được tải theo tháng hiện tại; không ghép dự báo tháng cũ vào đó.
+  const forecastAsOf = analysis?.metadata.asOf;
+  const forecastInCurrentMonth = forecastAsOf?.slice(0, 7) === formatApiDate(now).slice(0, 7);
+  const forecastMetadata = analysis?.metadata.forecast;
+  const forecastStatus = forecast?.status;
+  const dailyForecasts = forecastInCurrentMonth ? forecast?.dailyForecasts ?? [] : [];
+  const daysInMonth = getDaysInMonthFromDate(formatApiDate(now), dailySpending.length || 31);
+  const chartBaseDate = now;
   const chartBaseYear = chartBaseDate.getFullYear();
   const chartBaseMonth = chartBaseDate.getMonth();
   const asOfDay = Math.min(
-    Math.max(isCurrentMonthForecast ? now.getDate() : getDayOfMonth(forecastAsOf), 1),
+    Math.max(getDayOfMonth(forecastInCurrentMonth ? forecastAsOf?.slice(0, 10) : undefined), 1),
     daysInMonth,
   );
   const actualPoints = dailySpending
@@ -745,14 +748,14 @@ function SpendingForecastChart({
     forecastChart.bottom - (Math.max(forecastEnd.value, 0) / maxValue) * (forecastChart.bottom - forecastChart.top);
   const forecastEndLabelX = Math.min(Math.max(endX, forecastChart.left + 42), forecastChart.right - 4);
   const forecastEndLabelAnchor = endX > forecastChart.right - 42 ? "end" : "middle";
-  const forecastLabel = "AI dự đoán";
+  const forecastLabel = forecastMetadata?.model === 'ScratchGradientBoosting' ? 'Dự báo chi tiêu' : 'Ước lượng theo lịch sử';
   const gridRatios = [0.2, 0.4, 0.6, 0.8];
   const xAxisDays = Array.from(new Set([1, 7, 14, 21, 28, daysInMonth])).filter((day) => day <= daysInMonth);
 
   if (!hasActualData && !hasForecastData) {
     return (
       <View style={styles.chartEmptyState}>
-        <Text style={styles.chartEmptyText}>Chưa có dữ liệu chi tiêu hoặc dự đoán AI</Text>
+        <Text style={styles.chartEmptyText}>{forecastAsOf && !forecastInCurrentMonth ? 'Dự báo thuộc tháng trước. Bấm Phân tích để cập nhật.' : 'Chưa có dữ liệu chi tiêu hoặc dự đoán AI'}</Text>
       </View>
     );
   }
@@ -979,8 +982,9 @@ function SpendingForecastChart({
           <Text style={styles.forecastLegendText}>{forecastLabel}</Text>
         </View>
       </View>
-      {forecastStatus && forecastStatus !== "ok" ? (
-        <Text style={styles.forecastNote}>Dự đoán đang ở trạng thái {forecastStatus}.</Text>
+      {forecastAsOf && !forecastInCurrentMonth ? <Text style={styles.forecastNote}>Dự báo thuộc tháng trước. Bấm Phân tích để cập nhật.</Text> : null}
+      {forecastInCurrentMonth && forecastStatus && forecastStatus !== "ok" ? (
+        <Text style={styles.forecastNote}>{forecastMetadata?.model === 'Mean14' ? 'Phần dự kiến dùng trung bình 14 ngày gần nhất thay cho mô hình dự báo.' : 'Lịch sử chưa đủ điều kiện chạy mô hình; phần dự kiến là ước lượng từ dữ liệu hiện có.'}</Text>
       ) : null}
     </View>
   );
@@ -1188,6 +1192,7 @@ function createStyles(theme: AppTheme) {
     aiAnalyzeText: { color: theme.primary, fontSize: 11, fontWeight: '600' },
     aiBadge: { borderRadius: 12, paddingHorizontal: 9, paddingVertical: 5 },
     aiBadgeHealthy: { backgroundColor: theme.goodBackground },
+    aiBadgeUnknown: { backgroundColor: theme.border },
     aiBadgeWarning: { backgroundColor: theme.warningBackground },
     aiBadgeCritical: { backgroundColor: `${theme.danger}22` },
     aiBadgeText: { color: theme.text, fontSize: 11, fontWeight: '600' },
