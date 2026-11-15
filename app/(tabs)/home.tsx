@@ -692,7 +692,7 @@ function SpendingForecastChart({
   const chartBaseYear = chartBaseDate.getFullYear();
   const chartBaseMonth = chartBaseDate.getMonth();
   const asOfDay = Math.min(
-    Math.max(getDayOfMonth(forecastInCurrentMonth ? forecastAsOf?.slice(0, 10) : undefined), 1),
+    Math.max(getDayOfMonth(forecastInCurrentMonth ? forecastAsOf?.slice(0, 10) : formatApiDate(now)), 1),
     daysInMonth,
   );
   const actualPoints = dailySpending
@@ -711,7 +711,7 @@ function SpendingForecastChart({
     const predictedExpense = item.predictedExpense;
     const day = date ? getDayOffsetFromMonthStart(date, chartBaseYear, chartBaseMonth) : undefined;
 
-    if (day === undefined || day <= asOfDay || day > daysInMonth) {
+    if (day === undefined || day <= asOfDay) {
       continue;
     }
 
@@ -720,18 +720,19 @@ function SpendingForecastChart({
   }
 
   forecastPoints.sort((left, right) => left.day - right.day);
+  const chartRangeDays = Math.max(daysInMonth, ...forecastPoints.map(point => point.day));
   const hasActualData = actualPoints.some((point) => point.value > 0);
   const hasForecastData = forecastPoints.length > 1;
   const maxValue = getNiceChartMax(
     Math.max(1, ...actualPoints.map((point) => point.value), ...forecastPoints.map((point) => point.value)) * 1.08,
   );
-  const actualPath = buildLinePath(actualPoints, daysInMonth, maxValue);
-  const forecastPath = buildLinePath(forecastPoints, daysInMonth, maxValue);
+  const actualPath = buildLinePath(actualPoints, chartRangeDays, maxValue);
+  const forecastPath = buildLinePath(forecastPoints, chartRangeDays, maxValue);
   const forecastEnd = forecastPoints[forecastPoints.length - 1];
   const asOfX =
-    daysInMonth <= 1
+    chartRangeDays <= 1
       ? forecastChart.left
-      : forecastChart.left + ((asOfDay - 1) / (daysInMonth - 1)) * (forecastChart.right - forecastChart.left);
+      : forecastChart.left + ((asOfDay - 1) / (chartRangeDays - 1)) * (forecastChart.right - forecastChart.left);
   const actualEndY =
     forecastChart.bottom - (Math.max(actualTotal, 0) / maxValue) * (forecastChart.bottom - forecastChart.top);
   const actualLabelText = formatAxisMoney(actualTotal);
@@ -741,16 +742,17 @@ function SpendingForecastChart({
   const actualCalloutEndX = Math.min(actualLabelX + 8, asOfX - 8);
   const actualLabelAnchor = "end";
   const endX =
-    daysInMonth <= 1
+    chartRangeDays <= 1
       ? forecastChart.left
-      : forecastChart.left + ((forecastEnd.day - 1) / (daysInMonth - 1)) * (forecastChart.right - forecastChart.left);
+      : forecastChart.left + ((forecastEnd.day - 1) / (chartRangeDays - 1)) * (forecastChart.right - forecastChart.left);
   const endY =
     forecastChart.bottom - (Math.max(forecastEnd.value, 0) / maxValue) * (forecastChart.bottom - forecastChart.top);
   const forecastEndLabelX = Math.min(Math.max(endX, forecastChart.left + 42), forecastChart.right - 4);
   const forecastEndLabelAnchor = endX > forecastChart.right - 42 ? "end" : "middle";
   const forecastLabel = forecastMetadata?.model === 'ScratchGradientBoosting' ? 'Dự báo chi tiêu' : 'Ước lượng theo lịch sử';
   const gridRatios = [0.2, 0.4, 0.6, 0.8];
-  const xAxisDays = Array.from(new Set([1, 7, 14, 21, 28, daysInMonth])).filter((day) => day <= daysInMonth);
+  const xAxisDays = Array.from(new Set([1, ...Array.from({ length: 4 }, (_, i) =>
+    Math.round((i + 1) * chartRangeDays / 5)), chartRangeDays]));
 
   if (!hasActualData && !hasForecastData) {
     return (
@@ -779,7 +781,7 @@ function SpendingForecastChart({
             <Text numberOfLines={1} style={styles.forecastSummaryLabel}>Dự kiến<Text style={styles.forecastSummaryCaption}>{hasForecastData ? ` ${forecastPoints.length - 1} ngày` : ''}</Text></Text>
           </View>
           <View style={styles.forecastSummaryAmountRow}>
-            <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} style={[styles.forecastSummaryValue, { color: theme.primary }]}>{hasForecastData ? formatPlainMoney(forecastEnd.value) : '—'}</Text>
+            <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} style={[styles.forecastSummaryValue, { color: theme.primary }]}>{hasForecastData ? formatPlainMoney(forecast?.predictedTotalExpense ?? 0) : '—'}</Text>
             {hasForecastData ? <Text style={styles.forecastSummaryUnit}>{currency === 'VND' ? 'đ' : currency}</Text> : null}
           </View>
         </View>
@@ -932,11 +934,11 @@ function SpendingForecastChart({
           />
           {xAxisDays.map((day) => {
             const x =
-              daysInMonth <= 1
+              chartRangeDays <= 1
                 ? forecastChart.left
-                : forecastChart.left + ((day - 1) / (daysInMonth - 1)) * (forecastChart.right - forecastChart.left);
+                : forecastChart.left + ((day - 1) / (chartRangeDays - 1)) * (forecastChart.right - forecastChart.left);
             const label =
-              day === 1 || day === daysInMonth
+              day === 1 || day === chartRangeDays || chartRangeDays > daysInMonth
                 ? (() => {
                     const date = new Date(chartBaseYear, chartBaseMonth, day);
 
@@ -983,8 +985,9 @@ function SpendingForecastChart({
         </View>
       </View>
       {forecastAsOf && !forecastInCurrentMonth ? <Text style={styles.forecastNote}>Dự báo thuộc tháng trước. Bấm Phân tích để cập nhật.</Text> : null}
+      {hasForecastData ? <Text style={styles.forecastNote}>Biểu đồ thể hiện chi tiêu lũy kế từ đầu tháng; số Dự kiến phía trên chỉ tính {forecastMetadata?.forecastHorizonDays ?? dailyForecasts.length} ngày tương lai.</Text> : null}
       {forecastInCurrentMonth && forecastStatus && forecastStatus !== "ok" ? (
-        <Text style={styles.forecastNote}>{forecastMetadata?.model === 'Mean14' ? 'Phần dự kiến dùng trung bình 14 ngày gần nhất thay cho mô hình dự báo.' : 'Lịch sử chưa đủ điều kiện chạy mô hình; phần dự kiến là ước lượng từ dữ liệu hiện có.'}</Text>
+        <Text style={styles.forecastNote}>{/^Mean(14|30|90)$/.test(forecastMetadata?.model ?? '') ? `Phần dự kiến dùng trung bình ${forecastMetadata?.lookbackDays} ngày gần nhất thay cho mô hình dự báo.` : 'Phần dự kiến là ước lượng từ lịch sử hiện có vì mô hình chưa sẵn sàng hoặc dữ liệu chưa đủ điều kiện.'}</Text>
       ) : null}
     </View>
   );

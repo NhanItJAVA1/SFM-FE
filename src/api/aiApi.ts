@@ -62,11 +62,14 @@ export type AIForecast = {
 };
 export type AIDailyForecast = { date: string; predictedExpense: number };
 export type AIForecastDataQuality = {
+  requiredHistoryDays?: number;
+  usedHistoryDays?: number;
   availableHistoryDays: number;
   missingDaysFilledWithZero: number;
   notes: string[];
 };
 export type AIForecastMetadata = {
+  lagDays: number;
   model: string;
   modelVersion: string | null;
   lookbackDays: number;
@@ -111,7 +114,14 @@ export type AIChatResponse = {
   sources: AIChatSource[];
 };
 
+export type ForecastLookbackDays = 14 | 30 | 90;
+export type ForecastDays = 7 | 14 | 30;
+export type ForecastOptions = { lookbackDays?: ForecastLookbackDays; forecastDays?: ForecastDays };
+
 export const aiApi = {
-  analysis: () => axiosClient.post<AIAnalysis>('/v1/FinancialAdvisor/analyze'),
+  analysis: (options: ForecastOptions = {}) => axiosClient.post<AIAnalysis>(
+    `/v1/FinancialAdvisor/analyze?${new URLSearchParams({
+      lookbackDays: String(options.lookbackDays ?? 14), forecastDays: String(options.forecastDays ?? 7),
+    })}`, undefined, { timeout: 130000 }),
   chat: (payload: AIChatPayload) => axiosClient.post<AIChatResponse>('/v1/AI/chat', payload),
 };
