@@ -5,6 +5,7 @@ import { Animated, PanResponder, Pressable, View } from 'react-native';
 
 import type { Category } from '@/api/categoriesApi';
 import type { AIRecommendation } from '@/api/aiApi';
+import { matchesRecommendationBudget } from '@/utils/recommendationPresentation';
 
 import { useBudgetStyles } from './budgets.styles';
 import { describeCategory, formatMoney, isBudgetExpired } from './helpers';
@@ -44,7 +45,7 @@ export function BudgetCategoryItem({
   const isWarning = usedPercentage >= 80;
   const isCritical = usedPercentage >= 100;
   const budgetRecommendation = aiRecommendations.find(
-    (recommendation) => recommendation.category.trim() === String(budget.categoryId),
+    (recommendation) => matchesRecommendationBudget(recommendation, budget),
   );
   const warningText = budgetRecommendation?.message ?? (isWarning ? `Đã sử dụng ${usedPercentage.toFixed(0)}% ngân sách.` : null);
   const isExpired = isBudgetExpired(budget);

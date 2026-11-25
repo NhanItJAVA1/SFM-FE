@@ -13,6 +13,7 @@ export function UserTabBar({ state, descriptors, emitter, navigateToTab, insets 
   const theme = useAppTheme();
   const reportHeight = useContext(BottomTabBarHeightCallbackContext);
   const [keyboardVisible, setKeyboardVisible] = useState(() => Keyboard.isVisible());
+  const [keyboardFocusKey, setKeyboardFocusKey] = useState<string | null>(null);
   const focusedOptions = descriptors[state.routes[state.index].key].options;
   const bottomInset = Math.max(insets.bottom, 6);
   const horizontalInset = Math.max(insets.left, insets.right);
@@ -58,11 +59,13 @@ export function UserTabBar({ state, descriptors, emitter, navigateToTab, insets 
                 android_ripple={undefined}
                 onPress={() => pressTab(route.key, focused)}
                 onLongPress={() => emitter.emit({ type: 'tabLongPress', target: route.key })}
-                style={({ pressed, hovered, focused: hasFocus }) => [
+                onFocus={() => setKeyboardFocusKey(route.key)}
+                onBlur={() => setKeyboardFocusKey((current) => current === route.key ? null : current)}
+                style={({ pressed, hovered }) => [
                   styles.tabButton,
                   {
                     backgroundColor: pressed || hovered ? theme.primaryPressed : 'transparent',
-                    borderColor: hasFocus ? theme.primary : 'transparent',
+                    borderColor: keyboardFocusKey === route.key ? theme.primary : 'transparent',
                     transform: [{ scale: pressed ? 0.96 : 1 }],
                   },
                 ]}

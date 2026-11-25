@@ -40,6 +40,7 @@ function matchesAnomalyFilters(anomaly: AIAnomaly, filters: AnomalyFilters) {
 }
 
 const anomalyReasonLabels: Record<string, string> = {
+  ISOLATION_FOREST_OUTLIER: "Khác thường so với lịch sử chi tiêu",
   HIGH_VS_CATEGORY_MEDIAN: "Cao trong danh mục",
   HIGH_CATEGORY_ROBUST_Z: "Lệch khỏi danh mục",
   LARGE_SHARE_OF_BALANCE: "Chi lớn so với số dư hiện tại",
@@ -360,7 +361,7 @@ export default function TransactionsScreen() {
               {!analysis && isAnalysisLoading ? <TransactionSkeleton /> : filteredAnomalies.length === 0 ? (
                 <View style={styles.empty}>
                   <Text style={styles.emptyTitle}>{!analysis ? "Chưa có kết quả phân tích" : activeFilterCount || searchQuery.trim() ? "Không có giao dịch phù hợp" : "Chưa có giao dịch được đánh dấu"}</Text>
-                  <Text style={styles.emptyText}>{!analysis ? (analysisError?.message || "Cập nhật phân tích tại Tổng quan.") : analysis.anomalySummary.status === "insufficient_data" ? "Chưa đủ lịch sử để đánh giá giao dịch bất thường." : analysis.anomalySummary.status === "partial" ? `${analysis.anomalySummary.insufficientCount} khoản chưa đủ dữ liệu. Chưa có cảnh báo mạnh trong bộ lọc hiện tại.` : anomalyWindow ? `Trong kỳ ${anomalyWindow.label}.` : "Chưa có dữ liệu bất thường trong kết quả AI."}</Text>
+                  <Text style={styles.emptyText}>{!analysis ? (analysisError?.message || "Cập nhật phân tích tại Tổng quan.") : analysis.anomalySummary.status === "insufficient_data" ? "Chưa đủ lịch sử để đánh giá giao dịch bất thường." : analysis.anomalySummary.status === "partial" ? `${analysis.anomalySummary.insufficientCount} khoản chưa đủ dữ liệu. Chưa có cảnh báo trong bộ lọc hiện tại.` : anomalyWindow ? `Trong kỳ ${anomalyWindow.label}.` : "Chưa có dữ liệu bất thường trong kết quả AI."}</Text>
                 </View>
               ) : (
                 (showAllAnomalies ? filteredAnomalies : filteredAnomalies.slice(0, 5)).map((anomaly) => {
@@ -666,7 +667,7 @@ function TransactionListItem({
             </View>
             {isAnomaly ? (
               <View accessible accessibilityRole="image" accessibilityLabel="Giao dịch bất thường" style={styles.transactionWarning}>
-                <TriangleAlert accessible={false} color={theme.warning} size={16} strokeWidth={2} />
+                <TriangleAlert aria-hidden color={theme.warning} size={16} strokeWidth={2} />
               </View>
             ) : null}
           </View>
